@@ -1,0 +1,602 @@
+{
+  "project": "order-to-cash-dotnet",
+  "description": "Order-to-cash lifecycle backbone as event-driven microservices (.NET 10 + Next.js + MS-SQL Server + MongoDB + Kafka + NATS). Assessment #8 of the order-to-cash trilogy, and its first REUSE RUN: specs/shared/, the harness, the n8n workflows and the stack-agnostic infra are copied from #7, not rewritten. progress/history.md must yield an honest #7 vs #8 benchmark.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "require_approved_spec_to_implement": true,
+    "require_effort_record_to_close": true,
+    "claude_never_commits": true,
+    "valid_status": [
+      "pending",
+      "spec_ready",
+      "in_progress",
+      "in_review",
+      "done",
+      "blocked"
+    ],
+    "sdd_required_when": "feature has \"sdd\": true",
+    "state_machine": "pending -> [spec_author] -> spec_ready -> HUMAN APPROVES -> in_progress -> [implementer] -> in_review -> [reviewer] -> done | blocked",
+    "shared_spec_is_read_only": "a change to specs/shared/ is a spec amendment: explicit, human-gated, back-ported to #7 — never a silent fork",
+    "reused_ids": "R<n> ids are #7's. Reusing one asserts the .NET realisation satisfies the same requirement."
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "repo_bootstrap",
+      "phase": 1,
+      "title": "Repository bootstrap: .NET 10 SDK pin, Node LTS for the web, git hygiene",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "dotnet SDK and runtimes verified by scaffolding, building and testing real templates",
+        "Node LTS and pnpm verified (web app only)",
+        ".gitignore, .editorconfig, .nvmrc, global.json committed",
+        "repo-local git identity + account-explicit remote set before the first push",
+        "push to origin verified"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "harness_layer",
+      "phase": 2,
+      "title": "Agent harness copied from #7 and re-pointed: AGENTS.md, CLAUDE.md, backlog, init.sh, progress/, agents, CHECKPOINTS.md",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "AGENTS.md, CLAUDE.md, CHECKPOINTS.md exist, re-pointed to .NET",
+        "feature_list.json reset to the .NET backlog and validating against its own rules",
+        "init.sh exits 0 on a clean clone and exits 1 on each broken invariant",
+        "progress/current.md from the template and history.md EMPTY — #8's effort records must be #8's",
+        "six agents in .claude/agents/ each declaring its model, pinning copied from #7 unchanged",
+        "docs/PROCESS.md copied and re-pointed"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "shared_spec",
+      "phase": 3,
+      "title": "specs/shared/ copied VERBATIM from #7: domain model, saga, EARS requirements, AsyncAPI, OpenAPI, test matrix",
+      "sdd": false,
+      "owner": "spec_author",
+      "status": "pending",
+      "acceptance": [
+        "all seven files byte-identical to #7's, proven by diff, except test-matrix.md's Status column reset to TODO",
+        "source commit SHA of the #7 checkout recorded in the commit message",
+        "n8n/workflows/*.json copied unchanged",
+        "specs/shared/ re-read end to end — reuse is not an excuse to not know the spec",
+        "any stack leak found in #7's 'reusable part' reported back as a #7 defect"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "infra_compose",
+      "phase": 4,
+      "title": "docker-compose.infra.yml: MS-SQL, MongoDB, Kafka, Redpanda Console, NATS, Mailpit, n8n, OTel, Jaeger, Prometheus, Grafana",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "all infra containers healthy",
+        "four otc_* databases and the app login created by the MS-SQL init script",
+        "NATS runs core-only (no JetStream)",
+        "n8n on its SQLite volume (n8n does not support MS-SQL)",
+        "OTel Collector, Prometheus and Grafana configs reused from #7 unchanged",
+        "MS-SQL container RAM footprint measured and recorded",
+        ".env.example complete"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "messaging_topology",
+      "phase": 4,
+      "title": "Kafka fact topics + .dlq companions and the NATS subject registry",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "3 fact topics + 3 dlq topics created idempotently by the reused script",
+        "topics match asyncapi.yaml exactly",
+        "Redpanda Console lists all 6",
+        "NATS subject list verified against asyncapi.yaml — none invented, none missing"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "monorepo_scaffold",
+      "phase": 5,
+      "title": "OrderToCash.sln scaffold: Directory.Build.props, central package management, NetArchTest architecture tests, quality script",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "dotnet build works from the solution root",
+        "global.json honoured; TreatWarningsAsErrors on",
+        "NetArchTest fails the build on a deliberate Domain-layer violation of each forbidden reference",
+        "NetArchTest fails on a deliberate decimal in domain arithmetic",
+        "./quality.sh runs format check + build + test + coverage"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "shared_kernel",
+      "phase": 5,
+      "title": "src/SharedKernel: Money (long cents), Quantity, GLN (mod-10), OrderNumber, UniqueId, Entity, AggregateRoot",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "zero PackageReference entries, asserted by an architecture test",
+        "GLN check digit validated with real and invalid GLNs",
+        "Money rejects cross-currency arithmetic and holds long minor units",
+        "pure xUnit unit tests, no framework references"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "contracts_package",
+      "phase": 5,
+      "title": "src/Contracts: envelope + event and DTO types generated from AsyncAPI/OpenAPI, and the single shared JsonSerializerOptions",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "types generated from the copied asyncapi.yaml and openapi.yaml",
+        "one shared JsonSerializerOptions: camelCase, nulls omitted, no $type discriminator",
+        "a test asserts a serialised envelope is byte-identical to #7's for the same input"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "db_orders",
+      "phase": 6,
+      "title": "EF Core model + migrations for otc_orders (incl. outbox, processed_events, saga_commands, saga_ignored_facts, order_number_sequences)",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "migration applies against the composed mssql container and re-applies cleanly from empty",
+        "MS-SQL types per the spec: uniqueidentifier, datetime2(3), nvarchar, bigint IDENTITY for outbox.seq",
+        "indexes match the shared spec"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "db_fulfillment",
+      "phase": 6,
+      "title": "EF Core model + migrations for otc_fulfillment (stock, reservations, despatches, despatch_items + reliability tables)",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "migrations run from empty",
+        "round-trip integration test per table"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "db_billing",
+      "phase": 6,
+      "title": "EF Core model + migrations for otc_billing, plus the processed_events-only otc_notifications",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "both migrations apply and re-apply cleanly",
+        "outbox/processed_events parity test across all four DbContexts passes",
+        "otc_notifications contains processed_events and nothing else"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "seed_job",
+      "phase": 7,
+      "title": "Deterministic one-shot seed job producing the SAME dataset as #7 (parties, GLNs, credit limits, stock, sample orders)",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "same currencies, products, retailers, companies, GLNs, credit limits and stock as #7",
+        "sample completed orders and one cancelled order, with their order_timeline documents",
+        "idempotent — running twice is a no-op",
+        "row-count and checksum comparison against #7's seeded databases passes"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "orders_aggregate",
+      "phase": 8,
+      "title": "Order aggregate + full status state machine",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "every legal transition allowed, every illegal one throws",
+        "no empty orders, no line mutation after confirmed",
+        "totals always consistent with lines",
+        "cancelled requires a reason",
+        "pure domain unit tests, zero framework imports"
+      ]
+    },
+    {
+      "id": 43,
+      "name": "cqrs_dispatcher",
+      "phase": 8,
+      "title": "In-process CQRS dispatcher: ICommandHandler/IQueryHandler/IEventHandler + startup validation (no MediatR)",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "ICommandHandler<T>, ICommandHandler<T,R>, IQueryHandler<T,R>, IEventHandler<T> + a Dispatcher resolving from IServiceProvider",
+        "handlers registered by assembly scan",
+        "startup validation FAILS FAST when a command has zero handlers or more than one — proven by a test for each case",
+        "no MediatR reference anywhere in the solution"
+      ],
+      "note": "New in #8. #7 got this free from @nestjs/cqrs; MediatR v13 is commercially licensed, so it is hand-rolled here. Expect this feature to have NO #7 counterpart in the benchmark table."
+    },
+    {
+      "id": 14,
+      "name": "outbox_and_idempotency",
+      "phase": 8,
+      "title": "Transactional outbox + polling relay + idempotent consumer pattern",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "aggregate row and outbox row written in one transaction",
+        "relay publishes to Kafka keyed by correlationId and stamps publishedAt",
+        "safe under concurrent relay instances",
+        "redelivery deduplicated via processed_events"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "orders_acceptance",
+      "phase": 8,
+      "title": "Order acceptance: orders.create NATS responder + fulfillment.stock.check client",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "synchronous stock check via NATS fulfillment.stock.check",
+        "order id returned synchronously",
+        "rejection when stock check fails"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "order_saga_orchestrator",
+      "phase": 8,
+      "title": "Saga orchestrator: advances on Kafka facts, commands over NATS, both compensation paths",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "happy path reaches invoiced against stubbed responders",
+        "CreditRejected releases stock and cancels the order",
+        "StockRejected cancels without a release",
+        "idempotent under event redelivery",
+        "every step recorded"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "fulfillment_stock",
+      "phase": 9,
+      "title": "StockItem aggregate + reservation lifecycle (reserve / release / consume)",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "invariant reservedUnits <= units enforced in the aggregate",
+        "StockRejected when insufficient",
+        "release is idempotent, cannot release twice",
+        "check-then-reserve race covered by an integration test"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "fulfillment_despatch",
+      "phase": 9,
+      "title": "DespatchAdvice (DESADV) creation consuming reservations",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "reservations move to consumed",
+        "OrderDespatched emitted via outbox"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "billing_credit",
+      "phase": 10,
+      "title": "BuyerCredit aggregate + hold/release/consume ledger",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "availableCredit = limit - active holds - open invoices",
+        "ledger is append-only",
+        "over-limit hold is rejected",
+        "release on compensation and on invoice paid"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "billing_credit_simulator",
+      "phase": 10,
+      "title": "Credit-check simulator (.99 rule + CREDIT_FAILURE_RATE)",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "rejects totalAmount % 100 === 99 deterministically",
+        "CREDIT_FAILURE_RATE defaults to 0",
+        "sits behind the credit port"
+      ]
+    },
+    {
+      "id": 21,
+      "name": "billing_invoicing",
+      "phase": 10,
+      "title": "Invoice aggregate (INVOIC) with issued -> paid state machine",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "issued on OrderDespatched",
+        "paidAt set exactly when status becomes paid",
+        "totals consistent with lines"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "billing_remittance_intake",
+      "phase": 10,
+      "title": "Remittance intake: PaymentReceived + credit release + invoice paid",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "idempotent by paymentReference",
+        "no internal payment timer anywhere",
+        "emits PaymentReceived and CreditReleased"
+      ]
+    },
+    {
+      "id": 23,
+      "name": "notifications_service",
+      "phase": 11,
+      "title": "Notifications Worker Service: MailKit -> Mailpit, console adapter, durable processed_events ledger",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "real email verified in the Mailpit inbox for each notified fact",
+        "console adapter used in tests via the same port",
+        "idempotent by eventId"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "projector_read_model",
+      "phase": 12,
+      "title": "Projector Worker Service: every fact into order_timeline, idempotent, statusRank, placeholders",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "out-of-order delivery still yields the correct final status",
+        "replaying a topic reproduces an identical document",
+        "emits the update signal the Gateway turns into SSE"
+      ]
+    },
+    {
+      "id": 25,
+      "name": "gateway_rest_auth",
+      "phase": 13,
+      "title": "Gateway REST per the copied OpenAPI + JWT auth + login rate limiting",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "contract test asserts no drift from openapi.yaml",
+        "RPC timeouts mapped to HTTP status codes",
+        "list/detail served from MongoDB, never from a write DB"
+      ]
+    },
+    {
+      "id": 26,
+      "name": "gateway_sse_push",
+      "phase": 13,
+      "title": "SSE push of saga progress with heartbeat and Last-Event-ID reconnect",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "client reconnect resumes without duplicates",
+        "heartbeat keeps the connection alive"
+      ]
+    },
+    {
+      "id": 27,
+      "name": "observability_reliability",
+      "phase": 14,
+      "title": "Terminus health checks, OTel propagation through NATS and Kafka, structured logging, retry + DLQ, and orders.create requestId idempotent replay",
+      "sdd": true,
+      "status": "pending",
+      "acceptance": [
+        "one trace spans HTTP -> NATS -> MySQL -> Kafka -> consumers",
+        "correlationId in every log line",
+        "failed processing lands on <topic>.dlq after N attempts",
+        "readiness includes DB, Kafka and NATS indicators",
+        "a repeated orders.create request carrying the same requestId returns the ORIGINAL order (same orderId/orderReference/money fields), not a second placement",
+        "concurrent duplicate requests for the same requestId never place two orders",
+        "requestId remains optional: omitting it places a normal, non-deduplicated order"
+      ]
+    },
+    {
+      "id": 28,
+      "name": "saga_e2e_verification",
+      "phase": 15,
+      "title": "End-to-end saga verification before any frontend work",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "happy path reaches completed",
+        ".99 order compensates visibly",
+        "redelivery causes no corruption",
+        "a poisoned message reaches the DLQ",
+        "R56's composed-stack trace observation: one trace id spans the inbound request, every command, every write-model transaction and every fact publication/consumption for one order, across the real running services"
+      ]
+    },
+    {
+      "id": 29,
+      "name": "web_app",
+      "phase": 16,
+      "title": "Next.js App Router web app: shadcn/ui, TanStack Query, Tailwind v4, live SSE saga timeline",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "types imported from packages/contracts",
+        "live SSE timeline with reconnect",
+        "Register payment button works",
+        "honest waiting-for-projection state"
+      ]
+    },
+    {
+      "id": 30,
+      "name": "web_component_tests",
+      "phase": 17,
+      "title": "Web component tests: Vitest + React Testing Library (no Jest)",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "timeline, place-order form, stock and billing tables covered",
+        "SSE composable tested with a fake EventSource"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "api_tests",
+      "phase": 18,
+      "title": "API tests: xUnit + HttpClient black-box through the Gateway — the SAME script #7's API tests prove",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "full happy path",
+        "full compensation path",
+        "duplicate paymentReference yields one payment"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "e2e_playwright",
+      "phase": 19,
+      "title": "Playwright end-to-end tests against the composed stack",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "order reaches completed in the UI",
+        ".99 order reaches cancelled with compensation visible"
+      ]
+    },
+    {
+      "id": 33,
+      "name": "n8n_workflows",
+      "phase": 20,
+      "title": "Four n8n demo workflows, Gateway REST API only, exported as JSON",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "order generator, bank robot, stock replenishment, burst",
+        "auto-imported on container startup",
+        "removing n8n does not break the stack"
+      ]
+    },
+    {
+      "id": 34,
+      "name": "sonarqube_quality_gates",
+      "phase": 21,
+      "title": "Quality gates: analyzers as errors, dotnet format, coverlet thresholds, SonarQube optional profile",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "coverage gate proven to FAIL when breached, not merely configured",
+        "dotnet format clean at solution level",
+        "SonarQube runs under its optional compose profile"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "observability_dashboards",
+      "phase": 22,
+      "title": "Observability verification: the REUSED Grafana dashboard shows live data; one Jaeger trace spans the whole saga",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "panels: saga duration, per-service latency, consumer lag, outbox lag, DLQ depth",
+        "dashboard auto-provisioned",
+        "single distributed trace screenshot captured"
+      ]
+    },
+    {
+      "id": 36,
+      "name": "full_docker_compose",
+      "phase": 23,
+      "title": "Full stack compose (~18 containers) with healthcheck-gated dependencies",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "cold start reaches a demoable state within ~2 minutes",
+        "infra-only mode still works with apps run from the CLI"
+      ]
+    },
+    {
+      "id": 37,
+      "name": "documentation_demo",
+      "phase": 24,
+      "title": "Documentation + demo + the #7 vs #8 BENCHMARK section",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "README per the Task, architecture and saga diagrams, Kafka-vs-NATS matrix, trade-offs",
+        "AI-process section and the demo GIF (same script as #7)",
+        "benchmark table from both repos' progress/history.md, with an honest reading of what was NOT faster",
+        "spec amendments listed with their back-port status to #7"
+      ]
+    },
+    {
+      "id": 38,
+      "name": "final_checkpoint",
+      "phase": 25,
+      "title": "Final checkpoint: backlog all done, every EARS R# traced, amendments back-ported",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "feature_list.json all done",
+        "every EARS requirement traced to a green xUnit/Vitest/Playwright test",
+        "CHECKPOINTS.md C1-C7 fully walked",
+        "spec amendments back-ported to #7 or deferred with a reason",
+        "stack-comparison document fully promoted from pre-resolved to confirmed"
+      ]
+    },
+    {
+      "id": 40,
+      "name": "orders_catalog_responder",
+      "phase": 13,
+      "title": "Orders: catalog.reference.list NATS responder for products/retailers/companies",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "GET /catalog/products, /catalog/retailers, /catalog/companies return real data through the Gateway",
+        "no new bounded context — domain-model.md already assigns the reference catalogue to Orders",
+        "reuses the same reference-data lookup PlaceOrderHandler already calls, exposed as a query rather than duplicated"
+      ]
+    },
+    {
+      "id": 41,
+      "name": "orders_cancel_responder",
+      "phase": 13,
+      "title": "Orders: orders.cancel NATS responder for operator-initiated cancellation",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "POST /orders/{id}/cancel succeeds through the Gateway for a cancellable order",
+        "reuses the Order aggregate's existing cancelled state and cancellationReason invariant — no new domain modeling",
+        "an order in a terminal state (invoiced, completed, already cancelled) is rejected with a domain error, not a 503",
+        "the operator note from CancelOrderRequest lands on the read-model timeline"
+      ]
+    },
+    {
+      "id": 42,
+      "name": "orders_saga_terminal_rejection_classification",
+      "phase": 8,
+      "title": "NatsSagaCommandsAdapter: distinguish a terminal RpcError (business rejection) from a retryable transport error",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "a PRECONDITION_FAILED (or other terminal-business-outcome) RpcError reply from a responder is classified as terminal, not retried at capped backoff forever",
+        "a genuinely retryable transport failure (timeout, connection refused, no responder) is unaffected — still retried exactly as today",
+        "a saga_commands row that receives a terminal RpcError reaches a resolved end state (parked-with-reason, or equivalent) rather than retrying indefinitely"
+      ]
+    }
+  ]
+}

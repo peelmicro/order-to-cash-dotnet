@@ -78,7 +78,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | Phase | What | Status |
 |-------|------|--------|
 | 1 | Environment & repository | ✅ SDK/Node pins verified adversarially, account-explicit remote, `.gitignore` proven not to swallow source |
-| 2 | Harness layer, copied from #7 and re-pointed | ⬜ |
+| 2 | Harness layer, copied from #7 and re-pointed | ✅ 42-feature backlog reset, `init.sh` verified to exit 1 on all eight break cases, C7 inverted to spec-reuse fidelity |
 | 3 | Shared specification, copied verbatim from #7 | ⬜ |
 | 4 | Infrastructure compose + Kafka topics & NATS subjects | ⬜ |
 | 5 | Solution scaffold, SharedKernel, Contracts, architecture tests | ⬜ |
