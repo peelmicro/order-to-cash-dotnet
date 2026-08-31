@@ -221,13 +221,13 @@ Every process artifact in this repository: what it is for, and where it came fro
 | `progress/history.md` | Append-only log + **per-feature effort records** | Carries a `#7 baseline` field per entry; this is the benchmark | Template from #7, **deliberately empty** — #8's numbers must be #8's | Phase 2 | every feature close |
 | `progress/impl_*.md` | The implementer's own report per feature | What was built, evidence, deviations, what the review later caught | Written here | — | every feature |
 | `progress/review_*.md` | The reviewer's verdict per feature | Probes with real output, defects with file/line/why, CHECKPOINTS walk | Written here | — | every feature |
-| `specs/shared/` (7 files) | The system's definition, before the code | **Read-only.** A change is a spec amendment: explicit, human-gated, back-ported to #7 | **Copied verbatim from #7** | Phase 3 | never (amendments only) |
-| `specs/shared/test-matrix.md` | Requirement → test traceability | Columns 1–4 are #7's; only the Status column is this assessment's | Copied; Status column reset to `TODO` | Phase 3 | as features land |
+| `specs/shared/` (7 files) | The system's definition, before the code | **Read-only.** A change is a spec amendment: explicit, human-gated, applied to every repository in the same session | **Copied verbatim from #7** — six of seven files byte-identical, `cmp`-proven | Phase 3 | Phase 3 (`SA-1`) |
+| `specs/shared/test-matrix.md` | Requirement → test traceability | Columns 1–4 are #7's; only the Status column is this assessment's | Copied; reset by #7's own four-step recipe — 63 rows to `TODO`, columns 1–4 confirmed identical | Phase 3 | as features land |
 | `specs/<feature>/` | Per-feature triple-doc for the large features | `requirements.md` mostly cites #7's `R<n>` ids; `design.md` is where nearly all the new work is | Written here | Phase 8 | per feature |
 | `docs/PROCESS.md` | This document | Updated at the end of every phase — registry + status | Copied from #7, re-pointed; §11 reset | Phase 2 | Phase 2 |
 | `README.md` | Honest front door at every commit | Grows incrementally each phase; never describes software that does not exist yet | Written here | Phase 1 | every phase |
 | `global.json` / `.editorconfig` | Toolchain and code-style pins | SDK pinned with `rollForward: latestPatch`; analyzer **severities** live in `.editorconfig`, **enforcement** in `Directory.Build.props` | Written here | Phase 1 | Phase 1 |
-| `n8n/workflows/*.json` | The demo's "external world" | Gateway REST API only — which is why they port at all | **Reused unchanged** from #7 (base URL env only) | Phase 3 | never |
+| `n8n/workflows/*.json` | The demo's "external world" | Gateway REST API only — which is why they port at all | **Reused unchanged** from #7, byte-identical (base URL env only) | Phase 3 | never |
 | `infra/` (OTel, Prometheus, Grafana, Kafka topics) | The stack-agnostic infrastructure | Dashboard JSON and collector config are engine-independent | **Reused from #7**; only the MS-SQL init script is new | Phase 4 | Phase 4 |
 
 ---
@@ -236,13 +236,15 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 2 complete — 2 of 42 features done.** The repository holds its toolchain pins and its agent harness, and nothing else. No application code, no specification yet, no infrastructure. That ordering is deliberate and is the point: the git history must read **harness → specification → code**, because a process claimed after the fact is not evidence.
+**Position: Phase 3 complete — 3 of 42 features done.** The repository holds its toolchain pins, its agent harness and the shared specification. Still no application code and no infrastructure. That ordering is deliberate and is now visible in the git history: **harness → specification → code**, because a process claimed after the fact is not evidence.
+
+Phase 3 also produced the trilogy's **first cross-repository spec amendment**, `SA-1`. The reset recipe inside `test-matrix.md` described which prose to delete by listing the specific paragraphs *in that copy* — correct when read, false once followed, and actively misleading to the next assessment inheriting the executed file. It was reworded to describe the class rather than the instance, applied to both repositories in the same session, and recorded in each. The wider point is worth keeping: the defect was invisible to the previous assessment's final audit, which searched for stack-specific terms, and became visible only when somebody *executed* the instruction for the first time. Reuse does not merely benefit from a specification — it tests it in ways authorship cannot.
 
 | Phase | What | State |
 |---|---|---|
 | 1 | Environment & repository — SDK/Node pins verified adversarially, account-explicit remote, `.gitignore` proven not to swallow source | ✅ |
 | 2 | Harness layer — copied from #7 and re-pointed to .NET; backlog reset; C7 inverted | ✅ |
-| 3 | Shared specification — copied **verbatim** from #7, diff-proven | ⬜ |
+| 3 | Shared specification — copied **verbatim** from #7, `cmp`-proven per file; zero stack leaks found; `SA-1` raised and applied to both repositories | ✅ |
 | 4 | Infrastructure compose + spec-derived Kafka topology | ⬜ |
 | 5 | Solution scaffold, SharedKernel, Contracts, NetArchTest architecture tests | ⬜ |
 | 6 | EF Core models + migrations for the four write databases | ⬜ |
@@ -285,4 +287,8 @@ The interesting category for a reuse run. Each of these cost #7 real debugging t
 
 ### 11.2 Found here
 
-*(Empty. Entries land as the build produces them — with the same standard #7 held: a finding is recorded with what produced it, not just what it was.)*
+**Phase 3 — an instruction invalidated by its own execution (`SA-1`).** The shared specification carried a four-step recipe telling a new assessment how to reset the traceability matrix. Step 4 named the prose to delete by listing the specific paragraphs present *in that copy*. Following the recipe therefore made the recipe false: the executed copy contained an inventory of content it no longer had, and the next assessment inheriting it could not tell a completed step from a missed one.
+
+Two things make it worth keeping beyond the fix itself. First, the **previous assessment's final audit could not have found it** — that audit searched for stack-specific vocabulary, and this is a self-reference defect with no stack terms in it at all. Second, it was found by *doing* rather than by reading: the instruction had been reviewed carefully and was correct every time anyone read it. It only became wrong at the moment it was obeyed, which no amount of re-reading would have surfaced.
+
+The generalisable form: **an instruction that describes its own current contents will go stale the first time it is followed.** Write the class, not the instance.
