@@ -1,0 +1,84 @@
+# ---------- .NET build output ----------
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# ---------- .NET tests / coverage ----------
+TestResults/
+coverage/
+coverage.*.json
+coverage.*.xml
+coverage.*.info
+*.coverage
+*.coveragexml
+BenchmarkDotNet.Artifacts/
+
+# ---------- NuGet ----------
+*.nupkg
+*.snupkg
+.nuget/
+# NOTE: deliberately NOT ignoring `packages/`. It is the legacy packages.config
+# restore folder, which this repo (central package management, PackageReference)
+# never creates — and a bare `packages/` is exactly the trap `/data/` was in #7:
+# it would silently swallow any source directory that happened to be named that.
+
+# ---------- Node / pnpm (apps/web only) ----------
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# ---------- Next.js (apps/web) ----------
+.next/
+out/
+next-env.d.ts
+.vercel/
+.turbo/
+*.tsbuildinfo
+
+# ---------- Web tests ----------
+playwright-report/
+playwright/.cache/
+test-results/
+blob-report/
+
+# ---------- Environment ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Docker bind mounts / local volumes ----------
+# NOTE: anchored with a leading slash. A bare `data/` also matches source
+# directories such as src/Seed/Data/, which in assessment #7 silently kept
+# 11 source files out of version control until it was caught in phase 8.
+/data/
+infra/**/data/
+
+# ---------- Logs ----------
+# Verification run logs kept locally for reference. Deliberately not committed:
+# large, machine-specific and regenerable — the durable record of what was
+# verified lives in progress/.
+logs/
+*.log
+
+# ---------- Caches ----------
+.cache/
+
+# ---------- IDE ----------
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini

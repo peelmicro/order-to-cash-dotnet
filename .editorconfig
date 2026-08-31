@@ -1,0 +1,130 @@
+# EditorConfig — https://editorconfig.org
+# Assessment #8. The baseline mirrors #7's (`order-to-cash-nestjs`) so the two
+# repositories format identically where they can; the [*.cs] sections below are
+# the .NET addition. Analyzer *enforcement* (TreatWarningsAsErrors, the analysis
+# level) lives in Directory.Build.props from Phase 5 — this file decides which
+# rules exist and how loudly they complain.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{json,jsonc}]
+indent_size = 2
+
+[*.sh]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+# ---------------------------------------------------------------------------
+# C#
+# ---------------------------------------------------------------------------
+[*.{cs,csx}]
+indent_size = 4
+max_line_length = 120
+
+# --- usings ---
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:warning
+
+# --- file-scoped namespaces (one level of nesting saved in every file) ---
+csharp_style_namespace_declarations = file_scoped:warning
+
+# --- var: explicit types make domain code read like the spec ---
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# --- expression-bodied members ---
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
+
+# --- modern language features ---
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_throw_expression = true:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_prefer_range_operator = true:suggestion
+
+# --- braces always, even for one-liners ---
+csharp_prefer_braces = true:warning
+
+# --- readonly / immutability, which the value objects depend on ---
+dotnet_style_readonly_field = true:warning
+csharp_prefer_static_local_function = true:suggestion
+
+# --- null handling: nullable reference types are on, so these matter ---
+csharp_style_conditional_delegate_call = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+
+# --- naming: interfaces IPascalCase, private fields _camelCase ---
+dotnet_naming_rule.interfaces_start_with_i.symbols = interface_symbols
+dotnet_naming_rule.interfaces_start_with_i.style = prefix_i_pascal
+dotnet_naming_rule.interfaces_start_with_i.severity = warning
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_style.prefix_i_pascal.required_prefix = I
+dotnet_naming_style.prefix_i_pascal.capitalization = pascal_case
+
+dotnet_naming_rule.private_fields_underscore.symbols = private_field_symbols
+dotnet_naming_rule.private_fields_underscore.style = prefix_underscore_camel
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_symbols.private_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_field_symbols.applicable_accessibilities = private
+dotnet_naming_style.prefix_underscore_camel.required_prefix = _
+dotnet_naming_style.prefix_underscore_camel.capitalization = camel_case
+
+dotnet_naming_rule.constants_pascal.symbols = constant_symbols
+dotnet_naming_rule.constants_pascal.style = pascal
+dotnet_naming_rule.constants_pascal.severity = warning
+dotnet_naming_symbols.constant_symbols.applicable_kinds = field
+dotnet_naming_symbols.constant_symbols.required_modifiers = const
+dotnet_naming_style.pascal.capitalization = pascal_case
+
+# --- async correctness: these are errors, not suggestions. Every one of them
+#     is a bug this project can actually hit (fire-and-forget consumers,
+#     sync-over-async in a NATS responder, a CancellationToken dropped on the
+#     floor between an outbox poll and a broker call).
+dotnet_diagnostic.CA2007.severity = none      # ConfigureAwait — not needed, no SynchronizationContext
+dotnet_diagnostic.CA2016.severity = error     # forward the CancellationToken
+dotnet_diagnostic.CS1998.severity = error     # async method without await
+dotnet_diagnostic.CS4014.severity = error     # unawaited call
+
+# --- correctness rules worth failing the build over ---
+dotnet_diagnostic.CA1001.severity = error     # type owns disposables but is not IDisposable
+dotnet_diagnostic.CA2213.severity = error     # disposable field not disposed
+dotnet_diagnostic.CA1063.severity = warning   # IDisposable implemented correctly
+
+# ---------------------------------------------------------------------------
+# Generated / vendored code — analyzers stay off
+# ---------------------------------------------------------------------------
+[src/Contracts/Generated/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+
+[**/Migrations/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+
+# ---------------------------------------------------------------------------
+# Web (apps/web) — TypeScript/React, 2-space like #7's Nuxt app
+# ---------------------------------------------------------------------------
+[apps/web/**.{ts,tsx,js,jsx,mjs,cjs,css}]
+indent_size = 2
