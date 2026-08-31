@@ -26,6 +26,14 @@ Per-feature effort (sessions, wall-clock) is recorded in `progress/history.md` a
 
 Any place where the .NET implementation proves the shared specification wrong or incomplete is a **spec amendment**: an explicit commit here, and a back-port to #7. Never a silent fork.
 
+## Spec amendments
+
+Where the .NET implementation proves the shared specification wrong or incomplete, the change is an **amendment**: explicit, committed on its own, and applied to every repository of the trilogy in the same session — never a silent fork. Each carries a stable `SA-n` id and an entry in the `progress/history.md` of every repository it touches.
+
+| Id | Raised | Touches | What was wrong |
+|---|---|---|---|
+| `SA-1` | #8, Phase 3 | `specs/shared/test-matrix.md` — the reset-recipe paragraph only | The recipe told a new assessment which prose to delete by listing the specific paragraphs *in that copy*. Correct when read, false once followed — the next assessment would inherit an inventory of content already gone. Reworded from an inventory of the copy into a description of the class, so the instruction stays true in every copy. Applied to #7 and #8 identically. |
+
 ## Tech stack
 
 | Layer | Technology |
@@ -79,7 +87,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 |-------|------|--------|
 | 1 | Environment & repository | ✅ SDK/Node pins verified adversarially, account-explicit remote, `.gitignore` proven not to swallow source |
 | 2 | Harness layer, copied from #7 and re-pointed | ✅ 42-feature backlog reset, `init.sh` verified to exit 1 on all eight break cases, C7 inverted to spec-reuse fidelity |
-| 3 | Shared specification, copied verbatim from #7 | ⬜ |
+| 3 | Shared specification, copied verbatim from #7 | ✅ six of seven files byte-identical (`cmp`-proven); `test-matrix.md` reset by #7's own recipe; zero stack leaks found; `SA-1` raised and applied to both repos |
 | 4 | Infrastructure compose + Kafka topics & NATS subjects | ⬜ |
 | 5 | Solution scaffold, SharedKernel, Contracts, architecture tests | ⬜ |
 | 6 | EF Core models + migrations for the four write databases | ⬜ |

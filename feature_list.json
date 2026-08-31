@@ -59,7 +59,7 @@
       "title": "specs/shared/ copied VERBATIM from #7: domain model, saga, EARS requirements, AsyncAPI, OpenAPI, test matrix",
       "sdd": false,
       "owner": "spec_author",
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "all seven files byte-identical to #7's, proven by diff, except test-matrix.md's Status column reset to TODO",
         "source commit SHA of the #7 checkout recorded in the commit message",
