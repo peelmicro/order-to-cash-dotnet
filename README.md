@@ -88,7 +88,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 1 | Environment & repository | ✅ SDK/Node pins verified adversarially, account-explicit remote, `.gitignore` proven not to swallow source |
 | 2 | Harness layer, copied from #7 and re-pointed | ✅ 42-feature backlog reset, `init.sh` verified to exit 1 on all eight break cases, C7 inverted to spec-reuse fidelity |
 | 3 | Shared specification, copied verbatim from #7 | ✅ six of seven files byte-identical (`cmp`-proven); `test-matrix.md` reset by #7's own recipe; zero stack leaks found; `SA-1` raised and applied to both repos |
-| 4 | Infrastructure compose + Kafka topics & NATS subjects | ⬜ |
+| 4 | Infrastructure compose + Kafka topics & NATS subjects | ✅ 15 services, 36s cold to all-healthy, MS-SQL bootstrap written from scratch (the image has no init hook), topology derived from the spec |
 | 5 | Solution scaffold, SharedKernel, Contracts, architecture tests | ⬜ |
 | 6 | EF Core models + migrations for the four write databases | ⬜ |
 | 7 | Deterministic seed job | ⬜ |

@@ -74,7 +74,7 @@
       "phase": 4,
       "title": "docker-compose.infra.yml: MS-SQL, MongoDB, Kafka, Redpanda Console, NATS, Mailpit, n8n, OTel, Jaeger, Prometheus, Grafana",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "all infra containers healthy",
         "four otc_* databases and the app login created by the MS-SQL init script",
@@ -91,7 +91,7 @@
       "phase": 4,
       "title": "Kafka fact topics + .dlq companions and the NATS subject registry",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "3 fact topics + 3 dlq topics created idempotently by the reused script",
         "topics match asyncapi.yaml exactly",

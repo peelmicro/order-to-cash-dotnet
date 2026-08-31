@@ -228,7 +228,9 @@ Every process artifact in this repository: what it is for, and where it came fro
 | `README.md` | Honest front door at every commit | Grows incrementally each phase; never describes software that does not exist yet | Written here | Phase 1 | every phase |
 | `global.json` / `.editorconfig` | Toolchain and code-style pins | SDK pinned with `rollForward: latestPatch`; analyzer **severities** live in `.editorconfig`, **enforcement** in `Directory.Build.props` | Written here | Phase 1 | Phase 1 |
 | `n8n/workflows/*.json` | The demo's "external world" | Gateway REST API only — which is why they port at all | **Reused unchanged** from #7, byte-identical (base URL env only) | Phase 3 | never |
-| `infra/` (OTel, Prometheus, Grafana, Kafka topics) | The stack-agnostic infrastructure | Dashboard JSON and collector config are engine-independent | **Reused from #7**; only the MS-SQL init script is new | Phase 4 | Phase 4 |
+| `infra/` (OTel, Prometheus, Grafana, Kafka topics, n8n import) | The stack-agnostic infrastructure | Nine files, `cmp`-verified byte-identical. The collector speaks OTLP and the topic script reads the shared spec — neither has anything stack-specific in it | **Reused from #7 unchanged** | Phase 4 | Phase 4 |
+| `infra/mssql/` | Database bootstrap | The engine's image has no `/docker-entrypoint-initdb.d` and no init hook of any kind, so the entrypoint starts it, waits for it to answer, bootstraps, then hands the foreground back. The largest genuinely new piece of infrastructure in this assessment | **Written here** | Phase 4 | Phase 4 |
+| `docker-compose.infra.yml` + `.env.example` | The runnable infrastructure | 15 services under its own Compose project namespace, so its containers and volumes cannot collide with the previous assessment's | Adapted from #7 | Phase 4 | Phase 4 |
 
 ---
 
@@ -236,7 +238,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 3 complete — 3 of 42 features done.** The repository holds its toolchain pins, its agent harness and the shared specification. Still no application code and no infrastructure. That ordering is deliberate and is now visible in the git history: **harness → specification → code**, because a process claimed after the fact is not evidence.
+**Position: Phase 4 complete — 5 of 42 features done.** The repository holds its toolchain pins, its agent harness, the shared specification and a running infrastructure stack. Still no application code. That ordering is deliberate and is now visible in the git history: **harness → specification → code**, because a process claimed after the fact is not evidence.
 
 Phase 3 also produced the trilogy's **first cross-repository spec amendment**, `SA-1`. The reset recipe inside `test-matrix.md` described which prose to delete by listing the specific paragraphs *in that copy* — correct when read, false once followed, and actively misleading to the next assessment inheriting the executed file. It was reworded to describe the class rather than the instance, applied to both repositories in the same session, and recorded in each. The wider point is worth keeping: the defect was invisible to the previous assessment's final audit, which searched for stack-specific terms, and became visible only when somebody *executed* the instruction for the first time. Reuse does not merely benefit from a specification — it tests it in ways authorship cannot.
 
@@ -245,7 +247,7 @@ Phase 3 also produced the trilogy's **first cross-repository spec amendment**, `
 | 1 | Environment & repository — SDK/Node pins verified adversarially, account-explicit remote, `.gitignore` proven not to swallow source | ✅ |
 | 2 | Harness layer — copied from #7 and re-pointed to .NET; backlog reset; C7 inverted | ✅ |
 | 3 | Shared specification — copied **verbatim** from #7, `cmp`-proven per file; zero stack leaks found; `SA-1` raised and applied to both repositories | ✅ |
-| 4 | Infrastructure compose + spec-derived Kafka topology | ⬜ |
+| 4 | Infrastructure compose (15 services, 36 s cold to all-healthy) + spec-derived Kafka topology. The database engine's bootstrap had to be written from scratch — its image has no initialisation hook at all | ✅ |
 | 5 | Solution scaffold, SharedKernel, Contracts, NetArchTest architecture tests | ⬜ |
 | 6 | EF Core models + migrations for the four write databases | ⬜ |
 | 7 | Deterministic seed job, checksum-compared against #7's dataset | ⬜ |
@@ -292,3 +294,9 @@ The interesting category for a reuse run. Each of these cost #7 real debugging t
 Two things make it worth keeping beyond the fix itself. First, the **previous assessment's final audit could not have found it** — that audit searched for stack-specific vocabulary, and this is a self-reference defect with no stack terms in it at all. Second, it was found by *doing* rather than by reading: the instruction had been reviewed carefully and was correct every time anyone read it. It only became wrong at the moment it was obeyed, which no amount of re-reading would have surfaced.
 
 The generalisable form: **an instruction that describes its own current contents will go stale the first time it is followed.** Write the class, not the instance.
+
+**Phase 4 — a verification command that could not fail.** Reporting that the message broker ran in its cut-down, correct mode, the agent offered a one-line command as proof: grep the broker's status page for the feature's name and expect zero hits. The status page names that feature whether it is on or off, so the command returned the same result either way. The claim was true — three later checks, including asking the feature to actually do something and being refused, confirmed it — but the evidence offered for it was worthless, and it was annotated with its expected output as though it were an assertion.
+
+It was caught by the human reading the report, not by the agent that wrote it.
+
+The generalisable form: **a check that cannot fail is worse than no check, because it looks like verification.** This project already demands that an implementer arm a test by deleting the behaviour and watching it fail. The same discipline applies to the commands offered to a reviewer as proof: before writing one down, establish that it would fail if the property did not hold. An unarmed command in a report is an unarmed test with a wider audience.

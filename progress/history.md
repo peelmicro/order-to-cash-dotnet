@@ -135,3 +135,78 @@ Applied to #7 and #8 in the same session, byte-identical, one line changed in #7
 - **#7's C7 claim holds.** A sweep of the reusable part for `nestjs`, `drizzle`, `nuxt`, `mysql`, `kafkajs`, `typescript`, `vitest`, `supertest`, `vue`, `apps/`, `packages/` and `.ts` returned twelve hits, **all twelve the substring `nest` inside the word `honest`**. Zero real leaks across 313 KB. Start from the spec with confidence; audit anyway, and audit by *doing*, not by grepping.
 - **Prove the copy, do not assert it.** `cmp` per file plus the source commit SHA in the commit message costs a minute and makes "verbatim" checkable by a stranger.
 - **Server-sent events are fixed by the shared contract** (`§10`), not merely preferred. A WebSocket or SignalR substitution is a deviation to record, not an option the contract leaves open.
+
+## infra_compose (id 4, phase 4) — 2026-08-31
+
+**Effort:** 1 session, ~1.25h wall-clock
+**#7 baseline:** 1 session, ~4h (implementation ~1.5h, then two review rounds)
+**Spec:** n/a (sdd: false)
+**Tests:** no code yet. Verification was the running stack: 12 services healthy, the four databases created, the app login exercised in each, bootstrap idempotency re-run, and the healthcheck's failure mode probed directly
+
+**What was built:**
+
+`docker-compose.infra.yml` — 15 services (12 long-running, 2 one-shots, SonarQube behind a profile): MS-SQL Server, MongoDB, Kafka (KRaft), Redpanda Console, kafka-exporter, NATS core, Mailpit, OTel Collector, Jaeger, Prometheus, Grafana, n8n, plus `kafka-init` and `n8n-init`. `.env.example` scoped to what this phase actually creates, and a `.env` from it.
+
+**Reused byte-identically from #7** (`cmp`-verified, nine files): the Kafka topic script and its Dockerfile, the OTel Collector config and Dockerfile, `prometheus.yml`, the Grafana dashboard JSON and both provisioning files, the n8n import script.
+
+**Written here**: `infra/mssql/entrypoint.sh` and `infra/mssql/init/01-create-databases.sql`. The MySQL image runs anything in `/docker-entrypoint-initdb.d`; the MS-SQL image has **no init hook of any kind** — it execs `sqlservr` and nothing else. The entrypoint starts the engine in the background, waits until it answers a query, bootstraps through `sqlcmd`, then `wait`s so the container's lifetime and exit status remain the engine's. The init script is idempotent by construction, because unlike MySQL's once-only hook it re-runs on every container start.
+
+**Deviations from the spec/plan:**
+
+- **`COMPOSE_PROJECT_NAME=otcnet`**, decided at the human gate. #7 uses `otc`, so every container and volume except the database engine's would have collided name-for-name and #8 would have opened #7's Grafana database, MongoDB read model and Kafka log directory. Logical database names stay `otc_*` — that is shared-spec parity. Host ports unchanged, so the two stacks run one at a time.
+- **MS-SQL pinned to `2022-CU26-ubuntu-22.04`**, matching how #7 pins every image. `2022-latest` shares a manifest digest with no specific CU tag, so it is genuinely unidentifiable.
+- **Healthcheck `retries` cut 30 → 10** after measuring the real startup. See below.
+
+**What the reuse saved — and what it did not:**
+
+**Saved, and more than the ~1.25h vs ~4h suggests.** #7 spent two review rounds on this phase; almost every defect those rounds found arrived here as a comment in a file I copied — the Kafka `KAFKA_LOG_DIRS` mount mismatch (its D1), the init-script-must-be-`.sh`-to-read-env reasoning (D5), the healthcheck-passes-during-init trap, the kafka-exporter rationale, the topic-set-must-match-exactly assertion. The nine reused files needed no thought at all.
+
+**Did not save: the MS-SQL bootstrap, which is the single largest piece of genuinely new infrastructure in #8.** No amount of #7 reuse helps when the engine has no initialisation mechanism to reuse *into*. That piece was written, debugged and probed from scratch and accounts for most of the 1.25h.
+
+**Two plan predictions were wrong, both in #8's favour, both recorded rather than dropped:**
+
+| | Predicted | Measured | #7 |
+|---|---|---|---|
+| Cold start to all-healthy | materially worse than #7 | **36 s** from empty volumes | 35–42 s |
+| MS-SQL container RAM | 1.5–2 GB | **1.04 GiB** | MySQL ~400 MB |
+
+Total infra footprint 2 492 MiB across 12 containers. The engine answers 4–9 s after container start; bootstrap adds ~3 s.
+
+**Notes for #9:**
+
+- PostgreSQL *does* have `/docker-entrypoint-initdb.d`, so #9 gets #7's mechanism back and should be quicker here than #8 was. Do not read #8's number as the cost of "porting infra" in general — it is the cost of one engine lacking one hook.
+- Pin the exact image tag and check the digest. `2022-latest` matching no specific CU digest is the concrete argument.
+- Make the database healthcheck assert the *databases exist*, not that the engine answers. Every engine accepts connections before your bootstrap has run.
+- Set `retries` from a measured startup, not by copying another repo's shape.
+
+## messaging_topology (id 5, phase 4) — 2026-08-31
+
+**Effort:** 1 session, ~0.25h wall-clock
+**#7 baseline:** 1 session, ~3h (implementation ~1h, then two review rounds)
+**Spec:** n/a (sdd: false) — the topology is `specs/shared/asyncapi.yaml`
+**Tests:** `kafka-init` asserts its own result and exits non-zero on any mismatch; NATS verified functionally, not by reading a status page
+
+**What was built:**
+
+Nothing new. `infra/kafka/create-topics.sh` was reused byte-identically and parses the topic list out of the copied `asyncapi.yaml` at run time — it never hardcodes a topic name, and it fails loudly if the broker's non-internal topic set is not *exactly* the spec's, or if any topic exists with the wrong partition count or replication factor. Six topics created: three fact topics and three `.dlq` companions.
+
+NATS subjects were confirmed against the same spec: **15 request subjects** plus their reply channels.
+
+**Deviations from the spec/plan:**
+
+- **The plan's NATS subject table was missing `billing.credit.release`** — it listed 14, the spec declares 15. Found by verifying against the spec rather than against the plan. The plan was corrected; `specs/shared/` was not touched, so this is a plan defect, not a spec amendment.
+
+**What the reuse saved — and what it did not:**
+
+This is the purest reuse win in the build so far: ~0.25h against ~3h, because the artifact is a script that reads a spec, and both the script and the spec were inherited. Nothing about Kafka topic creation is stack-specific, and #7 had already paid for two review rounds' worth of hardening.
+
+**A finding about verification, not about Kafka:**
+
+The report offered `curl -s localhost:8222/varz | grep -c jetstream` as proof NATS ran core-only, annotated with its expected output. It returns **1 whether JetStream is enabled or not** — `/varz` carries the key either way. The check could not fail, so it proved nothing while looking like verification, and it was **caught by the human at the gate, not by the agent that wrote it**.
+
+The claim was true — confirmed afterwards by asking JetStream to create a stream and being told `no responders available`, i.e. the API is not listening at all. The generalisable form is recorded in `docs/PROCESS.md` §11.2: a check that cannot fail is worse than no check. The arming discipline `CLAUDE.md` demands of an implementer's tests applies equally to the commands offered to a reviewer as proof.
+
+**Notes for #9:**
+
+- The topic script ports untouched. Budget nothing for it.
+- Verify a broker's *mode* functionally — ask it to do the thing it should refuse. Status pages name features they are not running.
