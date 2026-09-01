@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Billing.IntegrationTests</RootNamespace>
+    <AssemblyName>OrderToCash.Billing.IntegrationTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Real MS-SQL container — never a mock, never SQLite-in-memory
+         (CLAUDE.md testing conventions). -->
+    <PackageReference Include="Testcontainers.MsSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Billing/Billing.csproj" />
+    <!-- Referenced ONLY by ReliabilityTableParityTests.cs, which proves the
+         db_billing acceptance item "outbox/processed_events parity test
+         across all four DbContexts passes". Per this feature's task
+         constraints, these three projects are referenced, never edited. -->
+    <ProjectReference Include="../../src/Orders/Orders.csproj" />
+    <ProjectReference Include="../../src/Fulfillment/Fulfillment.csproj" />
+    <ProjectReference Include="../../src/Notifications/Notifications.csproj" />
+  </ItemGroup>
+
+</Project>

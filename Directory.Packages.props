@@ -22,6 +22,11 @@
     <!-- Infrastructure (not consumed until later features; pinned now so
          every service resolves the same version when it is wired in) -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.11" />
+    <!-- Design-time services for `dotnet ef migrations add` — build-time only
+         (PrivateAssets="all" at the ItemGroup in each consuming .csproj), same
+         version band as Microsoft.EntityFrameworkCore.SqlServer and the
+         globally-installed dotnet-ef 10.0.11 (feature db_orders, phase 6). -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
     <PackageVersion Include="Confluent.Kafka" Version="2.15.0" />
     <PackageVersion Include="NATS.Net" Version="3.2.0" />
     <PackageVersion Include="MongoDB.Driver" Version="3.11.1" />

@@ -149,7 +149,7 @@
       "phase": 6,
       "title": "EF Core model + migrations for otc_orders (incl. outbox, processed_events, saga_commands, saga_ignored_facts, order_number_sequences)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "migration applies against the composed mssql container and re-applies cleanly from empty",
         "MS-SQL types per the spec: uniqueidentifier, datetime2(3), nvarchar, bigint IDENTITY for outbox.seq",
@@ -162,7 +162,7 @@
       "phase": 6,
       "title": "EF Core model + migrations for otc_fulfillment (stock, reservations, despatches, despatch_items + reliability tables)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "migrations run from empty",
         "round-trip integration test per table"
@@ -174,7 +174,7 @@
       "phase": 6,
       "title": "EF Core model + migrations for otc_billing, plus the processed_events-only otc_notifications",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "both migrations apply and re-apply cleanly",
         "outbox/processed_events parity test across all four DbContexts passes",

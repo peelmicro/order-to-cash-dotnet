@@ -34,6 +34,47 @@ GO
 IF DB_ID(N'$(DB_NOTIFICATIONS)') IS NULL CREATE DATABASE [$(DB_NOTIFICATIONS)];
 GO
 
+-- ── isolation level ─────────────────────────────────────────────────────
+-- READ_COMMITTED_SNAPSHOT ON, and the reason is parity rather than taste.
+--
+-- #7 ran on MySQL/InnoDB, whose default REPEATABLE READ serves consistent
+-- reads from MVCC without taking read locks: a reader never blocks on a
+-- writer. MS-SQL's default READ COMMITTED is lock-based, so the same code
+-- would block where #7 did not — a behavioural divergence invisible in tests
+-- and visible only under concurrent load, which is the worst way to find one.
+-- RCSI makes READ COMMITTED use row versioning, which is the closest MS-SQL
+-- gets to the semantics the shared spec was written against.
+--
+-- It does NOT weaken the two places that matter, because both take explicit
+-- locks rather than relying on the ambient level: the outbox relay claims
+-- rows WITH (UPDLOCK, READPAST, ROWLOCK), and the stock reservation path
+-- takes WITH (UPDLOCK, HOLDLOCK) in a fixed order. Those behave identically
+-- under either setting.
+--
+-- Cost: a version store in tempdb and ~14 bytes per row. Set at creation
+-- time because retrofitting it needs exclusive database access, which is
+-- cheap now and disruptive once six services hold pools open.
+--
+-- WITH ROLLBACK IMMEDIATE so the statement cannot hang waiting for a session
+-- to disconnect; on a fresh dev container there is nothing to roll back.
+DECLARE @db sysname, @sql nvarchar(max);
+DECLARE db_cursor CURSOR LOCAL FAST_FORWARD FOR
+    SELECT name FROM sys.databases
+    WHERE name IN (N'$(DB_ORDERS)', N'$(DB_FULFILLMENT)', N'$(DB_BILLING)', N'$(DB_NOTIFICATIONS)')
+      AND is_read_committed_snapshot_on = 0;
+OPEN db_cursor;
+FETCH NEXT FROM db_cursor INTO @db;
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @sql = N'ALTER DATABASE ' + QUOTENAME(@db)
+             + N' SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;';
+    EXEC sp_executesql @sql;
+    FETCH NEXT FROM db_cursor INTO @db;
+END
+CLOSE db_cursor;
+DEALLOCATE db_cursor;
+GO
+
 -- No n8n database here, deliberately. n8n does not support MS-SQL as its own
 -- store at all (its DB_TYPE accepts sqlite/postgresdb only), so it runs on its
 -- default SQLite volume in this compose file. #7 reached the same end state by
