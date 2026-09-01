@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Orders</RootNamespace>
+    <AssemblyName>OrderToCash.Orders</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SharedKernel/SharedKernel.csproj" />
+    <ProjectReference Include="../Contracts/Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

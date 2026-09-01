@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    Analyzer SEVERITIES (which rules exist, how loudly they complain) live in
+    the root .editorconfig. Analyzer ENFORCEMENT (whether a warning stops the
+    build) lives here, in Directory.Build.props. Keep it that way — do not
+    duplicate severities in this file, and do not move TreatWarningsAsErrors
+    into .editorconfig.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14.0</LangVersion>
+
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>
