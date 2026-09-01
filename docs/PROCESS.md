@@ -238,7 +238,9 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 4 complete — 5 of 42 features done.** The repository holds its toolchain pins, its agent harness, the shared specification and a running infrastructure stack. Still no application code. That ordering is deliberate and is now visible in the git history: **harness → specification → code**, because a process claimed after the fact is not evidence.
+**Position: Phase 5 complete — 8 of 42 features done.** The repository now holds its toolchain pins, its agent harness, the shared specification, a running infrastructure stack, and the first application code: a solution of nine projects, a dependency-free shared kernel, the wire contract types, and 65 tests across three suites — twelve of them architecture rules that fail the build when the domain layer reaches for infrastructure.
+
+Phase 5 is also where this project's dominant defect class became undeniable. Four of its five recorded instances landed here, and every one is the same shape: **a guard that passed while the thing it guarded was broken.** Two features were rejected on first review for it, one defect was reopened by the coordinator after the implementer disclosed what it could not fix, one was found in the arming protocol itself, and one reached the human in a report — and was caught by the human reading the output rather than the annotation beside it. The rule that came out of it governs everything after: *a guard is not done when it is written, only when it has been observed to fail.* That ordering is deliberate and is now visible in the git history: **harness → specification → code**, because a process claimed after the fact is not evidence.
 
 Phase 3 also produced the trilogy's **first cross-repository spec amendment**, `SA-1`. The reset recipe inside `test-matrix.md` described which prose to delete by listing the specific paragraphs *in that copy* — correct when read, false once followed, and actively misleading to the next assessment inheriting the executed file. It was reworded to describe the class rather than the instance, applied to both repositories in the same session, and recorded in each. The wider point is worth keeping: the defect was invisible to the previous assessment's final audit, which searched for stack-specific terms, and became visible only when somebody *executed* the instruction for the first time. Reuse does not merely benefit from a specification — it tests it in ways authorship cannot.
 
@@ -248,7 +250,7 @@ Phase 3 also produced the trilogy's **first cross-repository spec amendment**, `
 | 2 | Harness layer — copied from #7 and re-pointed to .NET; backlog reset; C7 inverted | ✅ |
 | 3 | Shared specification — copied **verbatim** from #7, `cmp`-proven per file; zero stack leaks found; `SA-1` raised and applied to both repositories | ✅ |
 | 4 | Infrastructure compose (15 services, 36 s cold to all-healthy) + spec-derived Kafka topology. The database engine's bootstrap had to be written from scratch — its image has no initialisation hook at all | ✅ |
-| 5 | Solution scaffold, SharedKernel, Contracts, NetArchTest architecture tests | ⬜ |
+| 5 | Solution scaffold, SharedKernel, Contracts, NetArchTest architecture tests — 65 tests, twelve armed architecture rules, and a wire-parity oracle of twelve real messages captured from the previous assessment's own broker | ✅ |
 | 6 | EF Core models + migrations for the four write databases | ⬜ |
 | 7 | Deterministic seed job, checksum-compared against #7's dataset | ⬜ |
 | 8 | Orders service — aggregate, hand-rolled dispatcher, outbox/idempotency, acceptance, saga orchestrator | ⬜ |
