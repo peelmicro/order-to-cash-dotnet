@@ -10,4 +10,15 @@
     <ProjectReference Include="../Contracts/Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Infrastructure/Persistence only — the OrdersDbContext for otc_orders
+         (feature db_orders). Never referenced from Domain/: NetArchTest's
+         DomainPurityTests fails the build if it ever is. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
 </Project>
