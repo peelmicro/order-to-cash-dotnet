@@ -238,13 +238,11 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 6 complete — 11 of 42 features done.** Four write schemas exist, with their migrations, and sixty integration tests that interrogate a real database engine rather than the object-relational mapper's opinion of itself.
+**Position: Phase 7 complete — 12 of 42 features done.** Four write schemas, a shared kernel, the wire contract types, and a seed whose data is provably the same data the previous assessment seeded — not equivalent, identical, because that assessment derived every identifier from a hash of a stable string and a hash is portable.
 
-Phase 6 produced the clearest benchmark result so far, and it is not the expected one. The phase cost **more** than the assessment it is reusing from — marginally, but on a phase where the entire schema arrived in a document, with the previous assessment's committed SQL available for corroboration. One feature was rejected for shipping seven of eight foreign keys, undisclosed and untested; the two features that followed were briefed on that failure and came in clean, one of them more than twice as fast as its predecessor. Separating those two effects is the finding:
+The phase's most useful lesson was about measurement rather than code. The comparison that proved the parity was written three times before it was trustworthy: an aggregate function truncated silently on one engine, a different aggregate function truncated silently on the other, and a client emitted the wrong character encoding so that three tables appeared to differ when none did. Each version produced a confident answer. The first was caught only because it returned three *identical* checksums for three different tables, which is impossible — the tell was the implausibility, not the tooling.
 
-> **The specification reused; the verification did not.** Copying a specification tells the next implementation *what to build*. Only a review tells it *how to prove it built that*. The first is free and transfers between runs; the second is a cost each run pays again.
-
-A second, less comfortable pattern sits underneath it: the reuse dividend was largest where the baseline was still learning, and fell to zero where the baseline had already learned. Reuse does not compound — it front-loads.
+> **A hash is a fine summary of a comparison you have already seen, and a poor substitute for seeing it.** The version that could be trusted dumped rows to files and diffed them, because that is the form no silent truncation survives.
 
 | Phase | What | State |
 |---|---|---|
@@ -254,7 +252,7 @@ A second, less comfortable pattern sits underneath it: the reuse dividend was la
 | 4 | Infrastructure compose (15 services, 36 s cold to all-healthy) + spec-derived Kafka topology. The database engine's bootstrap had to be written from scratch — its image has no initialisation hook at all | ✅ |
 | 5 | Solution scaffold, SharedKernel, Contracts, NetArchTest architecture tests — 65 tests, twelve armed architecture rules, and a wire-parity oracle of twelve real messages captured from the previous assessment's own broker | ✅ |
 | 6 | EF Core models + migrations for the four write databases — 20 tables, 60 integration tests against a real database engine, and a parity test asserting the reliability tables are identical across all four schemas | ✅ |
-| 7 | Deterministic seed job, checksum-compared against #7's dataset | ⬜ |
+| 7 | Deterministic seed job — identifiers reproduced byte for byte from the previous assessment's own derivation scheme, and 413 master-data rows diffed row for row against its live database | ✅ |
 | 8 | Orders service — aggregate, hand-rolled dispatcher, outbox/idempotency, acceptance, saga orchestrator | ⬜ |
 | 9 | Fulfillment — stock reservations and DESADV creation | ⬜ |
 | 10 | Billing — buyer credit, the `.99` simulator, invoicing, remittance intake | ⬜ |
