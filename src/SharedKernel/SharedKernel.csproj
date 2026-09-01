@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.SharedKernel</RootNamespace>
+    <AssemblyName>OrderToCash.SharedKernel</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    SharedKernel is the only project in this solution with ZERO
+    PackageReference entries — enforced by an architecture test in
+    tests/Architecture.Tests. Do not add one here.
+  -->
+
+</Project>
