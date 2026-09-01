@@ -69,7 +69,7 @@ Counted from the Status column as it actually stands, one row at a time, under t
 
 | Feature | Requirements | Rows | Green | Scoped | Not yet green |
 |---|---|---:|---:|---:|---:|
-| 1. `orders_aggregate` | R1 – R10 | 10 | 0 | 0 | 10 |
+| 1. `orders_aggregate` | R1 – R10 | 10 | 3 | 1 | 6 |
 | 2. `outbox_and_idempotency` | R11 – R18 | 8 | 0 | 0 | 8 |
 | 3. `order_saga_orchestrator` | R19 – R29 | 11 | 0 | 0 | 11 |
 | 4. `fulfillment_stock` | R30 – R36, R61 | 8 | 0 | 0 | 8 |
@@ -78,7 +78,7 @@ Counted from the Status column as it actually stands, one row at a time, under t
 | 7. `projector_read_model` | R50 – R55 | 6 | 0 | 0 | 6 |
 | 8. `observability_reliability` | R56 – R60, R62 | 6 | 0 | 0 | 6 |
 | 8.1 gateway edge protection (per-assessment gateway feature) | R63 | 1 | 0 | 0 | 1 |
-| **Total** | **R1 – R63** | **63** | **0** | **0** | **63** |
+| **Total** | **R1 – R63** | **63** | **3** | **1** | **59** |
 
 ---
 
@@ -86,10 +86,10 @@ Counted from the Status column as it actually stands, one row at a time, under t
 
 | Id | Requirement (short) | Level | Test file › case | Status |
 |---|---|---|---|---|
-| **R1** | Every monetary amount is integer minor units plus an ISO 4217 code, everywhere | domain unit + API | `shared-kernel/domain/money.spec` › *represents 1 242,50 € as 124250 minor units and offers no decimal representation*<br>`api/money-representation.spec` › *every monetary field of every response is an integer accompanied by a currency code* | TODO |
-| **R2** | Cross-currency arithmetic is a domain error, never an implicit conversion | domain unit | `shared-kernel/domain/money.spec` › *raises a domain error when EUR and GBP amounts are added, subtracted or compared* | TODO |
-| **R3** | A quantity must be a strictly positive integer | domain unit | `shared-kernel/domain/quantity.spec` › *refuses zero, negative and fractional quantities and creates no value object* | TODO |
-| **R4** | A GLN is 13 digits with a valid GS1 mod-10 check digit | domain unit | `shared-kernel/domain/gln.spec` › *accepts a valid GLN and refuses wrong length, non-digits and a bad check digit* | TODO |
+| **R1** | Every monetary amount is integer minor units plus an ISO 4217 code, everywhere | domain unit + API | `shared-kernel/domain/money.spec` › *represents 1 242,50 € as 124250 minor units and offers no decimal representation*<br>`api/money-representation.spec` › *every monetary field of every response is an integer accompanied by a currency code* | DOMAIN HALF DONE — `tests/SharedKernel.UnitTests/MoneyTests.cs` › `R1_Money_RepresentsOneThousandTwoHundredFortyTwoPoint50EurosAsOneHundredTwentyFourThousandTwoHundredFiftyMinorUnitsAndOffersNoDecimalOrFloatingPointRepresentation`. API half (`api/money-representation.spec`) outstanding — no Gateway/API surface exists yet (feature 7 is shared_kernel only). Scoped deferral ratified by the reviewer in progress/review_shared_kernel.md (feature 7); closed by the gateway feature, which owns api/money-representation.spec. |
+| **R2** | Cross-currency arithmetic is a domain error, never an implicit conversion | domain unit | `shared-kernel/domain/money.spec` › *raises a domain error when EUR and GBP amounts are added, subtracted or compared* | DONE — `tests/SharedKernel.UnitTests/MoneyTests.cs` › `R2_Money_RaisesDomainErrorOnCrossCurrencyAddSubtractAndCompareWithNoImplicitConversion`, `R2_Money_RelationalOperatorsRaiseDomainErrorAcrossCurrencies` |
+| **R3** | A quantity must be a strictly positive integer | domain unit | `shared-kernel/domain/quantity.spec` › *refuses zero, negative and fractional quantities and creates no value object* | DONE — `tests/SharedKernel.UnitTests/QuantityTests.cs` › `R3_Quantity_RefusesZeroNegativeAndFractionalValuesAndCreatesNoValueObject` |
+| **R4** | A GLN is 13 digits with a valid GS1 mod-10 check digit | domain unit | `shared-kernel/domain/gln.spec` › *accepts a valid GLN and refuses wrong length, non-digits and a bad check digit* | DONE — `tests/SharedKernel.UnitTests/GlnTests.cs` › `R4_Gln_AcceptsARealValidGlnWithACorrectCheckDigit`, `R4_Gln_RefusesWrongLengthNonDigitsAndABadCheckDigit` |
 | **R5** | An order always has at least one line (**O1**) | domain unit | `orders/domain/order.spec` › *refuses to create an order with no lines and to remove the last remaining line* | TODO |
 | **R6** | Totals are recomputed on every line mutation and may not be negative (**O3**) | domain unit | `orders/domain/order-totals.spec` › *recomputes initialAmount, initialDiscount and totalAmount after each mutation and rejects a negative total* | TODO |
 | **R7** | Lines are frozen from `confirmed` onwards (**O4**) | domain unit | `orders/domain/order.spec` › *refuses to add, remove or modify a line once the order is confirmed and leaves every field unchanged* | TODO |

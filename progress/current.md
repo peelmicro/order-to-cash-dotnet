@@ -1,6 +1,6 @@
 # Current session
 
-**Feature:** none — Phase 4 closed, awaiting Phase 5
+**Feature:** none — Phase 5 closed, awaiting Phase 6
 **Status:** idle
 **Session started:** —
 

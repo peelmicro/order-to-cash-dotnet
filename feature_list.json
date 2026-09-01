@@ -105,7 +105,7 @@
       "phase": 5,
       "title": "OrderToCash.sln scaffold: Directory.Build.props, central package management, NetArchTest architecture tests, quality script",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "dotnet build works from the solution root",
         "global.json honoured; TreatWarningsAsErrors on",
@@ -120,7 +120,7 @@
       "phase": 5,
       "title": "src/SharedKernel: Money (long cents), Quantity, GLN (mod-10), OrderNumber, UniqueId, Entity, AggregateRoot",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "zero PackageReference entries, asserted by an architecture test",
         "GLN check digit validated with real and invalid GLNs",
@@ -134,11 +134,13 @@
       "phase": 5,
       "title": "src/Contracts: envelope + event and DTO types generated from AsyncAPI/OpenAPI, and the single shared JsonSerializerOptions",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
-        "types generated from the copied asyncapi.yaml and openapi.yaml",
-        "one shared JsonSerializerOptions: camelCase, nulls omitted, no $type discriminator",
-        "a test asserts a serialised envelope is byte-identical to #7's for the same input"
+        "types hand-written from the copied asyncapi.yaml and openapi.yaml, with a test asserting every spec-declared fact type and required field is represented",
+        "one shared JsonSerializerOptions in Contracts: camelCase, nulls omitted, no $type discriminator, no PascalCase envelope",
+        "ENVELOPE byte-exact against the 12 real #7 envelopes captured in tests/Contracts.UnitTests/GoldenEnvelopes/ (field set and order: eventId, eventType, aggregateId, correlationId, causationId, occurredAt, payload)",
+        "PAYLOAD semantically equal to the golden envelopes — same keys, values, types and casing; key ORDER deliberately not asserted (see CLAUDE.md: #7's payload order is MySQL json-column normalisation, not a serializer decision)",
+        "round-trip: every golden envelope deserialises into the Contracts types and re-serialises to a semantically equal document"
       ]
     },
     {
