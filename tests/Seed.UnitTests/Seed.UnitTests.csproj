@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Seed.UnitTests</RootNamespace>
+    <AssemblyName>OrderToCash.Seed.UnitTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Deliberately NO Testcontainers.MsSql / Testcontainers.MongoDb here
+       (review D6): these are the PURE tests — derivation helpers and the
+       in-memory dataset, no DB, no broker — split out of
+       Seed.IntegrationTests so the project's name and dependency graph
+       both tell the truth, mirroring SharedKernel.UnitTests /
+       Contracts.UnitTests. Seed.csproj itself pulls in
+       Microsoft.EntityFrameworkCore.SqlServer and MongoDB.Driver (the
+       writers need them), but never Testcontainers — this project can
+       build and run without a container runtime. -->
+  <ItemGroup>
+    <ProjectReference Include="../../src/Seed/Seed.csproj" />
+  </ItemGroup>
+
+</Project>

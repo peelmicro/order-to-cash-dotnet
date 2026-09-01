@@ -303,6 +303,12 @@ The generalisable form: **an instruction that describes its own current contents
 
 It was caught by the human reading the report, not by the agent that wrote it.
 
+**Phase 7 — a reviewer enforcing a rule that had already been changed.** A review rejected a detail of the work for breaching a convention, quoting the conventions file to justify it. The quotation was real; the rule was not current. The project amends its own conventions at human gates as it goes — this particular one had been changed two phases earlier, at a gate, with the reasoning recorded inline — and the reviewer had quoted the copy injected into its context when its session began rather than the file on disk.
+
+Its own diagnosis was the valuable part, and it went further than the correction required: an injected snapshot is a **cache**, a project that deliberately amends its conventions mid-flight *guarantees* that cache goes stale, and so the rule has to be to read the file rather than the copy. It also named the shape: this is the guard-that-does-not-guard **inverted** — not a check that fires on nothing, but a check that fires correctly on something that is no longer true. Here it cost one spurious advisory against correct code. On a rule with teeth it would have cost a spurious rejection and a round of pointless rework.
+
+The generalisable form: **a convention you did not just read is a convention you are guessing at.** Currency of a rule is part of the rule.
+
 **Phase 5 — a parity target that was measuring the wrong thing.** A rule said the new implementation's message format must match the previous one *byte for byte*. Going to fetch the previous assessment's real bytes — rather than reasoning about what they should be — showed the target was wrong twice over. The messages stored in its outbox table were not what went on the wire, because the database's JSON column type reorders keys; and the messages that *did* go on the wire carried that same reordering, because the relay read them back out of the column before publishing. A storage artifact had become part of the "contract".
 
 Holding the rule literally would have meant emulating one database engine's key ordering in a different engine, permanently, in a project whose entire premise is that the *specification* is what ports — and the third assessment, on a third engine, could not have complied at all.

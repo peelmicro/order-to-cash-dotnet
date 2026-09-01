@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <RootNamespace>OrderToCash.Seed</RootNamespace>
     <AssemblyName>OrderToCash.Seed</AssemblyName>
   </PropertyGroup>
@@ -8,6 +9,17 @@
   <ItemGroup>
     <ProjectReference Include="../SharedKernel/SharedKernel.csproj" />
     <ProjectReference Include="../Contracts/Contracts.csproj" />
+    <!-- Reuses each service's own EF Core DbContext/entities rather than a
+         second, hand-rolled connection shape — task instructions: "Use
+         them; do not write raw SQL." Never modified from here. -->
+    <ProjectReference Include="../Orders/Orders.csproj" />
+    <ProjectReference Include="../Fulfillment/Fulfillment.csproj" />
+    <ProjectReference Include="../Billing/Billing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="MongoDB.Driver" />
   </ItemGroup>
 
 </Project>

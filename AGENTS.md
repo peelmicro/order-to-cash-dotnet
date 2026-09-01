@@ -43,6 +43,7 @@
 - **The domain layer references nothing.** No EF Core, Kafka, NATS, MongoDB or ASP.NET Core inside any `Domain/` folder — enforced by NetArchTest, which fails the build, not by good manners.
 - **Document as you go** in `progress/current.md`, not at the end.
 - **If you do not know something, read `specs/` or `CLAUDE.md`** before inventing it.
+- **Never quote a convention from the copy of `CLAUDE.md` injected into your context — `grep` the file on disk.** An injected snapshot is a cache taken when your session started. This repository amends its own conventions at human gates *mid-project, by design*: the wire-shape rule changed in Phase 5, the arming protocol gained two clauses in Phases 5 and 6. So the cache is **expected** to go stale, and enforcing a rule from it is a guard firing on something that is no longer true — the guard-that-does-not-guard, inverted. It cost one spurious advisory in Phase 7; on a rule with teeth it would have cost a spurious rejection. This applies to the leader as much as to any subagent.
 
 ## 4. Workflow (SDD)
 

@@ -187,7 +187,7 @@
       "phase": 7,
       "title": "Deterministic one-shot seed job producing the SAME dataset as #7 (parties, GLNs, credit limits, stock, sample orders)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "same currencies, products, retailers, companies, GLNs, credit limits and stock as #7",
         "sample completed orders and one cancelled order, with their order_timeline documents",

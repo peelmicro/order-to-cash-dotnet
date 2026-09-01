@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Seed.IntegrationTests</RootNamespace>
+    <AssemblyName>OrderToCash.Seed.IntegrationTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Real MS-SQL and MongoDB containers — never a mocked broker/store
+         (CLAUDE.md testing conventions). -->
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.MongoDb" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Seed/Seed.csproj" />
+  </ItemGroup>
+
+  <!-- The order_timeline oracle (review_seed_job.md D1): #7's own
+       toTimelineDocument, executed, over #7's own SAGAS — the expected
+       values OrderTimelineOracleTests.cs asserts every live document
+       against, field by field. Mirrors Contracts.UnitTests/GoldenEnvelopes. -->
+  <ItemGroup>
+    <None Include="OracleFixtures/*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
