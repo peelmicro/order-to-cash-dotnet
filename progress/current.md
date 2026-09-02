@@ -1,18 +1,16 @@
 # Current session
 
-**Feature:** `orders_aggregate` (id 13, phase 8) — `sdd: true`
-**Status:** in_progress — spec APPROVED at the human gate
+**Feature:** `cqrs_dispatcher` (id 43, phase 8) — `sdd: false`
+**Status:** in_progress
 **Session started:** 2026-09-02
 
 ## Goal
 
-The `Order` aggregate, its state machine and its invariants, implemented against an approved triple-doc. `src/Orders/Domain/` and `tests/Orders.UnitTests/` only; the repository adapter is designed here but built by feature 15.
+The hand-rolled in-process CQRS dispatcher: `ICommandHandler<T>` / `ICommandHandler<T,R>` / `IQueryHandler<T,R>` / `IEventHandler<T>`, assembly-scan registration, and a **startup validation pass that fails the boot** when a command has zero handlers or more than one. Roughly 150 lines, written once here and used by every later service.
 
 ## Decisions taken this session
 
-- **The hand-rolled dispatcher is binding across all six services** (human gate). It does not fit all six equally — the Gateway's commands are outward RPC, and Notifications and Projector are pure consumers — but #7 used `@nestjs/cqrs` in all six, and a #8 that used its dispatcher in three would turn an architecture difference into what looks like a language difference in the benchmark.
-- **Money columns corrected `int` → `bigint`** (human gate, feature 44). The plan had justified `int` as "spec parity"; `specs/shared/` specifies *"integer minor units"* and never a width. Every narrowing cast on money is deleted, not made checked.
-- **The Phase 6 migrations were amended in place** rather than superseded by a widening migration: they never left this machine, nothing depends on them, and an `ALTER` scar documenting a three-day-old mistake is worse than a clean schema plus an honest record.
+- **Binding across all six services** (human gate, this phase), matching #7's own gate ruling on `@nestjs/cqrs` at its feature 16. It does not fit all six equally — the Gateway's commands are outward RPC, and Notifications and Projector are pure consumers — but a #8 that used its dispatcher in three would turn an architecture difference into what looks like a language difference in the benchmark.
 
 ## Blockers
 
@@ -20,9 +18,9 @@ None.
 
 ## Notes
 
-- **The most valuable thing this phase has produced is a test for the gate itself.** Prompted by the human asking "is that something that was not already decided?", the rule is now: before a question goes to the gate, ask *"did #7 face this, and what did it do?"* — the answer is in its code or its `progress/history.md`. Only what #7 **could not** face, because the language or engine differs, is genuinely a decision. Two of my three gate items failed that test, and applying it to the whole spec realigned **four more** points onto #7's evidenced answers, each now cited by file and line.
-- **`feature_list.json` is a single-writer file.** Two agents were launched in parallel on the reasoning that they touched different directories — true of the source, false of the backlog. A `spec_ready` transition was silently reverted, and `init.sh` passed throughout, because a reverted status is still a *valid* status. A coherence check validates shape, not history.
-- Still due in this phase: the wire-format parity check against the golden envelopes — Phase 5 proved the serializer, Phase 8 must prove the producer.
+- **This feature has no #7 counterpart.** #7 got its command bus free from `@nestjs/cqrs`; MediatR v13 is commercially licensed, so #8 writes ~150 lines instead. In the benchmark it is a row **without a baseline**, not a row that came out slower — `feature_list.json` carries that in the feature's own `note` so the Phase 24 table cannot silently gain a comparison that does not exist.
+- **The startup validation is the part that matters.** It is the .NET stand-in for the lesson #7 paid for with its DI-metadata divergence: a DI failure must be loud at boot, not a surprise at first use. A dispatcher that resolves handlers lazily and throws on the first command is strictly worse than one that refuses to start.
+- Queued for features 14/15 from feature 13's review: `Rehydrate`'s two unguarded validations (O1, O2 — they survive their own deletion), `CancellationReason` assigned after `TransitionTo` rather than inside it, and a business error code currently used for a load-time corruption.
 
 ---
 

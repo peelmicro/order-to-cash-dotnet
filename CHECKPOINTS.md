@@ -22,7 +22,8 @@
 
 - [ ] No `Microsoft.EntityFrameworkCore`, `Confluent.Kafka`, `NATS.*`, `MongoDB.*` or `Microsoft.AspNetCore.*` reference inside any `Domain/` folder — verified by running the NetArchTest suite, not by eye.
 - [ ] No cross-service database access: no service reads another service's schema, and no foreign key crosses a service boundary.
-- [ ] No shared runtime code beyond `src/SharedKernel` and `src/Contracts`.
+- [ ] No shared runtime code beyond `src/SharedKernel`, `src/Contracts` and `src/Cqrs` (the third added at the Phase 8 human gate — see `CLAUDE.md`; #7 needed no equivalent because its dispatcher came from a package).
+- [ ] No `Domain/` namespace references `OrderToCash.Cqrs` — the dispatcher is an Application-layer concern, and permitting a third shared project must not widen what the domain may reach for.
 - [ ] `src/SharedKernel` still has zero `PackageReference` entries.
 - [ ] No `decimal` in domain arithmetic — `Money` is `long` minor units; `decimal` only at presentation boundaries.
 - [ ] Every inter-service interaction is classifiable as Kafka-fact or NATS-RPC per the decision matrix — no Kafka-as-request-bus, no RPC-for-facts.

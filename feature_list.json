@@ -216,7 +216,7 @@
       "phase": 8,
       "title": "In-process CQRS dispatcher: ICommandHandler/IQueryHandler/IEventHandler + startup validation (no MediatR)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "ICommandHandler<T>, ICommandHandler<T,R>, IQueryHandler<T,R>, IEventHandler<T> + a Dispatcher resolving from IServiceProvider",
         "handlers registered by assembly scan",

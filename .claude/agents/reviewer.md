@@ -30,7 +30,9 @@ Your value is independent verification, not repetition. Re-running an entire sui
    arithmetic, no Jest, the snake_case/PascalCase/camelCase boundaries.
 7. **`CHECKPOINTS.md`** — walk every applicable box in C1–C7 and mark it.
 8. **Architecture.** No cross-service DB access. No shared runtime code beyond
-   `src/SharedKernel` and `src/Contracts`. Every interaction correctly classified
+   `src/SharedKernel`, `src/Contracts` and `src/Cqrs` (the third ratified at the
+   Phase 8 human gate — check `CLAUDE.md` on disk, this list changes). Every
+   interaction correctly classified
    as Kafka-fact or NATS-RPC.
 
 ## Verdict

@@ -142,7 +142,31 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-section "4. Repository state"
+section "4. Superseded rules"
+
+# An amendment is not finished when the canonical file is edited — only when
+# nothing anywhere still asserts the old rule. Found the hard way in Phase 8:
+# .claude/agents/reviewer.md kept a superseded non-negotiable and would have had
+# the next reviewer reject correct code, from disk, exactly as instructed.
+if [ -f .superseded-rules ]; then
+  SUPERSEDED_HITS=0
+  while IFS= read -r rule; do
+    case "$rule" in ''|'#'*) continue ;; esac
+    HITS="$(grep -rlF -- "$rule" --include='*.md' --include='*.json' --include='*.sh' --include='*.yml' . 2>/dev/null \
+              | grep -vE '^\./(progress/|\.superseded-rules|node_modules/|bin/|obj/)' || true)"
+    if [ -n "$HITS" ]; then
+      fail "superseded rule text still present: \"$(printf '%.60s' "$rule")...\""
+      printf '%s\n' "$HITS" | sed 's/^/          /'
+      SUPERSEDED_HITS=$((SUPERSEDED_HITS+1))
+    fi
+  done < .superseded-rules
+  [ "$SUPERSEDED_HITS" -eq 0 ] && ok "no superseded rule text outside progress/"
+else
+  warn ".superseded-rules not present — amendments are unswept"
+fi
+
+# ─────────────────────────────────────────────────────────────
+section "5. Repository state"
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   ok "git repo on branch '$(git rev-parse --abbrev-ref HEAD)'"
@@ -156,7 +180,7 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-section "5. Tests"
+section "6. Tests"
 
 if ls ./*.sln >/dev/null 2>&1; then
   warn "solution present — run './quality.sh' before closing a feature (not run here to keep init.sh fast)"

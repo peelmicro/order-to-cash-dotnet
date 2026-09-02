@@ -238,7 +238,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 8 in progress — 14 of 43 features done.** The first aggregate exists: an order with a twelve-edge state machine, its invariants, its domain events and ten typed errors, built against a specification that passed a human gate before any code was written. Thirteen architecture rules now fail the build if the domain layer reaches for infrastructure — the newest of them because the compiler alone would not have stopped it.
+**Position: Phase 8 in progress — 14 of 43 features done.** The first aggregate exists: an order with a twelve-edge state machine, its invariants, its domain events and ten typed errors, built against a specification that passed a human gate before any code was written. Fourteen architecture rules now fail the build if the domain layer reaches for infrastructure — the newest of them because the compiler alone would not have stopped it.
 
 Two results from this phase are worth more than the code.
 
@@ -302,6 +302,16 @@ The generalisable form: **an instruction that describes its own current contents
 **Phase 4 — a verification command that could not fail.** Reporting that the message broker ran in its cut-down, correct mode, the agent offered a one-line command as proof: grep the broker's status page for the feature's name and expect zero hits. The status page names that feature whether it is on or off, so the command returned the same result either way. The claim was true — three later checks, including asking the feature to actually do something and being refused, confirmed it — but the evidence offered for it was worthless, and it was annotated with its expected output as though it were an assertion.
 
 It was caught by the human reading the report, not by the agent that wrote it.
+
+**Phase 8 — a rule kept current everywhere except in the file that tells reviewers what to enforce.** An earlier finding this phase produced a rule: never quote a convention from the copy injected into your context; read the file on disk, because the project amends its conventions at human gates and the injected copy goes stale. Sound, and it has a precondition nobody stated — **the disk has to be maintained too.**
+
+When a non-negotiable was amended at a gate, the coordinator updated the conventions file, the checkpoint list and the entry map, and missed the reviewer agent's own definition, which still carried the superseded text. That is worse than a stale cache: the next reviewer would have read it from disk, exactly as instructed, and rejected correct code with confirmation that it had checked. A guard firing on something no longer true, with the checking ritual performed correctly.
+
+Three things follow. **Agent definitions are rule-bearing files** and belong in the sweep whenever a rule changes — they are instructions, not documentation. And an amendment is not finished when the canonical file is edited; it is finished when nothing anywhere still asserts the old rule.
+
+The third was the reviewer's, raised when asked to judge the first two, and it is the one with teeth: **the sweep as written was a habit, and this project's whole argument is that a habit is not a guard.** The first stale rule was caught by a grep; the second was caught by a grep *one round later, after the first finding had already put everyone on notice*. A discipline that fails twice in two rounds under maximum attention will not hold twenty phases later under normal attention.
+
+So the sweep is now a check that fails. The superseded phrasing of every amended rule is recorded, one line per amendment, in the same change that supersedes it; the session-coherence script fails if any of them appears anywhere outside the history files. It cost one line per amendment and one clause in the script, and it converts *remember to sweep* into something that cannot be forgotten. Written, it immediately failed on two false positives of its own — which is the argument for writing it as a runnable check rather than a paragraph.
 
 **Phase 8 — a specification outranking the instruction that dispatched it.** An implementer was given a brief whose constraint list forbade touching a directory that the feature's own approved task list named as touchable, for one specific item. It did neither thing silently: it left both files untouched, un-ticked the two affected boxes with an inline note explaining the conflict, and reported it for resolution.
 

@@ -27,7 +27,7 @@
 | `docs/PROCESS.md` | The full process guide: harness + SDD concepts, the cast, the loop, EARS, the artifact registry, current status | To understand or replicate the process; **updated at the end of every phase** |
 | `.claude/agents/` | Subagent definitions (leader, spec_author, implementer, reviewer, test_maintainer, suite_runner) | When orchestrating work |
 | `http/` | REST Client `.http` files for manual probing of a running stack | When testing by hand |
-| `src/` | The 6 services + `SharedKernel` (dependency-free) + `Contracts` (generated types) + `Seed` | To implement |
+| `src/` | The 6 services + `SharedKernel` (dependency-free) + `Contracts` (generated types) + `Cqrs` (the in-process dispatcher, Application-layer only) + `Seed` | To implement |
 | `tests/` | Architecture (NetArchTest), unit, integration, API and end-to-end suites | To implement |
 | `apps/web/` | The Next.js app — the only place pnpm lives | To implement |
 | `infra/`, `docker-compose*.yml` | Infrastructure | For environment work |
