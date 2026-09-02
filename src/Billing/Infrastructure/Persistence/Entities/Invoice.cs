@@ -20,11 +20,11 @@ public sealed class Invoice
 
     public string OrderReference { get; set; } = string.Empty;
 
-    public int Amount { get; set; }
+    public long Amount { get; set; }
 
-    public int Discount { get; set; }
+    public long Discount { get; set; }
 
-    public int TotalAmount { get; set; }
+    public long TotalAmount { get; set; }
 
     public string CurrencyCode { get; set; } = string.Empty;
 

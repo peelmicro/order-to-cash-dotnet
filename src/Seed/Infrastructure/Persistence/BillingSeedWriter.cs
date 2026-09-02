@@ -43,7 +43,7 @@ public static class BillingSeedWriter
                     entity.Code = credit.Code;
                     entity.RetailerCode = credit.RetailerCode;
                     entity.CompanyCode = credit.CompanyCode;
-                    entity.CreditLimit = (int)credit.CreditLimit;
+                    entity.CreditLimit = credit.CreditLimit;
                     entity.CurrencyCode = credit.CurrencyCode;
                     entity.UpdatedAt = ts;
                 },
@@ -71,7 +71,7 @@ public static class BillingSeedWriter
                     {
                         entity.CreditId = entry.CreditId;
                         entity.OrderReference = entry.OrderReference;
-                        entity.Amount = (int)entry.Amount;
+                        entity.Amount = entry.Amount;
                         entity.Type = entry.Type;
                         entity.CreditDate = entry.CreditDate;
                         entity.UpdatedAt = entry.CreditDate;
@@ -91,9 +91,9 @@ public static class BillingSeedWriter
                         entity.CompanyCode = saga.CompanyCode;
                         entity.RetailerCode = saga.RetailerCode;
                         entity.OrderReference = saga.OrderReference;
-                        entity.Amount = (int)invoice.Amount;
-                        entity.Discount = (int)invoice.Discount;
-                        entity.TotalAmount = (int)invoice.TotalAmount;
+                        entity.Amount = invoice.Amount;
+                        entity.Discount = invoice.Discount;
+                        entity.TotalAmount = invoice.TotalAmount;
                         entity.CurrencyCode = saga.Currency;
                         entity.Status = invoice.Status;
                         entity.PaidAt = invoice.PaidAt;
@@ -112,7 +112,7 @@ public static class BillingSeedWriter
                         {
                             entity.ProductCode = item.ProductCode;
                             entity.Units = item.Units;
-                            entity.Price = (int)item.Price;
+                            entity.Price = item.Price;
                             entity.UpdatedAt = invoice.InvoiceDate;
                         },
                         cancellationToken).ConfigureAwait(false);
@@ -126,7 +126,7 @@ public static class BillingSeedWriter
                     {
                         entity.PaymentReference = payment.PaymentReference;
                         entity.InvoiceId = invoice.Id;
-                        entity.Amount = (int)payment.Amount;
+                        entity.Amount = payment.Amount;
                         entity.CurrencyCode = saga.Currency;
                         entity.ValueDate = payment.ValueDate;
                         entity.Source = payment.Source;

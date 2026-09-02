@@ -23,11 +23,11 @@ public sealed class Order
 
     public Guid CurrencyId { get; set; }
 
-    public int InitialAmount { get; set; }
+    public long InitialAmount { get; set; }
 
-    public int InitialDiscount { get; set; }
+    public long InitialDiscount { get; set; }
 
-    public int TotalAmount { get; set; }
+    public long TotalAmount { get; set; }
 
     public string Status { get; set; } = string.Empty;
 

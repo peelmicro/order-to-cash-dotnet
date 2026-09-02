@@ -14,7 +14,7 @@ public sealed class InvoiceItem
 
     public int Units { get; set; }
 
-    public int Price { get; set; }
+    public long Price { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

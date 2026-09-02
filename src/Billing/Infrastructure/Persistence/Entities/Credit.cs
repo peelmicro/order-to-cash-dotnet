@@ -17,7 +17,7 @@ public sealed class Credit
 
     public string CompanyCode { get; set; } = string.Empty;
 
-    public int CreditLimit { get; set; }
+    public long CreditLimit { get; set; }
 
     public string CurrencyCode { get; set; } = string.Empty;
 

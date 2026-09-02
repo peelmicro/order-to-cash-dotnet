@@ -12,7 +12,7 @@ public sealed class CreditItem
 
     public string OrderReference { get; set; } = string.Empty;
 
-    public int Amount { get; set; }
+    public long Amount { get; set; }
 
     public string Type { get; set; } = string.Empty;
 

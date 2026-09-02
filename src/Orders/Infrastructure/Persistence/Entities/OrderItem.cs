@@ -15,11 +15,11 @@ public sealed class OrderItem
 
     public string Description { get; set; } = string.Empty;
 
-    public int Price { get; set; }
+    public long Price { get; set; }
 
     public int Quantity { get; set; }
 
-    public int Discount { get; set; }
+    public long Discount { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

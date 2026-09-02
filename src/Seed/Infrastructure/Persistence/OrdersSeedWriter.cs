@@ -61,7 +61,7 @@ public static class OrdersSeedWriter
                     entity.Ean = product.Ean;
                     entity.Name = product.Name;
                     entity.Description = product.Description;
-                    entity.Price = (int)product.Price;
+                    entity.Price = product.Price;
                     entity.CurrencyId = Currencies.IdByCode(product.CurrencyCode);
                     entity.DisabledAt = null;
                     entity.UpdatedAt = ts;
@@ -134,9 +134,9 @@ public static class OrdersSeedWriter
                     entity.CompanyId = companyId;
                     entity.RetailerId = retailerId;
                     entity.CurrencyId = currencyId;
-                    entity.InitialAmount = (int)saga.InitialAmount;
-                    entity.InitialDiscount = (int)saga.InitialDiscount;
-                    entity.TotalAmount = (int)saga.TotalAmount;
+                    entity.InitialAmount = saga.InitialAmount;
+                    entity.InitialDiscount = saga.InitialDiscount;
+                    entity.TotalAmount = saga.TotalAmount;
                     entity.Status = saga.Status;
                     entity.CancellationReason = saga.CancellationReason;
                     entity.Notes = notes;
@@ -156,9 +156,9 @@ public static class OrdersSeedWriter
                     {
                         entity.ProductId = productId;
                         entity.Description = line.Description;
-                        entity.Price = (int)line.UnitPrice;
+                        entity.Price = line.UnitPrice;
                         entity.Quantity = line.Quantity;
-                        entity.Discount = (int)line.LineDiscount;
+                        entity.Discount = line.LineDiscount;
                         entity.UpdatedAt = saga.OrderDate;
                     },
                     cancellationToken).ConfigureAwait(false);

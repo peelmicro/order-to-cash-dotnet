@@ -157,12 +157,12 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("currency_id");
 
-                    b.Property<int>("InitialAmount")
-                        .HasColumnType("int")
+                    b.Property<long>("InitialAmount")
+                        .HasColumnType("bigint")
                         .HasColumnName("initial_amount");
 
-                    b.Property<int>("InitialDiscount")
-                        .HasColumnType("int")
+                    b.Property<long>("InitialDiscount")
+                        .HasColumnType("bigint")
                         .HasColumnName("initial_discount");
 
                     b.Property<string>("Notes")
@@ -189,8 +189,8 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
-                    b.Property<int>("TotalAmount")
-                        .HasColumnType("int")
+                    b.Property<long>("TotalAmount")
+                        .HasColumnType("bigint")
                         .HasColumnName("total_amount");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -230,16 +230,16 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(255)")
                         .HasColumnName("description");
 
-                    b.Property<int>("Discount")
-                        .HasColumnType("int")
+                    b.Property<long>("Discount")
+                        .HasColumnType("bigint")
                         .HasColumnName("discount");
 
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("order_id");
 
-                    b.Property<int>("Price")
-                        .HasColumnType("int")
+                    b.Property<long>("Price")
+                        .HasColumnType("bigint")
                         .HasColumnName("price");
 
                     b.Property<Guid>("ProductId")
@@ -427,8 +427,8 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("name");
 
-                    b.Property<int>("Price")
-                        .HasColumnType("int")
+                    b.Property<long>("Price")
+                        .HasColumnType("bigint")
                         .HasColumnName("price");
 
                     b.Property<DateTime>("UpdatedAt")

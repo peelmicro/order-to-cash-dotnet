@@ -15,7 +15,7 @@ public sealed class Payment
 
     public Guid InvoiceId { get; set; }
 
-    public int Amount { get; set; }
+    public long Amount { get; set; }
 
     public string CurrencyCode { get; set; } = string.Empty;
 

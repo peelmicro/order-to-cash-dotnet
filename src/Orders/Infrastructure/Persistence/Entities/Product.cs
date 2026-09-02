@@ -18,7 +18,7 @@ public sealed class Product
 
     public string Description { get; set; } = string.Empty;
 
-    public int Price { get; set; }
+    public long Price { get; set; }
 
     public Guid CurrencyId { get; set; }
 

@@ -45,8 +45,8 @@ namespace OrderToCash.Billing.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2(3)")
                         .HasColumnName("created_at");
 
-                    b.Property<int>("CreditLimit")
-                        .HasColumnType("int")
+                    b.Property<long>("CreditLimit")
+                        .HasColumnType("bigint")
                         .HasColumnName("credit_limit");
 
                     b.Property<string>("CurrencyCode")
@@ -82,8 +82,8 @@ namespace OrderToCash.Billing.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.Property<int>("Amount")
-                        .HasColumnType("int")
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint")
                         .HasColumnName("amount");
 
                     b.Property<DateTime>("CreatedAt")
@@ -128,8 +128,8 @@ namespace OrderToCash.Billing.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.Property<int>("Amount")
-                        .HasColumnType("int")
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint")
                         .HasColumnName("amount");
 
                     b.Property<string>("CompanyCode")
@@ -147,8 +147,8 @@ namespace OrderToCash.Billing.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(3)")
                         .HasColumnName("currency_code");
 
-                    b.Property<int>("Discount")
-                        .HasColumnType("int")
+                    b.Property<long>("Discount")
+                        .HasColumnType("bigint")
                         .HasColumnName("discount");
 
                     b.Property<DateTime>("InvoiceDate")
@@ -183,8 +183,8 @@ namespace OrderToCash.Billing.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("status");
 
-                    b.Property<int>("TotalAmount")
-                        .HasColumnType("int")
+                    b.Property<long>("TotalAmount")
+                        .HasColumnType("bigint")
                         .HasColumnName("total_amount");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -219,8 +219,8 @@ namespace OrderToCash.Billing.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("invoice_id");
 
-                    b.Property<int>("Price")
-                        .HasColumnType("int")
+                    b.Property<long>("Price")
+                        .HasColumnType("bigint")
                         .HasColumnName("price");
 
                     b.Property<string>("ProductCode")
@@ -339,8 +339,8 @@ namespace OrderToCash.Billing.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.Property<int>("Amount")
-                        .HasColumnType("int")
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint")
                         .HasColumnName("amount");
 
                     b.Property<DateTime>("CreatedAt")
