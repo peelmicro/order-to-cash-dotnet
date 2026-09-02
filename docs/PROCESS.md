@@ -238,11 +238,13 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 7 complete — 12 of 42 features done.** Four write schemas, a shared kernel, the wire contract types, and a seed whose data is provably the same data the previous assessment seeded — not equivalent, identical, because that assessment derived every identifier from a hash of a stable string and a hash is portable.
+**Position: Phase 8 in progress — 14 of 43 features done.** The first aggregate exists: an order with a twelve-edge state machine, its invariants, its domain events and ten typed errors, built against a specification that passed a human gate before any code was written. Thirteen architecture rules now fail the build if the domain layer reaches for infrastructure — the newest of them because the compiler alone would not have stopped it.
 
-The phase's most useful lesson was about measurement rather than code. The comparison that proved the parity was written three times before it was trustworthy: an aggregate function truncated silently on one engine, a different aggregate function truncated silently on the other, and a client emitted the wrong character encoding so that three tables appeared to differ when none did. Each version produced a confident answer. The first was caught only because it returned three *identical* checksums for three different tables, which is impossible — the tell was the implausibility, not the tooling.
+Two results from this phase are worth more than the code.
 
-> **A hash is a fine summary of a comparison you have already seen, and a poor substitute for seeing it.** The version that could be trusted dumped rows to files and diffed them, because that is the form no silent truncation survives.
+The first is about **gates**. Asked to ratify three decisions, the human asked instead whether they had already been decided — by the previous assessment. Two of the three had been, in its committed code and its own progress log, and could have been fetched rather than escalated. Turning that into a standing test — *did the previous assessment face this, and what did it do?* — and applying it to the whole specification closed every open point and realigned four further decisions onto evidenced answers. **The reuse dividend here was not implementation time. It was gate time:** the previous assessment's equivalent gate carried sixteen open points; this one carried none.
+
+The second is about **the harness correcting its own author**. Three rules were added this phase, and all three were paid for by the coordinator's own mistakes: a backlog file that must have one writer, after two agents in parallel silently reverted a state transition that the coherence check could not see; a ruling that an approved specification outranks the brief that dispatched the work, after an implementer correctly refused to resolve a conflict between them; and a script that arms a guard properly, written because the arming protocol was stated correctly in the conventions file and then applied wrongly, twice, in commands handed to a human.
 
 | Phase | What | State |
 |---|---|---|

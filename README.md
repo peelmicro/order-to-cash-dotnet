@@ -92,7 +92,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 5 | Solution scaffold, SharedKernel, Contracts, architecture tests | ✅ 65 tests, 12 armed architecture rules, and a wire-parity oracle of 12 real #7 envelopes |
 | 6 | EF Core models + migrations for the four write databases | ✅ 20 tables, 60 integration tests against real MS-SQL, cross-context reliability-table parity asserted from the live schema |
 | 7 | Deterministic seed job | ✅ identifiers provably byte-identical to #7's, derived by the same SHA-256 scheme; 3 currencies, 12 products, 7 retailers, 22 companies, 215 stock rows, 6 sample orders and their read-model documents |
-| 8 | Orders service + saga orchestrator | ⬜ |
+| 8 | Orders service + saga orchestrator | 🚧 `Order` aggregate + state machine done — first spec-gated feature, 13 armed architecture rules, 191 tests |
 | 9 | Fulfillment service | ⬜ |
 | 10 | Billing service | ⬜ |
 | 11 | Notifications service | ⬜ |
