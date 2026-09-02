@@ -201,7 +201,7 @@
       "phase": 8,
       "title": "Order aggregate + full status state machine",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "every legal transition allowed, every illegal one throws",
         "no empty orders, no line mutation after confirmed",
@@ -599,6 +599,22 @@
         "a genuinely retryable transport failure (timeout, connection refused, no responder) is unaffected — still retried exactly as today",
         "a saga_commands row that receives a terminal RpcError reaches a resolved end state (parked-with-reason, or equivalent) rather than retrying indefinitely"
       ]
+    },
+    {
+      "id": 44,
+      "name": "money_column_width",
+      "phase": 6,
+      "title": "Correct the money columns from int to bigint across all write databases, and delete the narrowing",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "all 13 money columns are bigint on the live databases, verified from INFORMATION_SCHEMA",
+        "the initial migrations are amended rather than a widening migration added (human gate ruling) — the Phase 6 migrations have never left this machine and have no dependants",
+        "every (int) narrowing cast on a money value is DELETED, not made checked — including the unchecked ones already in src/Seed",
+        "an architecture or schema test asserts no money column is int, so the regression cannot return silently",
+        "the seed re-runs and the 413-row master-data parity against #7 still holds"
+      ],
+      "note": "Corrects an error of the leader's, carried for three phases: the plan justified int columns as 'spec parity', but specs/shared/ specifies only 'integer minor units' and never a width. int was #7's MySQL choice, and #7 needs no narrowing because JS numbers are doubles. Keeping int forced a long->int narrowing at every money boundary that #8 alone would pay for. Same category of false parity as the JSON key-order finding in Phase 5."
     }
   ]
 }

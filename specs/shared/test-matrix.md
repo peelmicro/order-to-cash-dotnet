@@ -69,7 +69,7 @@ Counted from the Status column as it actually stands, one row at a time, under t
 
 | Feature | Requirements | Rows | Green | Scoped | Not yet green |
 |---|---|---:|---:|---:|---:|
-| 1. `orders_aggregate` | R1 – R10 | 10 | 3 | 1 | 6 |
+| 1. `orders_aggregate` | R1 – R10 | 10 | 9 | 1 | 0 |
 | 2. `outbox_and_idempotency` | R11 – R18 | 8 | 0 | 0 | 8 |
 | 3. `order_saga_orchestrator` | R19 – R29 | 11 | 0 | 0 | 11 |
 | 4. `fulfillment_stock` | R30 – R36, R61 | 8 | 0 | 0 | 8 |
@@ -78,7 +78,7 @@ Counted from the Status column as it actually stands, one row at a time, under t
 | 7. `projector_read_model` | R50 – R55 | 6 | 0 | 0 | 6 |
 | 8. `observability_reliability` | R56 – R60, R62 | 6 | 0 | 0 | 6 |
 | 8.1 gateway edge protection (per-assessment gateway feature) | R63 | 1 | 0 | 0 | 1 |
-| **Total** | **R1 – R63** | **63** | **3** | **1** | **59** |
+| **Total** | **R1 – R63** | **63** | **9** | **1** | **53** |
 
 ---
 
@@ -90,12 +90,12 @@ Counted from the Status column as it actually stands, one row at a time, under t
 | **R2** | Cross-currency arithmetic is a domain error, never an implicit conversion | domain unit | `shared-kernel/domain/money.spec` › *raises a domain error when EUR and GBP amounts are added, subtracted or compared* | DONE — `tests/SharedKernel.UnitTests/MoneyTests.cs` › `R2_Money_RaisesDomainErrorOnCrossCurrencyAddSubtractAndCompareWithNoImplicitConversion`, `R2_Money_RelationalOperatorsRaiseDomainErrorAcrossCurrencies` |
 | **R3** | A quantity must be a strictly positive integer | domain unit | `shared-kernel/domain/quantity.spec` › *refuses zero, negative and fractional quantities and creates no value object* | DONE — `tests/SharedKernel.UnitTests/QuantityTests.cs` › `R3_Quantity_RefusesZeroNegativeAndFractionalValuesAndCreatesNoValueObject` |
 | **R4** | A GLN is 13 digits with a valid GS1 mod-10 check digit | domain unit | `shared-kernel/domain/gln.spec` › *accepts a valid GLN and refuses wrong length, non-digits and a bad check digit* | DONE — `tests/SharedKernel.UnitTests/GlnTests.cs` › `R4_Gln_AcceptsARealValidGlnWithACorrectCheckDigit`, `R4_Gln_RefusesWrongLengthNonDigitsAndABadCheckDigit` |
-| **R5** | An order always has at least one line (**O1**) | domain unit | `orders/domain/order.spec` › *refuses to create an order with no lines and to remove the last remaining line* | TODO |
-| **R6** | Totals are recomputed on every line mutation and may not be negative (**O3**) | domain unit | `orders/domain/order-totals.spec` › *recomputes initialAmount, initialDiscount and totalAmount after each mutation and rejects a negative total* | TODO |
-| **R7** | Lines are frozen from `confirmed` onwards (**O4**) | domain unit | `orders/domain/order.spec` › *refuses to add, remove or modify a line once the order is confirmed and leaves every field unchanged* | TODO |
-| **R8** | Only edges of Table T-1; `completed` and `cancelled` terminal | domain unit | `orders/domain/order-state-machine.spec` › *walks every legal edge of Table T-1 and reaches cancelled only from placed, stock_reserved, credit_approved and confirmed* | TODO |
-| **R9** | An illegal transition raises, changes nothing and appends no event | domain unit | `orders/domain/order-state-machine.spec` › *raises on every (from, to) pair absent from Table T-1 without mutating state or appending an event* | TODO |
-| **R10** | Cancellation carries an immutable reason from the closed set (**O6**) | domain unit | `orders/domain/order-cancellation.spec` › *requires a reason from the closed set, records it immutably and carries it on order.cancelled.v1* | TODO |
+| **R5** | An order always has at least one line (**O1**) | domain unit | `orders/domain/order.spec` › *refuses to create an order with no lines and to remove the last remaining line* | DONE — `tests/Orders.UnitTests/OrderTests.cs` › `R5_Order_RefusesToCreateAnOrderWithNoLinesAndToRemoveTheLastRemainingLine` |
+| **R6** | Totals are recomputed on every line mutation and may not be negative (**O3**) | domain unit | `orders/domain/order-totals.spec` › *recomputes initialAmount, initialDiscount and totalAmount after each mutation and rejects a negative total* | DONE — `tests/Orders.UnitTests/OrderTotalsTests.cs` › `R6_Order_RecomputesInitialAmountInitialDiscountAndTotalAmountAfterEachMutation`, `R6_Order_RejectsAMutationWhoseResultingTotalAmountWouldBeNegativeAndLeavesTheOrderUnchanged` |
+| **R7** | Lines are frozen from `confirmed` onwards (**O4**) | domain unit | `orders/domain/order.spec` › *refuses to add, remove or modify a line once the order is confirmed and leaves every field unchanged* | DONE — `tests/Orders.UnitTests/OrderTests.cs` › `R7_Order_RefusesToAddRemoveOrModifyALineOnceTheOrderIsConfirmedAndLeavesEveryFieldUnchanged` |
+| **R8** | Only edges of Table T-1; `completed` and `cancelled` terminal | domain unit | `orders/domain/order-state-machine.spec` › *walks every legal edge of Table T-1 and reaches cancelled only from placed, stock_reserved, credit_approved and confirmed* | DONE — `tests/Orders.UnitTests/OrderStateMachineTests.cs` › `R8_Order_WalksEveryLegalEdgeOfTableT1`, `R8_Order_ReachesCancelledOnlyFromPlacedStockReservedCreditApprovedAndConfirmed`, `R8_Order_TreatsCompletedAndCancelledAsTerminal` |
+| **R9** | An illegal transition raises, changes nothing and appends no event | domain unit | `orders/domain/order-state-machine.spec` › *raises on every (from, to) pair absent from Table T-1 without mutating state or appending an event* | DONE — `tests/Orders.UnitTests/OrderStateMachineTests.cs` › `R9_Order_RaisesOnEveryFromToPairAbsentFromTableT1WithoutMutatingStateOrAppendingAnEvent` |
+| **R10** | Cancellation carries an immutable reason from the closed set (**O6**) | domain unit | `orders/domain/order-cancellation.spec` › *requires a reason from the closed set, records it immutably and carries it on order.cancelled.v1* | DONE — `tests/Orders.UnitTests/OrderCancellationTests.cs` › `R10_Order_RequiresAReasonFromTheClosedSetRecordsItImmutablyAndCarriesItOnOrderCancelledV1`, `R10_Order_RaisesWhenNoCancellationReasonIsSuppliedAndDoesNotChangeTheStatus`, `R10_Order_RefusesACancellationReasonTableT1DoesNotPairWithTheCurrentStatus` |
 
 ## 2. `outbox_and_idempotency` — R11 – R18
 

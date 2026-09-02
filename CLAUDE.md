@@ -46,6 +46,14 @@ A subagent's cost is dominated by exploratory reading, so a brief that names its
 - **Route long, noisy command runs to `suite_runner`** (haiku) when the output would otherwise flood context — it returns exit code, counts and verbatim failure blocks, and interprets nothing. Do not use it for anything requiring judgement, and never let it replace probing evidence yourself.
 - **`reviewer`: probe the claims, do not re-run the world.** Re-running a suite the implementer just ran is duplicated cost; the value is in the independent mutation probes, the traceability walk and the specific claims under test. Re-run in full only when the claim *is* about the full suite.
 
+### `feature_list.json` is a single-writer file
+
+Never run two subagents concurrently when both may write the backlog. They will not conflict on source — different features touch different directories — but a `reviewer` closing one feature and anything else transitioning another are both read-modify-write on the same JSON, and the later write silently reverts the earlier one.
+
+The reason this is worth a rule rather than care: **`init.sh` cannot catch it.** A status reverted from `spec_ready` to `pending` is still a *valid* status, still has at most one `in_progress`, and still satisfies SDD coherence — so the coherence check passes while the state is wrong. That is the guard-that-does-not-guard shape once more, and the only defence is not to create the race. Found in Phase 8, where a review and a spec revision were launched in parallel and a `spec_ready` transition was lost.
+
+Parallelism across subagents is still worth having — just never with the backlog in two writers' hands at once. Sequence the one that writes it, or have only one of them own it.
+
 ### The injected copy of this file is a cache — check the disk
 
 This repository amends its own conventions at human gates, mid-project, on purpose: the wire-shape non-negotiable changed in Phase 5, and the arming protocol gained two clauses in Phases 5 and 6. Any copy of this file injected into an agent's context was taken when that session started and **is expected to go stale**.
@@ -81,7 +89,9 @@ Dependencies point **inwards**: presentation → application → domain. Infrast
 ### Non-negotiables
 
 - **Domain purity.** No `Microsoft.EntityFrameworkCore`, `Confluent.Kafka`, `NATS.*`, `MongoDB.*`, `Microsoft.AspNetCore.*` or `System.Text.Json` reference inside any `Domain/` folder. Enforced by **NetArchTest**, which fails the build, not by convention. `decimal` is likewise banned from domain arithmetic — `Money` is `long` minor units, and `decimal` appears only at presentation boundaries.
-- **The hand-rolled dispatcher is binding.** Application layers use `ICommandHandler<T>` / `IQueryHandler<T,R>` / `IEventHandler<T>` resolved from the DI container in every service — no MediatR (v13 is commercially licensed). Registration is by assembly scan, and **startup validation fails fast if a command has no handler or more than one**. Durability never depends on the in-process bus: the `outbox` and `saga_commands` tables remain the guarantee, the in-process hop is only the fast path.
+- **The hand-rolled dispatcher is binding** (human gate ruling, Phase 8 — ratified across all six services, matching #7's own gate ruling at its feature 16)**.** Application layers use `ICommandHandler<T>` / `IQueryHandler<T,R>` / `IEventHandler<T>` resolved from the DI container in every service — no MediatR (v13 is commercially licensed). Registration is by assembly scan, and **startup validation fails fast if a command has no handler or more than one**. Durability never depends on the in-process bus: the `outbox` and `saga_commands` tables remain the guarantee, the in-process hop is only the fast path.
+
+  **Why all six, when it does not fit all six equally.** In Orders, Fulfillment and Billing the fit is obvious. In the Gateway the "commands" are NATS RPC calls *outward*, so the dispatcher sits in front of an outward client; in Notifications and Projector — pure consumers with roughly one handler per fact type — it adds a hop that a direct call would not need. That indirection is accepted deliberately, for one reason: **#7 used `@nestjs/cqrs` in all six, and a #8 that used its dispatcher in three would stop the benchmark comparing like with like.** The per-feature effort numbers for Notifications and Projector would then reflect a different architecture rather than a different language, which is the one thing this repository exists to measure. Recorded as a parity trade-off in the README, not as a claim that the layer earns its keep everywhere.
 - **Explicit DI registration, and a startup validation pass.** #7's equivalent rule existed because NestJS could infer a token from `emitDecoratorMetadata` and silently resolve to `undefined` under a compiler that did not emit it — a failure invisible until first use. .NET has no such inference, so the *rule* changes shape but the *defence* does not: every port is registered explicitly in `Program.cs`, and the startup validation pass is what turns "a handler is missing" from a runtime surprise into a boot failure. The lesson #7 paid for is that DI failures must be loud at boot; keep it that way.
 - **One `BackgroundService` per transport.** #7's services were hybrid NestJS apps where a bare `@MessagePattern` registered on *every* connected transport and crashed the boot — a bug that needed its own ESLint rule. In .NET a NATS responder and a Kafka consumer are different classes subscribing to different things, so the ambiguity does not exist. Do not reintroduce it by multiplexing transports through one service class.
 - **Database per service.** No cross-database joins, no foreign keys across service boundaries. Fulfillment and Billing reference `CompanyCode`, `RetailerCode`, `ProductCode`, `OrderReference` — business identifiers carried in messages, never FKs into the Orders database.
@@ -100,7 +110,7 @@ Dependencies point **inwards**: presentation → application → domain. Infrast
 | Topic | Rule |
 |---|---|
 | Language | C# 14 / `net10.0`, `Nullable` enabled, `ImplicitUsings` enabled, async all the way down |
-| Money | **`long` minor units (cents) only.** Never a float, never `decimal` in domain arithmetic. Use the `Money` value object |
+| Money | **`long` minor units (cents) only**, in the domain **and in the column** (`bigint`). Never a float, never `decimal` in domain arithmetic. Use the `Money` value object. A narrowing cast on a money value is a defect, not something to make loud — `specs/shared/` requires "integer minor units" and never a width, so a storage type narrower than the domain type buys nothing and costs a boundary that can truncate |
 | Identifiers | UUID primary keys, generated in the domain via `UniqueId` (`uniqueidentifier` in MS-SQL) |
 | Database columns | `snake_case` in MS-SQL, `PascalCase` in C# |
 | JSON wire | `camelCase`, nulls omitted — identical to #7's bytes |
