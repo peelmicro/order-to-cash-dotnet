@@ -19,6 +19,18 @@
     <PackageVersion Include="coverlet.msbuild" Version="6.0.2" />
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
 
+    <!-- feature cqrs_dispatcher (phase 8): the hand-rolled in-process CQRS
+         dispatcher's only package — resolves ICommandHandler/IQueryHandler/
+         IEventHandler implementations from IServiceProvider and exposes the
+         IServiceCollection.AddDispatcher scan-and-register extension. Same
+         version band as the EF Core / EF Design packages below. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <!-- tests/Cqrs.UnitTests only — the concrete ServiceCollection /
+         BuildServiceProvider implementation used to prove resolution and the
+         startup validation pass end to end. Same version band as the
+         Abstractions package above. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+
     <!-- Infrastructure (not consumed until later features; pinned now so
          every service resolves the same version when it is wired in) -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.11" />

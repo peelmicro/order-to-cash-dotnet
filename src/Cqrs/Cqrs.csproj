@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Cqrs</RootNamespace>
+    <AssemblyName>OrderToCash.Cqrs</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    The hand-rolled in-process CQRS dispatcher (feature cqrs_dispatcher,
+    phase 8 human gate — "the hand-rolled dispatcher is binding across all
+    six services"). Not SharedKernel: it needs
+    Microsoft.Extensions.DependencyInjection.Abstractions, and SharedKernel
+    is architecture-tested to have zero PackageReference entries. Not
+    Contracts: that project is the wire contract versioned by
+    asyncapi.yaml, and this is an in-process building block that never
+    touches the wire. It is a new, framework-aware "shared runtime code"
+    project deliberately outside the "SharedKernel + Contracts only" list in
+    CLAUDE.md — see progress/impl_cqrs_dispatcher.md for the reasoning
+    recorded at the human gate.
+
+    No service references this project yet — feature orders_acceptance
+    (id 15) is the first consumer. This feature only builds the mechanism.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+</Project>
