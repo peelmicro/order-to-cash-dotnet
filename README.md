@@ -149,7 +149,7 @@ Two negative probes, both real output:
 | Omit `lines` from the request | `{"code":"VALIDATION_FAILED","message":"orders.create request is missing or has an empty required field: lines."}` |
 | Stop the stand-in, then request again | `{"code":"UNAVAILABLE","message":"fulfillment.stock.check: transport failure ... no responder is subscribed"}` — deliberately not `TIMEOUT`, a distinction Phase 8's terminal-rejection classification depends on |
 
-One thing that does **not** work yet, on purpose: a repeated `requestId` currently creates a second order. Idempotent replay of `orders.create` is its own requirement, still `TODO` in the traceability matrix and owned by a later feature; the field is carried through the command and explicitly ignored until then.
+One thing that does **not** work yet, on purpose: a repeated `requestId` currently creates a second order. Idempotent replay of `orders.create` is its own requirement, still `TODO` in the traceability matrix and owned by `observability_reliability` in Phase 14 — the same feature that owns it in #7; the field is carried through the command and explicitly ignored until then.
 
 ## Licence
 
