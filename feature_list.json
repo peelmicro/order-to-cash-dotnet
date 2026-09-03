@@ -245,7 +245,7 @@
       "phase": 8,
       "title": "Order acceptance: orders.create NATS responder + fulfillment.stock.check client",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "synchronous stock check via NATS fulfillment.stock.check",
         "order id returned synchronously",

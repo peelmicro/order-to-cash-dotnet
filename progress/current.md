@@ -1,6 +1,6 @@
 # Current session
 
-**Feature:** none — `outbox_and_idempotency` closed, awaiting feature 15
+**Feature:** none — `orders_acceptance` (id 15) closed, awaiting feature 16
 **Status:** idle
 **Session started:** —
 

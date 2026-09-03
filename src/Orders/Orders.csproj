@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <RootNamespace>OrderToCash.Orders</RootNamespace>
     <AssemblyName>OrderToCash.Orders</AssemblyName>
   </PropertyGroup>
@@ -8,6 +9,12 @@
   <ItemGroup>
     <ProjectReference Include="../SharedKernel/SharedKernel.csproj" />
     <ProjectReference Include="../Contracts/Contracts.csproj" />
+    <!-- Application/Commands only — the hand-rolled dispatcher (feature
+         orders_acceptance is its first consumer, CLAUDE.md's binding
+         dispatcher ruling). No Domain/ namespace may reference
+         OrderToCash.Cqrs: CqrsDomainPurityTests fails the build if one ever
+         does. -->
+    <ProjectReference Include="../Cqrs/Cqrs.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,6 +43,25 @@
     <!-- Infrastructure/Outbox only — ILogger<T> on the relay and the
          producer adapter. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Messaging (the outbound fulfillment.stock.check RPC
+         client) and Presentation (the orders.create NATS responder) only —
+         the RPC transport (feature orders_acceptance, specs/shared/asyncapi.yaml
+         rpcTransport server: "NATS core request-reply. No durability, no
+         replay, no stream"). -->
+    <PackageReference Include="NATS.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Program.cs only — feature orders_acceptance is the first feature to
+         build a runnable Orders host (outbox_and_idempotency design.md
+         §2.3: "this feature does not write one"). Microsoft.Extensions.Hosting.Abstractions
+         (BackgroundService/IHostedService) was already referenced for the
+         outbox relay; this is the full host builder
+         (Host.CreateApplicationBuilder) that RUNS them. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
   </ItemGroup>
 
 </Project>

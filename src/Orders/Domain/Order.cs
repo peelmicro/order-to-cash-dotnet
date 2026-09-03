@@ -250,9 +250,8 @@ public sealed class Order : AggregateRoot
                 CompanyCode,
                 reason,
                 CancelledAt: occurredAt,
-                CompensationSteps: steps));
-
-        CancellationReason = reason;
+                CompensationSteps: steps),
+            cancellationReason: reason);
     }
 
     /// <summary>Appends a line. Candidate-then-commit: the freeze is checked first, then currency, then O1/O3 against a candidate list — a rejected call leaves every field untouched (design.md §4.3, §5.1).</summary>
@@ -332,7 +331,7 @@ public sealed class Order : AggregateRoot
     {
         if (!Enum.IsDefined(status))
         {
-            throw new UnknownOrderStatusError(OrderStatuses.DescribeUndefinedValue(status));
+            throw new InvalidOrderSnapshotError(id, $"status ({OrderStatuses.DescribeUndefinedValue(status)}) is not a recognised OrderStatus member.");
         }
 
         if (lines.Count == 0)
@@ -347,12 +346,12 @@ public sealed class Order : AggregateRoot
 
         if (status == OrderStatus.Cancelled && cancellationReason is null)
         {
-            throw new CancellationReasonRequiredError();
+            throw new InvalidOrderSnapshotError(id, "status is 'cancelled' but no cancellationReason is recorded.");
         }
 
         if (status != OrderStatus.Cancelled && cancellationReason is { } presentReason)
         {
-            throw new CancellationReasonNotApplicableError(presentReason, status);
+            throw new InvalidOrderSnapshotError(id, $"cancellationReason '{CancellationReasons.ToToken(presentReason)}' is recorded but status is '{OrderStatuses.ToToken(status)}', not cancelled.");
         }
 
         var orderedLines = lines.OrderBy(line => line.Id.Value).ToList();
@@ -378,8 +377,16 @@ public sealed class Order : AggregateRoot
     /// before assigning anything, before stamping <see cref="UpdatedAt"/> and
     /// before raising anything, so an illegal transition leaves the
     /// aggregate byte-identical (R9, design.md §3.1, §3.2 layer 3).
+    /// <paramref name="cancellationReason"/> — present only on the four
+    /// cancel edges — is assigned in THIS method's accepted branch, right
+    /// after <see cref="Status"/> and before the event is built, exactly
+    /// where design.md §6.1 puts it: "assigned exactly once inside
+    /// <c>TransitionTo</c>'s accepted branch". Assigning it on the line
+    /// after <see cref="Cancel"/>'s own call to this method returned would
+    /// leave the aggregate momentarily <see cref="OrderStatus.Cancelled"/>
+    /// with a <see langword="null"/> reason — a state O6 says cannot exist.
     /// </summary>
-    private void TransitionTo(OrderStatus to, DateTimeOffset occurredAt, Func<OrderDomainEvent>? buildEvent)
+    private void TransitionTo(OrderStatus to, DateTimeOffset occurredAt, Func<OrderDomainEvent>? buildEvent, CancellationReason? cancellationReason = null)
     {
         if (!OrderStateMachine.IsLegal(Status, to))
         {
@@ -388,6 +395,11 @@ public sealed class Order : AggregateRoot
 
         Status = to;
         UpdatedAt = occurredAt;
+
+        if (cancellationReason is { } reason)
+        {
+            CancellationReason = reason;
+        }
 
         if (buildEvent is not null)
         {

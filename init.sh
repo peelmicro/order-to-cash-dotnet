@@ -142,7 +142,42 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-section "4. Superseded rules"
+section "4. Session file in lockstep"
+
+# CHECKPOINTS.md C2's fourth box: progress/current.md describes the ACTIVE
+# session, never leftovers. It has been re-opened and hand-closed every feature
+# — three reviews in a row here, and three times in #7 before that. A checkpoint
+# that is broken and repaired by hand every single feature is not a discipline,
+# it is a chore with a good excuse; its persistence across six reviews is what
+# makes it a check rather than a seventh advisory.
+if [ -f progress/current.md ] && [ -f feature_list.json ] && command -v node >/dev/null 2>&1; then
+  LOCKSTEP="$(node -e '
+    const fs = require("fs");
+    const d = JSON.parse(fs.readFileSync("feature_list.json", "utf8"));
+    const cur = fs.readFileSync("progress/current.md", "utf8");
+    const line = (cur.match(/^\*\*Feature:\*\*.*$/m) || [""])[0];
+    // A feature is ACTIVE while it is in_progress OR in_review: during a
+    // review pass current.md should still name it, not claim idleness. The
+    // first version of this check omitted in_review and so failed on correct
+    // state during every review — a guard firing on something that is not
+    // wrong, which trains its reader to ignore it. Found by review D7.
+    const active = d.features.filter(f => f.status === "in_progress" || f.status === "in_review");
+    if (active.length >= 1) {
+      const named = active.some(f => line.includes(f.name));
+      process.stdout.write(named ? "" : `names none of the active feature(s) [${active.map(f => `${f.name}=${f.status}`).join(", ")}]: "${line.trim()}"`);
+    } else {
+      const idle = /none|idle|awaiting/i.test(line);
+      process.stdout.write(idle ? "" : `claims a feature while none is active: "${line.trim()}"`);
+    }
+  ' 2>/dev/null)"
+  if [ -z "$LOCKSTEP" ]; then ok "progress/current.md is in lockstep with the backlog"
+  else fail "progress/current.md $LOCKSTEP"; fi
+else
+  warn "cannot check progress/current.md lockstep"
+fi
+
+# ─────────────────────────────────────────────────────────────
+section "5. Superseded rules"
 
 # An amendment is not finished when the canonical file is edited — only when
 # nothing anywhere still asserts the old rule. Found the hard way in Phase 8:
@@ -166,7 +201,7 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-section "5. Repository state"
+section "6. Repository state"
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   ok "git repo on branch '$(git rev-parse --abbrev-ref HEAD)'"
@@ -180,7 +215,7 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-section "6. Tests"
+section "7. Tests"
 
 if ls ./*.sln >/dev/null 2>&1; then
   warn "solution present — run './quality.sh' before closing a feature (not run here to keep init.sh fast)"

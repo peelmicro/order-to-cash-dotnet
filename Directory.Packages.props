@@ -71,6 +71,12 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+
+    <!-- feature orders_acceptance (phase 8): the full host builder
+         (Host.CreateApplicationBuilder) that runs the Orders service's
+         BackgroundServices for the first time — outbox_and_idempotency
+         referenced only the Abstractions half. Same 10.0.11 band. -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
   </ItemGroup>
 
 </Project>

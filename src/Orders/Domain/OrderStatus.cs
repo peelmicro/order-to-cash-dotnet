@@ -46,7 +46,17 @@ public static class OrderStatuses
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unrecognised OrderStatus member."),
     };
 
-    /// <summary>Parses a previously-stored or wire-received status token, raising <see cref="UnknownOrderStatusError"/> on anything outside the closed set.</summary>
+    /// <summary>
+    /// Parses a previously-stored or wire-received status token, raising
+    /// <see cref="InvalidOrderSnapshotError"/> on anything outside the
+    /// closed set — a load-time fault, not a business rejection of a live
+    /// request (orders_acceptance's follow-up 3, closing
+    /// review_orders_aggregate.md's advisory A3). No order id is available
+    /// at this call site (the caller, <c>OrderRowMapper</c>, has not yet
+    /// resolved a row into an aggregate), so <c>orderId</c> is
+    /// <see langword="null"/> here — the same optionality #7's own
+    /// <c>InvalidOrderSnapshotError</c> declares.
+    /// </summary>
     public static OrderStatus Parse(string? token) => token switch
     {
         "placed" => OrderStatus.Placed,
@@ -58,9 +68,9 @@ public static class OrderStatuses
         "paid" => OrderStatus.Paid,
         "completed" => OrderStatus.Completed,
         "cancelled" => OrderStatus.Cancelled,
-        _ => throw new UnknownOrderStatusError(token ?? "<null>"),
+        _ => throw new InvalidOrderSnapshotError(default, $"status \"{token ?? "<null>"}\" is not a recognised OrderStatus token."),
     };
 
-    /// <summary>Formats a raw, out-of-range underlying value for <see cref="UnknownOrderStatusError"/> when a stored status is not even a defined enum member (§8.3's residual defensive check on <c>Order.Rehydrate</c>).</summary>
+    /// <summary>Formats a raw, out-of-range underlying value for <see cref="InvalidOrderSnapshotError"/> when a stored status is not even a defined enum member (§8.3's residual defensive check on <c>Order.Rehydrate</c>).</summary>
     internal static string DescribeUndefinedValue(OrderStatus status) => ((int)status).ToString(CultureInfo.InvariantCulture);
 }

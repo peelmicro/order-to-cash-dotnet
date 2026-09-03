@@ -26,6 +26,11 @@
          the probe). -->
     <PackageReference Include="Testcontainers" />
     <PackageReference Include="Confluent.Kafka" />
+    <!-- feature orders_acceptance: real NATS (nats:2.14.5-alpine) via the
+         same generic ContainerBuilder shape as Kafka above — see
+         NatsContainerFixture's own remarks — plus the NATS.Net client for
+         the tests' own stand-in Fulfillment responder and RPC caller. -->
+    <PackageReference Include="NATS.Net" />
   </ItemGroup>
 
   <ItemGroup>
