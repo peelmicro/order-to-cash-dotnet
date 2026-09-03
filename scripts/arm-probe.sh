@@ -19,6 +19,14 @@ set -euo pipefail
 FILE="${1:?usage: arm-probe.sh <file> <sed-expression> <test-project>}"
 EXPR="${2:?missing sed expression}"
 PROJ="${3:?missing test project}"
+# Fail before touching anything if the target does not exist. Without this the
+# EXIT trap below "restores" from a backup that was never taken, creating a
+# ZERO-BYTE file at the path that was mis-typed — which compiles harmlessly and
+# shadows the real one. That happened: a mis-pathed probe left an empty
+# OutboxRelay.cs beside the real 159-line relay, found later by a reviewer's
+# forensics (mode 600, mtime after the implementer finished), not by any test.
+[ -f "$FILE" ] || { echo "FATAL: no such file: $FILE" >&2; exit 1; }
+
 BAK="$(mktemp)"
 
 restore() {

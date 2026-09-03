@@ -21,4 +21,21 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Infrastructure/Outbox only — the fact-stream producer (feature
+         outbox_and_idempotency). tests/Architecture.Tests/
+         FactPublisherConfinementTests.cs fails the build if any type outside
+         *.Infrastructure.Outbox depends on Confluent.Kafka, and
+         DomainPurityTests already fails it for Domain/. -->
+    <PackageReference Include="Confluent.Kafka" />
+    <!-- Infrastructure/Outbox only — OutboxRelayBackgroundService's
+         BackgroundService/IHostedService shape. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- Infrastructure/Outbox only — IOptions<OutboxRelayOptions>. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- Infrastructure/Outbox only — ILogger<T> on the relay and the
+         producer adapter. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
 </Project>

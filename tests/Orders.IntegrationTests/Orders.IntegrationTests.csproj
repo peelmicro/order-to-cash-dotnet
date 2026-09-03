@@ -20,6 +20,12 @@
     <!-- Real MS-SQL container — never a mock, never SQLite-in-memory
          (CLAUDE.md testing conventions). -->
     <PackageReference Include="Testcontainers.MsSql" />
+    <!-- feature outbox_and_idempotency: real Kafka (apache/kafka:4.3.1) via
+         the generic ContainerBuilder — Testcontainers.Kafka cannot drive
+         this image (design.md §9.3; Directory.Packages.props's comment has
+         the probe). -->
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Confluent.Kafka" />
   </ItemGroup>
 
   <ItemGroup>

@@ -60,6 +60,14 @@ This repository amends its own conventions at human gates, mid-project, on purpo
 
 So: before enforcing or quoting a rule from here — in a brief, in a review, in a report — `grep` the file on disk. A reviewer that rejects work against a superseded rule is a guard firing on something no longer true, which is the guard-that-does-not-guard inverted and just as expensive. Found in Phase 7, where it produced one spurious advisory against correct code.
 
+### Never hand the human an open question you could have closed
+
+Before anything reaches the human gate, ask **"did #7 face this, and what did it do?"** #7's checkout is on disk; the answer is in its committed code or its `progress/history.md`, and fetching it is cheaper and far more reliable than a gate round-trip. Only what #7 **could not** face — because the engine or the language differs — is genuinely a decision.
+
+This applies to the leader at least as much as to any subagent, and the leader is the one who keeps failing it. A subagent that applies the test and reports *"#7 deferred this, here is the citation"* has done its job; relaying that to the human as an open question undoes the work and wastes the gate. **Twice now the human has had to ask "is that something that was not already decided?"** — the second time about a finding the leader had personally verified two messages earlier.
+
+So: when a subagent raises an open point, resolve it before passing it on, and if it genuinely must go to the gate, **go with a recommendation and the evidence behind it** — never a menu. A gate exists for judgement the human alone can supply, not for questions the repository already answers.
+
 ### Anti-telephone-game rule
 
 When you launch subagents, instruct them to **write their results to files** (`specs/<feature>/requirements.md`, `progress/impl_<feature>.md`) and return only a reference, never the content. You never relay a subagent's prose into chat.

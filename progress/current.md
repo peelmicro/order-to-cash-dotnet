@@ -1,6 +1,6 @@
 # Current session
 
-**Feature:** none — features 13 and 43 closed, awaiting feature 14
+**Feature:** none — `outbox_and_idempotency` closed, awaiting feature 15
 **Status:** idle
 **Session started:** —
 

@@ -70,7 +70,7 @@ Counted from the Status column as it actually stands, one row at a time, under t
 | Feature | Requirements | Rows | Green | Scoped | Not yet green |
 |---|---|---:|---:|---:|---:|
 | 1. `orders_aggregate` | R1 – R10 | 10 | 9 | 1 | 0 |
-| 2. `outbox_and_idempotency` | R11 – R18 | 8 | 0 | 0 | 8 |
+| 2. `outbox_and_idempotency` | R11 – R18 | 8 | 7 | 0 | 1 |
 | 3. `order_saga_orchestrator` | R19 – R29 | 11 | 0 | 0 | 11 |
 | 4. `fulfillment_stock` | R30 – R36, R61 | 8 | 0 | 0 | 8 |
 | 5. `billing_credit` | R37 – R44 | 8 | 0 | 0 | 8 |
@@ -78,7 +78,7 @@ Counted from the Status column as it actually stands, one row at a time, under t
 | 7. `projector_read_model` | R50 – R55 | 6 | 0 | 0 | 6 |
 | 8. `observability_reliability` | R56 – R60, R62 | 6 | 0 | 0 | 6 |
 | 8.1 gateway edge protection (per-assessment gateway feature) | R63 | 1 | 0 | 0 | 1 |
-| **Total** | **R1 – R63** | **63** | **9** | **1** | **53** |
+| **Total** | **R1 – R63** | **63** | **16** | **1** | **46** |
 
 ---
 
@@ -101,14 +101,14 @@ Counted from the Status column as it actually stands, one row at a time, under t
 
 | Id | Requirement (short) | Level | Test file › case | Status |
 |---|---|---|---|---|
-| **R11** | Complete envelope on every fact; `eventType` matches `<aggregate>.<fact>.v<n>` | domain unit | `shared-kernel/domain/event-envelope.spec` › *refuses an envelope with an absent, null or empty field and an eventType that does not match the pattern* | TODO |
-| **R12** | `correlationId` = order id; `causationId` = the causing event or command | integration | `orders/integration/outbox-envelope.spec` › *stamps every fact of one order with the order id as correlationId and the causing event id as causationId* | TODO |
-| **R13** | Aggregate state and outbox records commit in one transaction, or neither | integration | `orders/integration/outbox-atomicity.spec` › *persists neither the aggregate nor the outbox record and publishes nothing when the transaction fails* | TODO |
-| **R14** | Only the relay publishes; unacknowledged records are republished | integration | `orders/integration/outbox-relay.spec` › *stamps a record only after the broker acknowledgement and republishes an unstamped record on the next poll* | TODO |
-| **R15** | `correlationId` is the partition key, giving per-order ordering | integration | `orders/integration/fact-partitioning.spec` › *delivers all facts produced by one context about one order to consumers in emission order* | TODO |
+| **R11** | Complete envelope on every fact; `eventType` matches `<aggregate>.<fact>.v<n>` | domain unit | `shared-kernel/domain/event-envelope.spec` › *refuses an envelope with an absent, null or empty field and an eventType that does not match the pattern* | DONE — `tests/SharedKernel.UnitTests/DomainEventEnvelopeTests.cs` › ~*nine cases, one per field/pattern check, named* `R11_DomainEventEnvelope_RefusesAnEnvelopeWithAnAbsentNullOrEmptyFieldAndAnEventTypeThatDoesNotMatchThePattern_*`. Producer-side completeness additionally proven by `tests/Orders.IntegrationTests/OutboxWireParityTests.cs` › `R11_PublishedEnvelope_CarriesTheSevenFieldsInTheDeclaredOrderWithNoneAbsentNullOrEmpty` and the writer-refusal case `tests/Orders.IntegrationTests/OutboxEnvelopeTests.cs` › `R11_Outbox_RefusesToStoreAFactWhoseEventTypeIsNotInTheDeclaredFactCatalogue` |
+| **R12** | `correlationId` = order id; `causationId` = the causing event or command | integration | `orders/integration/outbox-envelope.spec` › *stamps every fact of one order with the order id as correlationId and the causing event id as causationId* | DONE — `tests/Orders.IntegrationTests/OutboxEnvelopeTests.cs` › `R12_Outbox_StampsEveryFactOfOneOrderWithTheOrderIdAsCorrelationIdAndTheCausingEventIdAsCausationId` |
+| **R13** | Aggregate state and outbox records commit in one transaction, or neither | integration | `orders/integration/outbox-atomicity.spec` › *persists neither the aggregate nor the outbox record and publishes nothing when the transaction fails* | DONE — `tests/Orders.IntegrationTests/OutboxAtomicityTests.cs` › `R13_UnitOfWork_PersistsNeitherTheAggregateNorTheOutboxRecordAndPublishesNothingWhenTheTransactionFails`, `R13_UnitOfWork_RollsBackAnOutboxRowAlreadyWrittenWhenTheAggregatesOwnSaveFailsAfterwards` |
+| **R14** | Only the relay publishes; unacknowledged records are republished | integration | `orders/integration/outbox-relay.spec` › *stamps a record only after the broker acknowledgement and republishes an unstamped record on the next poll* | DONE — `tests/Orders.IntegrationTests/OutboxRelayTests.cs` › `R14_Relay_StampsARecordOnlyAfterTheBrokerAcknowledgementAndRepublishesAnUnstampedRecordOnTheNextPoll` |
+| **R15** | `correlationId` is the partition key, giving per-order ordering | integration | `orders/integration/fact-partitioning.spec` › *delivers all facts produced by one context about one order to consumers in emission order* | DONE — `tests/Orders.IntegrationTests/FactPartitioningTests.cs` › `R15_FactStream_DeliversAllFactsProducedByOneContextAboutOneOrderToConsumersInEmissionOrder` |
 | **R16** | Retry with backoff, then `<topic>.dlq` with consumer, attempts and error, then ack | integration | `orders/integration/fact-retry-dispatcher.spec` › *retries a fact whose processing throws up to the configured maximum, then publishes it to the topic's `.dlq` with `x-failed-consumer`, `x-attempts` and `x-error`, and acknowledges the original*<br>`orders/integration/saga-dead-letter.spec` › *a fact that fails for a reason the envelope guard cannot catch — a malformed `correlationId` — is retried, dead-lettered, and the consumer offset commits so the next, distinct fact on the same partition still processes* | TODO |
-| **R17** | (`eventId`, consumer) recorded in the same transaction as the effects | integration | `orders/integration/idempotent-consumer.spec` › *records the eventId and consumer name in the same transaction as the state change and the outbox records* | TODO |
-| **R18** | A redelivery is acknowledged with no mutation, no fact, no command | integration | `orders/integration/idempotent-consumer.spec` › *acknowledges a redelivered fact without mutating state, emitting a fact or issuing a command* | TODO |
+| **R17** | (`eventId`, consumer) recorded in the same transaction as the effects | integration | `orders/integration/idempotent-consumer.spec` › *records the eventId and consumer name in the same transaction as the state change and the outbox records* | DONE — `tests/Orders.IntegrationTests/IdempotentConsumerTests.cs` › `R17_IdempotentConsumer_RecordsTheEventIdAndConsumerNameInTheSameTransactionAsTheStateChangeAndTheOutboxRecords`, `R17_IdempotentConsumer_LeavesNoDedupRowWhenAFailureInsideWorkRollsBackTheWholeTransaction` |
+| **R18** | A redelivery is acknowledged with no mutation, no fact, no command | integration | `orders/integration/idempotent-consumer.spec` › *acknowledges a redelivered fact without mutating state, emitting a fact or issuing a command* | DONE — `tests/Orders.IntegrationTests/IdempotentConsumerTests.cs` › `R18_IdempotentConsumer_AcknowledgesARedeliveredFactWithoutMutatingStateEmittingAFactOrIssuingACommand` |
 
 ## 3. `order_saga_orchestrator` — R19 – R29
 

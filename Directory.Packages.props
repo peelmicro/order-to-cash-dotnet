@@ -49,6 +49,28 @@
          parity tests (CLAUDE.md testing conventions — never a mocked
          broker/store). Same major.minor band as Testcontainers.MsSql. -->
     <PackageVersion Include="Testcontainers.MongoDb" Version="4.14.0" />
+    <!-- feature outbox_and_idempotency (phase 8): real Kafka for the relay's
+         integration tests (design.md §9.3). Testcontainers.Kafka's
+         KafkaBuilder targets the Confluent image family and cannot drive
+         apache/kafka:4.3.1 (its entrypoint never receives
+         KAFKA_ADVERTISED_LISTENERS in a form the broker accepts — probed
+         directly, recorded in progress/impl_outbox_and_idempotency.md); the
+         generic Testcontainers ContainerBuilder does drive it, with the same
+         KRaft environment docker-compose.infra.yml's `kafka` service uses.
+         Testcontainers.Kafka is therefore deliberately NOT added — #7 shipped
+         it unused and recorded that as a defect (design.md §8). Same
+         major.minor band as Testcontainers.MsSql/MongoDb. -->
+    <PackageVersion Include="Testcontainers" Version="4.14.0" />
+
+    <!-- feature outbox_and_idempotency (phase 8): the relay's BackgroundService
+         host shape, its IOptions<T> configuration binding, and ILogger<T> on
+         the relay and the producer adapter — same 10.0.11 band as every other
+         Microsoft.Extensions package here. Referenced explicitly (never
+         relied on transitively through EF Core) per CLAUDE.md's "explicit DI
+         registration" rule. -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
   </ItemGroup>
 
 </Project>

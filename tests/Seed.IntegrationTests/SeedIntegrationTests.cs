@@ -3,11 +3,15 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using OrderToCash.Billing.Infrastructure.Persistence;
 using OrderToCash.Billing.Infrastructure.Persistence.Entities;
 using OrderToCash.Fulfillment.Infrastructure.Persistence;
 using OrderToCash.Fulfillment.Infrastructure.Persistence.Entities;
+using OrderToCash.Orders.Application.Ports;
+using OrderToCash.Orders.Infrastructure.Outbox;
 using OrderToCash.Orders.Infrastructure.Persistence;
 using OrderToCash.Orders.Infrastructure.Persistence.Entities;
 using OrderToCash.Seed.Infrastructure.Mongo;
@@ -410,5 +414,70 @@ public sealed class SeedIntegrationTests(SeedContainersFixture fixture)
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
         return Convert.ToHexStringLower(hash);
+    }
+
+    /// <summary>
+    /// Feature outbox_and_idempotency, task H6: the seed pre-publishes every
+    /// row on purpose (<c>OutboxFixture.PublishedAt</c> is non-nullable) —
+    /// this proves the real relay agrees, against the ORDERS write model,
+    /// with a fake publisher that must never be called.
+    /// </summary>
+    /// <remarks>
+    /// <c>OutboxRelay</c> is typed to <c>OrdersDbContext</c> specifically
+    /// (design.md §5.1) — Fulfillment's and Billing's own relays are
+    /// features 17-22's, not this feature's or seed_job's (design.md §11:
+    /// "No Fulfillment, Billing, Notifications or Projector code"). Rather
+    /// than build per-service relay adapters out of scope to satisfy this
+    /// task's literal wording, the SAME invariant is proven for
+    /// Fulfillment and Billing the way <c>OI11</c> already does — reading
+    /// the identically-shaped <c>outbox</c> table directly — and only the
+    /// Orders half runs through the real <see cref="OutboxRelay"/> class.
+    /// Recorded as a deliberate, narrow deviation in
+    /// progress/impl_outbox_and_idempotency.md.
+    /// </remarks>
+    [Fact]
+    public async Task TheRelayFindsNoUnpublishedRecordInAnySeededWriteModel()
+    {
+        var (ordersDb, fulfillmentDb, billingDb, mongo) = await CreateFreshStackAsync(Guid.NewGuid().ToString("N"));
+        await using var o = ordersDb;
+        await using var f = fulfillmentDb;
+        await using var b = billingDb;
+
+        await RunSeedAsync(o, f, b, mongo);
+
+        var publisher = new NeverCalledFactPublisher();
+        var relay = new OutboxRelay(
+            o,
+            publisher,
+            new FixedClock(DateTimeOffset.UtcNow),
+            Options.Create(new OutboxRelayOptions { BatchSize = 100 }),
+            NullLogger<OutboxRelay>.Instance);
+
+        var result = await relay.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.Claimed);
+        Assert.Equal(0, result.Published);
+        Assert.Equal(0, publisher.CallCount);
+
+        // Fulfillment and Billing: same invariant, read directly — see the
+        // remarks above for why this half does not go through OutboxRelay.
+        Assert.Equal(0, await f.OutboxMessages.CountAsync(row => row.PublishedAt == null));
+        Assert.Equal(0, await b.OutboxMessages.CountAsync(row => row.PublishedAt == null));
+    }
+
+    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    {
+        public DateTimeOffset UtcNow { get; } = utcNow;
+    }
+
+    private sealed class NeverCalledFactPublisher : IFactPublisher
+    {
+        public int CallCount { get; private set; }
+
+        public Task PublishAsync(IReadOnlyList<PublishableFact> facts, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.CompletedTask;
+        }
     }
 }

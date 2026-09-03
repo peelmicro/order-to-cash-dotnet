@@ -17,6 +17,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- OutboxRelayLoopTests (OI6) and OrdersOutboxRegistrationTests (H4)
+         only — a real ServiceCollection/ServiceProvider, never a mock
+         container, to prove DI registration end to end with no host. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>

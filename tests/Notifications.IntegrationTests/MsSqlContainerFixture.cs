@@ -44,6 +44,18 @@ public sealed class MsSqlContainerFixture : IAsyncLifetime
             await create.ExecuteNonQueryAsync();
         }
 
+        // feature outbox_and_idempotency (design.md §9.2, task B4): the same
+        // one-line change Orders.IntegrationTests' fixture carries, applied
+        // here only after confirming this project's suite stays green
+        // unchanged under it — infra/mssql/init/01-create-databases.sql sets
+        // READ_COMMITTED_SNAPSHOT ON on every deployed database, and this
+        // fixture did not.
+        await using (var snapshot = masterConnection.CreateCommand())
+        {
+            snapshot.CommandText = $"ALTER DATABASE [{databaseName}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;";
+            await snapshot.ExecuteNonQueryAsync();
+        }
+
         return BuildConnectionString(databaseName);
     }
 

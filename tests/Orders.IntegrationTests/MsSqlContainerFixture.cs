@@ -43,6 +43,22 @@ public sealed class MsSqlContainerFixture : IAsyncLifetime
             await create.ExecuteNonQueryAsync();
         }
 
+        // feature outbox_and_idempotency (design.md §9.2): every deployed
+        // database is created WITH READ_COMMITTED_SNAPSHOT ON
+        // (infra/mssql/init/01-create-databases.sql) — the closest MS-SQL
+        // gets to the non-blocking-read semantics the shared spec was
+        // written against. Before this feature, this fixture created
+        // databases WITHOUT it, so every concurrency test to date proved
+        // behaviour under an isolation configuration the running stack does
+        // not use. Same statement shape as the init script, ROLLBACK
+        // IMMEDIATE included even though a fresh database has nothing to
+        // roll back, so the two never drift.
+        await using (var snapshot = masterConnection.CreateCommand())
+        {
+            snapshot.CommandText = $"ALTER DATABASE [{databaseName}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;";
+            await snapshot.ExecuteNonQueryAsync();
+        }
+
         return BuildConnectionString(databaseName);
     }
 

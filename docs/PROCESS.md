@@ -303,6 +303,22 @@ The generalisable form: **an instruction that describes its own current contents
 
 It was caught by the human reading the report, not by the agent that wrote it.
 
+**Phase 8 — a verification tool that left a booby-trap.** The script written earlier this phase to arm guards correctly — because the protocol had been applied wrongly twice by hand — was itself run against a mis-typed path. Its cleanup trap then "restored" the file from a backup that had never been taken, writing a **zero-byte source file** at the wrong path, beside the real one, with a name that looked exactly right.
+
+It compiled harmlessly, so nothing went red. It was found by a reviewer's forensics rather than by any test: the file's permissions and timestamp did not match anything the implementer had produced, which is how it was traced to the coordinator's own probe run.
+
+Two things worth keeping. **A tool written to make a discipline safe is itself code, and inherits every hazard code has** — the fix was one line, refusing to proceed when the target does not exist, before the cleanup trap is armed. And more uncomfortably: **the artefact that survived was invisible to every automated check in the project.** Fourteen architecture rules, a full test suite and a state-coherence script all passed with a phantom file shadowing a real one. What caught it was somebody looking at the working tree and asking why a file's mode was unusual.
+
+**Phase 8 — the same question asked twice by the human, about the same failure.** Early in the phase the coordinator brought three decisions to the human gate. The human asked whether they had already been decided — by the previous assessment — and two of the three had been, in its committed code and its own progress log. That produced a standing test: *did the previous assessment face this, and what did it do?* Only what it **could not** face, because the language or engine differs, is genuinely a decision.
+
+The test worked. Given to the specification author, it closed every open point on the next feature and realigned four further decisions onto evidenced answers.
+
+Then the coordinator failed it again, one layer up. The specification author applied the test correctly, found that the previous assessment had deferred a requirement, and cited the file. The coordinator relayed that finding to the human **as an open question** — having personally verified the evidence two messages earlier. The human asked the same question a second time.
+
+The diagnosis is not that the rule was wrong but that it was aimed one level too low: it told subagents to check before raising, and said nothing about the coordinator resolving before escalating. **A gate exists for judgement the human alone can supply, not for questions the repository already answers** — and an open point that arrives at the gate with a citation attached is not an open point, it is a finding waiting to be relayed as one.
+
+The rule now reads: resolve before passing on, and where something genuinely must go to the gate, go with a recommendation and the evidence — never a menu.
+
 **Phase 8 — a rule kept current everywhere except in the file that tells reviewers what to enforce.** An earlier finding this phase produced a rule: never quote a convention from the copy injected into your context; read the file on disk, because the project amends its conventions at human gates and the injected copy goes stale. Sound, and it has a precondition nobody stated — **the disk has to be maintained too.**
 
 When a non-negotiable was amended at a gate, the coordinator updated the conventions file, the checkpoint list and the entry map, and missed the reviewer agent's own definition, which still carried the superseded text. That is worse than a stale cache: the next reviewer would have read it from disk, exactly as instructed, and rejected correct code with confirmation that it had checked. A guard firing on something no longer true, with the checking ritual performed correctly.
