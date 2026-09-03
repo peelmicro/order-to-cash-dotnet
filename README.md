@@ -92,7 +92,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 5 | Solution scaffold, SharedKernel, Contracts, architecture tests | ✅ 65 tests, 12 armed architecture rules, and a wire-parity oracle of 12 real #7 envelopes |
 | 6 | EF Core models + migrations for the four write databases | ✅ 20 tables, 60 integration tests against real MS-SQL, cross-context reliability-table parity asserted from the live schema |
 | 7 | Deterministic seed job | ✅ identifiers provably byte-identical to #7's, derived by the same SHA-256 scheme; 3 currencies, 12 products, 7 retailers, 22 companies, 215 stock rows, 6 sample orders and their read-model documents |
-| 8 | Orders service + saga orchestrator | 🚧 aggregate, in-process dispatcher and transactional outbox done — the MS-SQL row claim measured at 117 ms and proven to skip contended rows rather than block; 14 armed architecture rules |
+| 8 | Orders service + saga orchestrator | 🚧 aggregate, in-process dispatcher, transactional outbox and the `orders.create` acceptance path done — the service now runs: a NATS responder, a synchronous stock-check RPC, and the `ORD-######` allocator; the MS-SQL row claim measured at 117 ms and proven to skip contended rows rather than block; 15 armed architecture rules |
 | 9 | Fulfillment service | ⬜ |
 | 10 | Billing service | ⬜ |
 | 11 | Notifications service | ⬜ |
@@ -110,6 +110,46 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 23 | Full Docker Compose | ⬜ |
 | 24 | Documentation, demo recording, **#7 vs #8 benchmark** | ⬜ |
 | 25 | Final checkpoint | ⬜ |
+
+## Running what exists so far
+
+The Orders service is the first one that runs. It has no HTTP surface yet — the Gateway is Phase 13 — so it is driven over NATS, and it needs a stand-in for the Fulfillment service that Phase 9 will build. The commands below were run exactly as written; the outputs are the real ones.
+
+```bash
+docker compose -f docker-compose.infra.yml up -d
+export $(grep -E '^(MSSQL_APP_PASSWORD|MSSQL_APP_USER|MSSQL_DB_ORDERS|MSSQL_HOST|MSSQL_HOST_PORT|KAFKA_HOST_PORT|NATS_CLIENT_HOST_PORT|MONGO_.*)=' .env | xargs)
+
+# migrations + deterministic master data (idempotent; the seed applies the migrations itself)
+dotnet run --project src/Seed
+
+# a stand-in Fulfillment, in its own terminal — Phase 9 replaces it with the real service
+docker run --rm --network otcnet-net natsio/nats-box \
+  nats --server nats://otcnet-nats:4222 reply fulfillment.stock.check \
+  '{"available":true,"lines":[{"productCode":"PRD-0001","requested":2,"available":500,"sufficient":true}]}'
+
+# the service, in another
+dotnet run --project src/Orders
+
+# place an order
+docker run --rm --network otcnet-net natsio/nats-box \
+  nats --server nats://otcnet-nats:4222 request orders.create \
+  '{"retailerCode":"CarrefourEs","companyCode":"IBERFOODS","currency":"EUR","lines":[{"productCode":"PRD-0001","quantity":2}]}'
+```
+
+```json
+{"orderId":"8b0670d1-...","orderReference":"ORD-000007","status":"placed","currency":"EUR","initialAmount":49998,"initialDiscount":0,"totalAmount":49998,"orderDate":"2026-09-03T18:04:27.376Z"}
+```
+
+`ORD-000007` because the seed's six sample orders already hold `ORD-000001`–`ORD-000006`; amounts are minor units, always. An `order.placed.v1` fact appears on the `otc.orders.facts.v1` Kafka topic moments later, published by the outbox relay running inside the same host — envelope fields in the order the shared contract declares, `eventId` first and `payload` last.
+
+Two negative probes, both real output:
+
+| Probe | Reply |
+|---|---|
+| Omit `lines` from the request | `{"code":"VALIDATION_FAILED","message":"orders.create request is missing or has an empty required field: lines."}` |
+| Stop the stand-in, then request again | `{"code":"UNAVAILABLE","message":"fulfillment.stock.check: transport failure ... no responder is subscribed"}` — deliberately not `TIMEOUT`, a distinction Phase 8's terminal-rejection classification depends on |
+
+One thing that does **not** work yet, on purpose: a repeated `requestId` currently creates a second order. Idempotent replay of `orders.create` is its own requirement, still `TODO` in the traceability matrix and owned by a later feature; the field is carried through the command and explicitly ignored until then.
 
 ## Licence
 
