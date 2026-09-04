@@ -82,3 +82,6 @@ logs/
 ._*
 Thumbs.db
 desktop.ini
+
+# init.sh backlog tripwire baseline — within-session state, not a shared artifact
+.backlog-snapshot

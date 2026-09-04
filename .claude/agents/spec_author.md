@@ -64,6 +64,23 @@ So your work shifts:
 - **Reusing an id is a claim.** If you map a feature to `R14`, you are asserting the
   .NET realisation satisfies the same requirement #7's does. Check that it really
   does before writing the id down.
+- **Every `design.md` that ports a #7 mechanism carries a ported-idiom ledger.** One
+  line per idiom: *"#7 relied on X; in #8 that property is supplied by Y."* Where the
+  property came free from #7's engine, language or library and has to be hand-built
+  here, **`tasks.md` must name a guard test for it**. Binding since the Phase 8 gate;
+  the reasoning is in `CLAUDE.md` under "The ported-idiom ledger", read it on disk.
+
+  This is not paperwork. Three defects in this build were the same shape — a property
+  #7 got for free, dropped in a rendering that looked equivalent — and **all three
+  satisfied their requirement text exactly**, so neither traceability nor arming could
+  see them. None was found by the process. The question that would have caught each of
+  them is one you are already positioned to ask, at the only moment it is cheap:
+  *what made this correct over there, and does that thing exist here?*
+
+  Ask it of anything #7's stack did implicitly — atomicity of a single statement,
+  numeric width and overflow, ordering, case sensitivity, transaction and isolation
+  defaults, connection and concurrency behaviour, serialisation shape. If the answer is
+  "the engine did it", say who does it here.
 
 ## `specs/shared/` — the trilogy contract
 

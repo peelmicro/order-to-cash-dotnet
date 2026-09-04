@@ -1,26 +1,26 @@
 # Current session
 
-**Feature:** none — `order_saga_orchestrator` (id 16) closed, awaiting feature 42 or 45
+**Feature:** none — **Phase 8 complete**, 20 of 45 features done
 **Status:** idle
 **Session started:** —
 
 ## Goal
 
-Next: `orders_saga_terminal_rejection_classification` (id 42, `sdd: false`) or `order_number_allocator_seed_race` (id 45, `sdd: false`) — both phase 8, neither needs a spec gate.
+Next: **Phase 9 — Fulfillment service**. Its first feature is `fulfillment_stock` (`sdd: true`), so it opens with a spec pass and a human gate.
 
 ## Decisions taken this session
 
-Feature 16 approved on the fourth review round. Two `CLAUDE.md` amendments landed: never forbid in a brief what the approved `tasks.md` mandates, and no agent runs `git checkout --` on `feature_list.json`.
+Phase 8 closed: features 13, 43, 14, 15, 16, 42 and 45 all done. Three backlog entries added from review findings — id 45 (fixed here), id 46 (the stock-check RPC error discriminator, phase 9) and id 47 (the allocator's unconditional scan). `CLAUDE.md` gained three conventions, all paid for this phase.
 
 ## Blockers
 
-None.
+None. One question is open for the human gate: whether to adopt a ported-idiom ledger — see `progress/review_order_number_allocator_seed_race.md`'s closing section.
 
 ## Notes
 
-Nothing committed since `850f32c` — feature 16's whole tree, the two `CLAUDE.md` amendments, the `docs/PROCESS.md` entry from feature 15's wrap-up, and backlog id 45 are all uncommitted.
+Uncommitted since `c70e643`: features 42 and 45, three backlog entries, the `design.md` taxonomy correction, and the `CLAUDE.md` amendments.
 
-Carried for whoever takes id 45: the race test asserts the race **reproduces**, so it must be **inverted, not deleted**, when the allocator is fixed.
+**The finding phase 8 ends on:** three defects in this build were the same class — a property that #7's engine or idiom supplied for free, dropped in translation because the .NET rendering looked equivalent. All three satisfied their requirement text exactly, so requirement-to-test traceability could not see them, and arming could not either, because the behaviour was present and correct on the path the test took.
 
 ---
 

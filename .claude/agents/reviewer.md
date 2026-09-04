@@ -28,8 +28,19 @@ Your value is independent verification, not repetition. Re-running an entire sui
 6. **Conventions** from `CLAUDE.md`: domain purity (run the NetArchTest suite —
    do not eyeball it), `long` minor-unit money with no `decimal` in domain
    arithmetic, no Jest, the snake_case/PascalCase/camelCase boundaries.
-7. **`CHECKPOINTS.md`** — walk every applicable box in C1–C7 and mark it.
-8. **Architecture.** No cross-service DB access. No shared runtime code beyond
+7. **The ported-idiom ledger.** If `design.md` ports a #7 mechanism, it must carry
+   the ledger (*"#7 relied on X; in #8 that property is supplied by Y"*) and every
+   hand-built property must have the guard test `tasks.md` names. **Check the ledger's
+   claims, not its existence** — for each line, ask whether the property really is
+   supplied here, and probe the one most likely to be assumed. Binding since the Phase
+   8 gate; reasoning in `CLAUDE.md`, read it on disk.
+
+   A missing or hand-waved ledger on a ported feature is a defect. This class has a
+   0-for-3 detection record in this build, it is invisible to traceability (the
+   requirement text is satisfied) and invisible to arming (the behaviour is correct on
+   the tested path), and you are the last check before it ships.
+8. **`CHECKPOINTS.md`** — walk every applicable box in C1–C7 and mark it.
+9. **Architecture.** No cross-service DB access. No shared runtime code beyond
    `src/SharedKernel`, `src/Contracts` and `src/Cqrs` (the third ratified at the
    Phase 8 human gate — check `CLAUDE.md` on disk, this list changes). Every
    interaction correctly classified

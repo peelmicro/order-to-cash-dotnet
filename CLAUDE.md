@@ -55,6 +55,10 @@ The reason this is worth a rule rather than care: **`init.sh` cannot catch it.**
 
 **And no agent may run `git checkout --` on `feature_list.json`, ever.** Found in feature 16, where a reviewer reformatted the file, thought better of it, and reverted with `git checkout --` — which restored the *last committed* version and silently destroyed the leader's uncommitted backlog entry for a defect found in already-closed work. The file is almost always dirty: it carries the current feature's transitions and anything anyone has added since the last commit, so reverting it to HEAD discards other writers' work by construction, not by accident.
 
+**It happened a second time, one feature after the rule was written, and the second occurrence names the real trigger.** An implementer rewrote the file with a JSON round-trip that lacked `ensure_ascii=False`, re-escaping every non-ASCII character in the file, and reached for `git checkout --` to undo the mess. Both incidents began the same way: **a whole-file rewrite went wrong, and reverting looked like the only way back.** So the rule as written — *to undo an edit, re-edit it* — is sound advice that arrives too late, because by then there is a whole mangled file to re-edit rather than one line.
+
+The actionable form is therefore upstream of the revert: **do not rewrite this file to change one value.** Edit the single line. If you do parse and re-serialise it, `json.dumps(..., indent=2, ensure_ascii=False)` reproduces this file's formatting exactly, and `git diff` showing **only the lines you meant to change** is the check that it did — run that check *before* moving on, while the mistake is still one command from being fixed by hand. Not a line count: a legitimate edit that adds a backlog entry is a dozen lines or more, so counting insertions would cry wolf. Read the diff.
+
 The reason this needs saying separately from the arming protocol's own no-`git checkout` rule is that the arming rule is justified by files being **untracked** — and `feature_list.json` is tracked, so a reader who has internalised that rule will conclude it does not apply. It applies more. And **`init.sh` cannot catch it**: a backlog with a feature missing is still a valid backlog, still has at most one `in_progress`, still satisfies SDD coherence. That is now the third disguise of the guard-that-does-not-guard in this file — a check that fires on nothing, a check run against the wrong artefact, and a check whose invariants are all satisfied by an incorrect state. To undo an edit to this file, re-edit it.
 
 Parallelism across subagents is still worth having — just never with the backlog in two writers' hands at once. Sequence the one that writes it, or have only one of them own it.
@@ -64,6 +68,24 @@ Parallelism across subagents is still worth having — just never with the backl
 This repository amends its own conventions at human gates, mid-project, on purpose: the wire-shape non-negotiable changed in Phase 5, and the arming protocol gained two clauses in Phases 5 and 6. Any copy of this file injected into an agent's context was taken when that session started and **is expected to go stale**.
 
 So: before enforcing or quoting a rule from here — in a brief, in a review, in a report — `grep` the file on disk. A reviewer that rejects work against a superseded rule is a guard firing on something no longer true, which is the guard-that-does-not-guard inverted and just as expensive. Found in Phase 7, where it produced one spurious advisory against correct code.
+
+### The ported-idiom ledger — the one defect class nothing else here can see
+
+**Every `design.md` for a feature that ports a #7 mechanism carries a short section listing, one line per ported idiom: *"#7 relied on X; in #8 that property is supplied by Y."* Where the property was supplied by #7's engine, language or library and must be hand-built here, a guard test is required and named in `tasks.md`.** Adopted at the human gate closing Phase 8.
+
+The evidence is three defects, and what makes them one class is not the mechanism but the way they hid:
+
+| Property | #7 got it from | #8's rendering | How it surfaced |
+|---|---|---|---|
+| Payload key order on the wire | MySQL's `json` column normalisation, leaking through the relay | Treated as a byte-exact parity requirement | Captured twelve real envelopes and looked |
+| Money never truncates | JavaScript numbers have no narrowing conversion | `int` columns with a narrowing cast, justified as "spec parity" | The human asked whether it was a mistake |
+| The counter row seeds atomically | `INSERT … ON DUPLICATE KEY UPDATE`, unconditional | `IF NOT EXISTS (SELECT …) INSERT` — check-then-act | A review of a *later* feature read the SQL |
+
+**All three satisfied their requirement text exactly.** So `R<n>` → test traceability cannot see them: the requirement was met. And **arming cannot see them either**, because the behaviour was present and correct on the path the test took — the lost property only shows under a condition the test never created (a second writer, a value above `int.MaxValue`, a different storage engine). Two of this repository's three strongest guards are structurally blind to this class, which is why it needs its own line rather than more of either.
+
+None of the three was found by the process. One was found by capturing real bytes, one by the human asking a question, one by a reviewer reading SQL for an unrelated feature. That is a 0-for-3 detection record on a class that has cost real rework every time, and phases 9–13 port five more services from the same source.
+
+**Writing the line is most of the value.** The failure in all three cases was not analytical difficulty — it was that nobody asked *"what made this correct over there, and does that thing exist here?"* at the moment of translating. A one-line ledger forces the question at spec time, when the translation is being thought about anyway and the answer is nearly free.
 
 ### Never hand the human an open question you could have closed
 

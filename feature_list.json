@@ -593,7 +593,7 @@
       "phase": 8,
       "title": "NatsSagaCommandsAdapter: distinguish a terminal RpcError (business rejection) from a retryable transport error",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "a PRECONDITION_FAILED (or other terminal-business-outcome) RpcError reply from a responder is classified as terminal, not retried at capped backoff forever",
         "a genuinely retryable transport failure (timeout, connection refused, no responder) is unaffected — still retried exactly as today",
@@ -606,7 +606,7 @@
       "phase": 8,
       "title": "EfCoreOrderNumberAllocator: lock the self-seed existence check so two genuinely concurrent first-ever ORD allocations cannot both lose the seed race",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "the self-seeding branch's IF NOT EXISTS ... INSERT no longer races: either it takes a lock (WITH (UPDLOCK, HOLDLOCK)) or it handles the duplicate-key violation and retries",
         "sixteen genuinely concurrent first-ever allocations against a never-seeded sequence table all succeed and yield sixteen distinct ORD-###### references",
@@ -614,6 +614,36 @@
         "the fix is armed: reverting the lock (or the retry) makes the inverted test fail"
       ],
       "notes": "A defect in closed, committed feature 15 (orders_acceptance), found by feature 16's review and confirmed by an integration test written during it. Exposure is narrow — only concurrent allocations against a sequence table that has never been seeded — but the failure is a primary-key violation surfaced to the caller. Recorded here rather than left in a test comment so it cannot evaporate; see progress/review_order_saga_orchestrator.md advisory A1 and progress/impl_order_saga_orchestrator.md §12. RESTORED 2026-09-04 after a reviewer's `git checkout --` on this uncommitted file destroyed the original entry; wording is byte-identical to the original."
+    },
+    {
+      "id": 46,
+      "name": "orders_stock_check_rpc_error_discriminator",
+      "phase": 9,
+      "title": "NatsStockAvailabilityChecker: an RpcError reply body must map to a typed error, not deserialise to a null Lines and throw NullReferenceException",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "an RpcError-shaped reply to fulfillment.stock.check is discriminated before the typed deserialisation, exactly as NatsSagaCommandsAdapter does for saga commands",
+        "the resulting error carries the responder's own code and message, and orders.create maps it to a meaningful RPC error rather than INTERNAL_ERROR",
+        "no path through the checker can throw a bare NullReferenceException on a well-formed error reply",
+        "armed: removing the discriminator makes a named test fail"
+      ],
+      "notes": "Found by feature 42's review (advisory A2). The saga-command adapter grew an RpcError discriminator in feature 42; the acceptance-path checker never had one, so an error reply deserialises to Lines = null and the next line throws NullReferenceException out of order acceptance. Unreachable until a real Fulfillment responder exists, which is why it is phase 9 rather than phase 8 — it should close alongside the responder that first makes it reachable, not be discovered by an NRE in an integration run. See progress/review_orders_saga_terminal_rejection.md advisory A2."
+    },
+    {
+      "id": 47,
+      "name": "order_number_allocator_scan_cost",
+      "phase": 21,
+      "title": "EfCoreOrderNumberAllocator: the atomic seed scans dbo.orders on every allocation, not only when seeding",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the MAX(order_reference) scan over dbo.orders is evaluated only when the sequence row does not yet exist, not on every allocation",
+        "the seeding branch stays atomic — whatever shape is chosen must still make two concurrent first-ever allocations safe, and feature 45's deterministic two-session guard must still pass",
+        "the actual execution plan is captured before and after, and the report states the row count scanned in each",
+        "armed: the concurrency guard from feature 45 still fails when the lock hint is removed"
+      ],
+      "notes": "Found by feature 45's review (advisory A1) with the actual plan attached: Clustered Index Scan over dbo.orders, Rows = 5000, Executes = 1, with an anti-semi-join discarding the row afterwards. Not blocking and not a regression against #7, whose own seeding runs an unconditional max() too — but #8's table will grow and #7's would have as well. Deferred to phase 21 rather than phase 9 because it is a performance concern with a correctness constraint attached, and phase 21 is where measurement work belongs. See progress/review_order_number_allocator_seed_race.md advisory A1."
     },
     {
       "id": 44,

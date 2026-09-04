@@ -201,6 +201,55 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
+section "5b. Backlog tripwire"
+
+# A feature id that VANISHES, or a `done` that reverts, is the one backlog
+# corruption every other check is blind to: section 3 validates SHAPE, and a
+# backlog with a feature missing is still perfectly shaped. Twice in Phase 8 an
+# agent mangled feature_list.json with a whole-file rewrite and reverted with
+# `git checkout --`, silently discarding uncommitted entries — once losing a
+# backlog item added minutes earlier, which nothing caught. Prose did not stop
+# the second occurrence, and the rule was in the offending agent's context both
+# times, so this is the mechanical form.
+#
+# The snapshot is refreshed by THIS script on every clean run, so it needs no
+# discipline to maintain. It is deliberately untracked: it is a within-session
+# tripwire, not a shared artifact.
+BACKLOG_SNAPSHOT=".backlog-snapshot"
+CURRENT_BACKLOG="$(node -e '
+  const d = require("./feature_list.json");
+  console.log(d.features.map(f => f.id + ":" + f.status).sort((a,b) => Number(a.split(":")[0]) - Number(b.split(":")[0])).join("\n"));
+' 2>/dev/null || true)"
+
+if [ -z "$CURRENT_BACKLOG" ]; then
+  warn "backlog tripwire skipped — feature_list.json could not be read"
+elif [ -f "$BACKLOG_SNAPSHOT" ]; then
+  TRIPWIRE_FAILED=0
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    OLD_ID="${line%%:*}"; OLD_STATUS="${line#*:}"
+    NEW_LINE="$(printf '%s\n' "$CURRENT_BACKLOG" | grep -E "^${OLD_ID}:" || true)"
+    if [ -z "$NEW_LINE" ]; then
+      fail "backlog tripwire: feature id ${OLD_ID} has DISAPPEARED since the last clean init.sh run"
+      TRIPWIRE_FAILED=1
+    else
+      NEW_STATUS="${NEW_LINE#*:}"
+      if [ "$OLD_STATUS" = "done" ] && [ "$NEW_STATUS" != "done" ]; then
+        fail "backlog tripwire: feature id ${OLD_ID} reverted from done to ${NEW_STATUS}"
+        TRIPWIRE_FAILED=1
+      fi
+    fi
+  done < "$BACKLOG_SNAPSHOT"
+  if [ "$TRIPWIRE_FAILED" -eq 0 ]; then
+    ok "backlog tripwire: no feature lost, no done reverted"
+  else
+    printf '          %s\n' "Recover from git or from the session record — do NOT run 'git checkout -- feature_list.json'."
+  fi
+else
+  ok "backlog tripwire: no snapshot yet — baseline created by this run"
+fi
+
+# ─────────────────────────────────────────────────────────────
 section "6. Repository state"
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -230,6 +279,9 @@ fi
 # ─────────────────────────────────────────────────────────────
 printf "\n"
 if [ "$EXIT_CODE" -eq 0 ]; then
+  # Refresh the tripwire baseline ONLY on a clean run, so a damaged backlog is
+  # never blessed as the new normal by the very script that flagged it.
+  [ -n "${CURRENT_BACKLOG:-}" ] && printf '%s\n' "$CURRENT_BACKLOG" > "${BACKLOG_SNAPSHOT:-.backlog-snapshot}"
   printf "${GREEN}══ init.sh: environment and state are coherent ══${NC}\n"
 else
   printf "${RED}══ init.sh: FAILURES above — do not advance the session ══${NC}\n"
