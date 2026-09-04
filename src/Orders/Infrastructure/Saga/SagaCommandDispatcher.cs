@@ -26,8 +26,13 @@ public interface ISagaCommandDispatcher
 /// <summary>
 /// Claim (SO11, §6.3) ⇒ issue with SO4's in-line retry policy ⇒ mark
 /// <c>sent</c> on ANY resolved reply including a business rejection (SO6) ⇒
-/// park on exhaustion (SO5). The order status is never touched here — that
-/// is the fact handler's job alone (R29).
+/// park on exhaustion (SO5). A TERMINAL business rejection
+/// (<see cref="SagaCommandBusinessRejectionError"/>, feature 42) short-circuits
+/// straight to <see cref="ISagaCommandStore.RejectAsync"/> on its FIRST
+/// occurrence, skipping the remaining attempts/backoff and
+/// <see cref="ISagaCommandStore.ParkAsync"/>'s retry-eligible path entirely.
+/// The order status is never touched here — that is the fact handler's job
+/// alone (R29).
 /// </summary>
 /// <remarks>
 /// Invoked from exactly two places — <see cref="SagaCommandDispatchWorker"/>
@@ -83,6 +88,29 @@ public sealed class SagaCommandDispatcher(
                 // FACT, and only that fact moves the saga. `sent` means "a
                 // reply was delivered", never "the saga advanced".
                 await store.MarkSentAsync(claimed.Id, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (SagaCommandBusinessRejectionError ex)
+            {
+                // Feature 42: a TERMINAL business rejection short-circuits
+                // the retry loop immediately — no further in-line attempts,
+                // no backoff delay, and NOT ParkAsync's retry-eligible path.
+                // The responder has already given a definitive "no" from its
+                // own domain (e.g. PRECONDITION_FAILED); a second/third
+                // attempt at the same subject can only ever reproduce the
+                // identical rejection, so retrying it is pure waste — and,
+                // before this fix, an unresolvable infinite retry.
+                await store.RejectAsync(claimed.Id, attempt, ex.Message, cancellationToken).ConfigureAwait(false);
+
+                logger.LogError(
+                    ex,
+                    "Saga command {Command} for order {OrderId} rejected (terminal business rejection {RpcErrorCode}) on attempt {Attempt}: {Message}",
+                    claimed.Command,
+                    claimed.OrderId,
+                    ex.RpcErrorCode,
+                    attempt,
+                    ex.Message);
+
                 return;
             }
             catch (Exception ex) when (ex is SagaCommandTimeoutError or SagaCommandTransportError)

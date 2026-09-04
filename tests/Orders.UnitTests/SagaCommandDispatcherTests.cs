@@ -76,6 +76,61 @@ public sealed class SagaCommandDispatcherTests
         Assert.Contains("no responder", parked.LastError, StringComparison.Ordinal);
     }
 
+    // Feature 42 — the adapter now classifies a terminal RpcError business
+    // rejection (e.g. PRECONDITION_FAILED) as SagaCommandBusinessRejectionError,
+    // distinct from SagaCommandTransportError. Proves the dispatcher's
+    // short-circuit: NO further in-line attempts, NO backoff delay, and a
+    // terminal "rejected" resolution — never ParkAsync's retry-eligible path.
+    [Fact]
+    public async Task R42_ATerminalBusinessRejectionCallsThePortExactlyOnceDelaysZeroTimesAndRejectsRatherThanParking()
+    {
+        var store = new FakeSagaCommandStore { ClaimResult = BuildClaimed() };
+        var delay = new FakeSagaRetryDelay();
+        var sagaCommands = new FakeSagaCommands(_ => throw new SagaCommandBusinessRejectionError(RpcSubjects.StockReserve, "PRECONDITION_FAILED", "reservation already consumed"));
+
+        var dispatcher = BuildDispatcher(store, sagaCommands, delay);
+
+        await dispatcher.DispatchAsync(_orderId, SagaCommandKind.StockReserve, CancellationToken.None);
+
+        Assert.Equal(1, sagaCommands.CallCount); // NOT MaxAttempts (3) — no in-line retry at all.
+        Assert.Empty(delay.Delays); // NOT SO4's backoff schedule — no delay is ever awaited.
+        Assert.Empty(store.MarkSentCalls);
+        Assert.Empty(store.ParkCalls); // never ParkAsync's retry-eligible path.
+        var rejected = Assert.Single(store.RejectCalls);
+        Assert.Equal(_commandId, rejected.Id);
+        Assert.Equal(1, rejected.AttemptsMade);
+        Assert.Contains("PRECONDITION_FAILED", rejected.LastError, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A genuinely TRANSIENT rejection (design.md §6.1's UNAVAILABLE/TIMEOUT/
+    /// INTERNAL_ERROR — carried here as SagaCommandTransportError, the
+    /// adapter's own classification of it) is UNCHANGED by feature 42: still
+    /// retried to exhaustion and still parks the old way, never calling
+    /// RejectAsync. This is the acceptance bullet "a genuinely retryable
+    /// transport failure ... is unaffected — still retried exactly as
+    /// today", proven directly against the SAME dispatcher instance the
+    /// terminal test above exercises.
+    /// </summary>
+    [Fact]
+    public async Task R42_ATransientRpcErrorIsUnaffectedByTheTerminalClassification_StillRetriedToExhaustionAndParked()
+    {
+        var store = new FakeSagaCommandStore { ClaimResult = BuildClaimed() };
+        var delay = new FakeSagaRetryDelay();
+        var sagaCommands = new FakeSagaCommands(_ => throw new SagaCommandTransportError(RpcSubjects.StockReserve, "INTERNAL_ERROR: boom"));
+
+        var dispatcher = BuildDispatcher(store, sagaCommands, delay);
+
+        await dispatcher.DispatchAsync(_orderId, SagaCommandKind.StockReserve, CancellationToken.None);
+
+        Assert.Equal(3, sagaCommands.CallCount); // full retry budget, unaffected.
+        Assert.Equal([500, 1000], delay.Delays);
+        Assert.Empty(store.MarkSentCalls);
+        Assert.Empty(store.RejectCalls); // the terminal path was never taken.
+        var parked = Assert.Single(store.ParkCalls);
+        Assert.Equal(3, parked.AttemptsMade);
+    }
+
     [Fact]
     public async Task AZeroRowClaimDispatchesNothing()
     {
@@ -120,6 +175,8 @@ public sealed class SagaCommandDispatcherTests
 
         public List<(Guid Id, int AttemptsMade, string LastError)> ParkCalls { get; } = [];
 
+        public List<(Guid Id, int AttemptsMade, string LastError)> RejectCalls { get; } = [];
+
         public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<SagaCommandRecord?> TryClaimAsync(Guid orderId, SagaCommandKind command, CancellationToken cancellationToken) => Task.FromResult(ClaimResult);
@@ -135,6 +192,12 @@ public sealed class SagaCommandDispatcherTests
         public Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
         {
             ParkCalls.Add((commandId, attemptsMade, lastError));
+            return Task.CompletedTask;
+        }
+
+        public Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
+        {
+            RejectCalls.Add((commandId, attemptsMade, lastError));
             return Task.CompletedTask;
         }
     }

@@ -203,5 +203,7 @@ public sealed class SagaFactHandlerTests
         public Task MarkSentAsync(Guid commandId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

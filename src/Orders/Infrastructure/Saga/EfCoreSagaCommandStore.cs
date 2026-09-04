@@ -208,6 +208,36 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Marks a claimed row <c>rejected</c> (feature 42) — the TERMINAL end
+    /// state for a command whose responder replied with a business-rejection
+    /// <c>RpcError</c>. Same accumulation shape as <see cref="ParkAsync"/>
+    /// (never overwrites <c>attempts</c>), but sets <c>next_attempt_at</c>
+    /// to <see langword="null"/> rather than scheduling a retry — there is
+    /// none. <see cref="ClaimDueAsync"/>'s predicate (<c>pending</c> or
+    /// <c>parked</c> only) structurally excludes a <c>rejected</c> row from
+    /// every future sweep with no extra guard needed there.
+    /// </summary>
+    public async Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
+    {
+        var now = clock.UtcNow.UtcDateTime;
+        var current = await db.SagaCommands.AsNoTracking().SingleAsync(c => c.Id == commandId, cancellationToken).ConfigureAwait(false);
+
+        var truncatedError = lastError.Length > MaxLastErrorLength ? lastError[..MaxLastErrorLength] : lastError;
+
+        await db.SagaCommands
+            .Where(c => c.Id == commandId)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(c => c.Status, "rejected")
+                    .SetProperty(c => c.Attempts, current.Attempts + attemptsMade)
+                    .SetProperty(c => c.LastError, truncatedError)
+                    .SetProperty(c => c.NextAttemptAt, (DateTime?)null)
+                    .SetProperty(c => c.UpdatedAt, now),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static SagaCommandRecord ToRecord(SagaCommand row) => new(
         row.Id,
         row.OrderId,

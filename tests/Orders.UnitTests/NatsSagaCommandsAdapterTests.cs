@@ -71,10 +71,10 @@ public sealed class NatsSagaCommandsAdapterTests
     }
 
     [Fact]
-    public async Task AnRpcErrorReplyBody_MapsToSagaCommandTransportError()
+    public async Task AnRpcErrorReplyBody_WithATransientCode_MapsToSagaCommandTransportError()
     {
-        // feature 42 splits this on `code`; this feature keeps every
-        // RpcError body classified as one transport error (design.md §6.1, §12).
+        // feature 42: UNAVAILABLE is on the transient/infra side of the
+        // closed-set split — still classified retryable, unchanged.
         var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = "UNAVAILABLE", message = "fulfillment is down" });
         var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
 
@@ -82,6 +82,73 @@ public sealed class NatsSagaCommandsAdapterTests
             () => adapter.ReserveStockAsync(SampleStockReserveRequest(), CancellationToken.None));
 
         Assert.Contains("UNAVAILABLE", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// design.md §6.1's terminal-business set (feature 42) — the closed set
+    /// derived from <c>specs/shared/asyncapi.yaml</c>'s twelve-code
+    /// <c>RpcError.code</c> enum minus the three transient/infra codes
+    /// (<see cref="AnRpcErrorReplyBody_WithATransientCode_MapsToSagaCommandTransportError"/>
+    /// and the theory below). A terminal code now throws
+    /// <see cref="SagaCommandBusinessRejectionError"/>, never
+    /// <see cref="SagaCommandTransportError"/> — retrying it can never
+    /// succeed.
+    /// </summary>
+    [Theory]
+    [InlineData("VALIDATION_FAILED")]
+    [InlineData("NOT_FOUND")]
+    [InlineData("CONFLICT")]
+    [InlineData("PRECONDITION_FAILED")]
+    [InlineData("ORDER_NOT_CANCELLABLE")]
+    [InlineData("STOCK_UNAVAILABLE")]
+    [InlineData("INVOICE_NOT_PAYABLE")]
+    [InlineData("PAYMENT_MISMATCH")]
+    [InlineData("DOMAIN_ERROR")]
+    public async Task R42_ATerminalRpcErrorCode_MapsToSagaCommandBusinessRejectionErrorNotTransportError(string terminalCode)
+    {
+        var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = terminalCode, message = "reservation already consumed" });
+        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
+
+        var error = await Assert.ThrowsAsync<SagaCommandBusinessRejectionError>(
+            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), CancellationToken.None));
+
+        Assert.Equal(RpcSubjects.StockRelease, error.Subject);
+        Assert.Equal(terminalCode, error.RpcErrorCode);
+    }
+
+    /// <summary>
+    /// The exact reproduced bug feature 42 fixes: <c>stock.release</c>
+    /// against an already-consumed reservation, answered
+    /// <c>PRECONDITION_FAILED</c> — before this feature this retried at
+    /// capped backoff forever (see <c>SagaCommandDispatcherTests</c>'s
+    /// counterpart for the dispatcher-side proof that it now short-circuits).
+    /// </summary>
+    [Fact]
+    public async Task R42_ReleaseStockAgainstAnAlreadyConsumedReservation_PreconditionFailedIsTerminalNotTransport()
+    {
+        var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = "PRECONDITION_FAILED", message = "reservation already consumed" });
+        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
+
+        var error = await Assert.ThrowsAsync<SagaCommandBusinessRejectionError>(
+            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), CancellationToken.None));
+
+        Assert.Equal(RpcSubjects.StockRelease, error.Subject);
+        Assert.Equal("PRECONDITION_FAILED", error.RpcErrorCode);
+    }
+
+    [Theory]
+    [InlineData("TIMEOUT")]
+    [InlineData("UNAVAILABLE")]
+    [InlineData("INTERNAL_ERROR")]
+    public async Task R42_ATransientRpcErrorCode_StillMapsToSagaCommandTransportErrorUnchanged(string transientCode)
+    {
+        var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = transientCode, message = "boom" });
+        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
+
+        var error = await Assert.ThrowsAsync<SagaCommandTransportError>(
+            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), CancellationToken.None));
+
+        Assert.Contains(transientCode, error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

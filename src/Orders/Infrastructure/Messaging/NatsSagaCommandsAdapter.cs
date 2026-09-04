@@ -64,11 +64,11 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
 
     /// <summary>
     /// The taxonomy of design.md §6.1's table, in the ONE place it is
-    /// classified — commented, per tasks.md D1/A5, as feature 42's seam:
-    /// feature 42 splits the <c>RpcError</c>-body row on its <c>code</c>
-    /// into a terminal-business set and a transient set. This feature keeps
-    /// every <c>RpcError</c> body classified <see cref="SagaCommandTransportError"/>
-    /// (retryable), deliberately, and does not implement that split.
+    /// classified. Feature 42 splits the <c>RpcError</c>-body row on its
+    /// <c>code</c> into a terminal-business set
+    /// (<see cref="SagaCommandBusinessRejectionError"/>, never retried) and a
+    /// transient/infra set (<see cref="SagaCommandTransportError"/>, retried
+    /// exactly as before) via <see cref="IsTerminalRpcErrorCode"/>.
     /// </summary>
     private async Task<TReply> SendAsync<TRequest, TReply>(string subject, TRequest request, CancellationToken cancellationToken)
     {
@@ -103,13 +103,40 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
         if (IsRpcErrorBody(reply.Data))
         {
             var error = RpcJson.Deserialize<RpcErrorPayload>(reply.Data);
-            // feature 42 splits this on `error.Code` — kept in ONE place,
-            // deliberately not implemented here (design.md §6.1, §12).
+
+            if (IsTerminalRpcErrorCode(error.Code))
+            {
+                throw new SagaCommandBusinessRejectionError(subject, error.Code, error.Message);
+            }
+
             throw new SagaCommandTransportError(subject, $"{error.Code}: {error.Message}");
         }
 
         return RpcJson.Deserialize<TReply>(reply.Data);
     }
+
+    /// <summary>
+    /// <c>specs/shared/asyncapi.yaml</c>'s twelve-code <c>RpcError.code</c>
+    /// enum, split into the terminal-business set (a definitive "no" from
+    /// the responder's own domain — retrying can never turn it into a
+    /// "yes") and the transient/infra set (a later attempt genuinely might
+    /// resolve it). <c>TIMEOUT</c> is normally produced by the CALLER before
+    /// any reply body exists (see the <see cref="NatsNoReplyException"/>
+    /// catch above), but is listed here — transient — in case a responder
+    /// ever echoes it in a body of its own. A code outside this closed set
+    /// falls to the transient side deliberately: declaring an UNRECOGNISED
+    /// code terminal (a dead end this dispatcher will never retry) is the
+    /// riskier default of the two, so an unexpected value keeps retrying
+    /// (and eventually parks, visibly, for a human to look at) rather than
+    /// being silently given up on.
+    /// </summary>
+    private static bool IsTerminalRpcErrorCode(string code) => code switch
+    {
+        "VALIDATION_FAILED" or "NOT_FOUND" or "CONFLICT" or "PRECONDITION_FAILED"
+            or "ORDER_NOT_CANCELLABLE" or "STOCK_UNAVAILABLE" or "INVOICE_NOT_PAYABLE"
+            or "PAYMENT_MISMATCH" or "DOMAIN_ERROR" => true,
+        _ => false, // TIMEOUT, UNAVAILABLE, INTERNAL_ERROR, and anything outside the closed set.
+    };
 
     /// <summary>
     /// The <c>RpcError</c> schema's two REQUIRED fields (<c>code</c>,

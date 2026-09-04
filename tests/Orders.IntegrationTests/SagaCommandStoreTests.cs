@@ -107,6 +107,60 @@ public sealed class SagaCommandStoreTests(MsSqlContainerFixture mssql)
         Assert.Contains("first", row.Payload, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Feature 42 (acceptance bullet 3) — a saga_commands row that receives
+    /// a terminal RpcError reaches a resolved end state ("rejected") rather
+    /// than retrying indefinitely: RejectAsync marks the row rejected,
+    /// accumulates attempts onto whatever the row already carried, clears
+    /// the lease/backoff (next_attempt_at), AND — the durable half of "never
+    /// retried again" — ClaimDueAsync's own pending/parked predicate
+    /// structurally never reclaims it, proven here against the SAME row
+    /// rather than by reading the predicate.
+    /// </summary>
+    [Fact]
+    public async Task RejectAsync_MarksTheRowRejectedAccumulatesAttemptsClearsTheLease_AndClaimDueAsyncNeverReclaimsIt()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_sagastore_{Guid.NewGuid():N}");
+        await using (var migrateDb = mssql.CreateDbContext(connectionString))
+        {
+            await migrateDb.Database.MigrateAsync();
+        }
+
+        var orderId = Guid.NewGuid();
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var options = Options.Create(BuildOptions(leaseMs: 60_000));
+
+        await using var db = mssql.CreateDbContext(connectionString);
+        var store = new EfCoreSagaCommandStore(db, clock, options);
+
+        await store.EnqueueAsync(orderId, "ORD-000004", SagaCommandKind.StockRelease, "{}", Guid.NewGuid(), CancellationToken.None);
+        var claimed = await store.TryClaimAsync(orderId, SagaCommandKind.StockRelease, CancellationToken.None);
+        Assert.NotNull(claimed);
+
+        await store.RejectAsync(claimed!.Id, attemptsMade: 1, "PRECONDITION_FAILED: reservation already consumed", CancellationToken.None);
+
+        await using var assertDb = mssql.CreateDbContext(connectionString);
+        var row = await assertDb.SagaCommands.AsNoTracking().SingleAsync(c => c.Id == claimed.Id);
+        Assert.Equal("rejected", row.Status);
+        Assert.Equal(1, row.Attempts); // 0 (fresh row) + 1 attemptsMade.
+        Assert.Equal("PRECONDITION_FAILED: reservation already consumed", row.LastError);
+        Assert.Null(row.NextAttemptAt); // no retry is ever scheduled for a rejected row.
+
+        // The durable proof of "never retried again": ClaimDueAsync's own
+        // pending/parked predicate never reclaims a rejected row, even once
+        // it is unambiguously "due" by every other criterion (old enough,
+        // no lease).
+        var overdue = row.CreatedAt.AddSeconds(-10);
+        await assertDb.SagaCommands
+            .Where(c => c.Id == claimed.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(c => c.CreatedAt, overdue)
+                .SetProperty(c => c.NextAttemptAt, (DateTime?)null));
+
+        var due = await store.ClaimDueAsync(batchSize: 10, CancellationToken.None);
+        Assert.DoesNotContain(due, r => r.Id == claimed.Id);
+    }
+
     private static OrdersSagaOptions BuildOptions(int leaseMs)
     {
         var options = new OrdersSagaOptions();

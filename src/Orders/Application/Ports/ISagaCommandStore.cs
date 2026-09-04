@@ -54,4 +54,18 @@ public interface ISagaCommandStore
 
     /// <summary>Marks a claimed row <c>parked</c> on exhaustion (SO5): accumulates <see cref="SagaCommandRecord.Attempts"/>, records the last error, and schedules the next retry on capped backoff.</summary>
     Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Marks a claimed row <c>rejected</c> — the TERMINAL end state for a
+    /// command whose responder replied with a business-rejection
+    /// <c>RpcError</c> (feature 42, <see cref="SagaCommandBusinessRejectionError"/>).
+    /// Retrying it can never succeed, so unlike <see cref="ParkAsync"/> there
+    /// is no <c>next_attempt_at</c> to schedule — accumulates
+    /// <see cref="SagaCommandRecord.Attempts"/> the same way and records the
+    /// last error, but the row is never claimed again:
+    /// <see cref="ClaimDueAsync"/>'s predicate matches only
+    /// <c>pending</c>/<c>parked</c>, so a <c>rejected</c> row is structurally
+    /// excluded from every future sweep with no extra guard needed there.
+    /// </summary>
+    Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken);
 }
