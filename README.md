@@ -92,7 +92,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 5 | Solution scaffold, SharedKernel, Contracts, architecture tests | ✅ 65 tests, 12 armed architecture rules, and a wire-parity oracle of 12 real #7 envelopes |
 | 6 | EF Core models + migrations for the four write databases | ✅ 20 tables, 60 integration tests against real MS-SQL, cross-context reliability-table parity asserted from the live schema |
 | 7 | Deterministic seed job | ✅ identifiers provably byte-identical to #7's, derived by the same SHA-256 scheme; 3 currencies, 12 products, 7 retailers, 22 companies, 215 stock rows, 6 sample orders and their read-model documents |
-| 8 | Orders service + saga orchestrator | 🚧 aggregate, in-process dispatcher, transactional outbox and the `orders.create` acceptance path done — the service now runs: a NATS responder, a synchronous stock-check RPC, and the `ORD-######` allocator; the MS-SQL row claim measured at 117 ms and proven to skip contended rows rather than block; 15 armed architecture rules |
+| 8 | Orders service + saga orchestrator | 🚧 aggregate, dispatcher, transactional outbox, `orders.create` acceptance and the **saga orchestrator** done — an order now advances its whole lifecycle, with both compensation paths and a durable command queue whose sweeper retries indefinitely; 16 armed architecture rules |
 | 9 | Fulfillment service | ⬜ |
 | 10 | Billing service | ⬜ |
 | 11 | Notifications service | ⬜ |
@@ -114,6 +114,18 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 ## Running what exists so far
 
 The Orders service is the first one that runs. It has no HTTP surface yet — the Gateway is Phase 13 — so it is driven over NATS, and it needs a stand-in for the Fulfillment service that Phase 9 will build. The commands below were run exactly as written; the outputs are the real ones.
+
+Since the saga orchestrator landed, the service also **consumes** the fact stream, so placing an order does more than reply. The `order.placed.v1` fact comes back in through the Kafka consumer, the saga issues the owed `stock.reserve` command over NATS, and — with no Fulfillment service in existence until Phase 9 — that command parks:
+
+```sql
+SELECT order_reference, command, status, attempts, last_error FROM dbo.saga_commands;
+```
+
+```
+ORD-000010 | stock.reserve | parked | attempts=6 | fulfillment.stock.reserve: transport failure: no responder i...
+```
+
+Parked rows plus structured logs are the **correct** steady state until Phase 9, not a stall: the sweeper keeps retrying on capped backoff, and they resume unattended the moment a responder exists. The stand-in above answers `fulfillment.stock.check` — the synchronous check the acceptance path makes — and deliberately not `fulfillment.stock.reserve`, which is the saga's own command.
 
 ```bash
 docker compose -f docker-compose.infra.yml up -d
