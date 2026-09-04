@@ -258,7 +258,7 @@
       "phase": 8,
       "title": "Saga orchestrator: advances on Kafka facts, commands over NATS, both compensation paths",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "happy path reaches invoiced against stubbed responders",
         "CreditRejected releases stock and cancels the order",
@@ -599,6 +599,21 @@
         "a genuinely retryable transport failure (timeout, connection refused, no responder) is unaffected — still retried exactly as today",
         "a saga_commands row that receives a terminal RpcError reaches a resolved end state (parked-with-reason, or equivalent) rather than retrying indefinitely"
       ]
+    },
+    {
+      "id": 45,
+      "name": "order_number_allocator_seed_race",
+      "phase": 8,
+      "title": "EfCoreOrderNumberAllocator: lock the self-seed existence check so two genuinely concurrent first-ever ORD allocations cannot both lose the seed race",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the self-seeding branch's IF NOT EXISTS ... INSERT no longer races: either it takes a lock (WITH (UPDLOCK, HOLDLOCK)) or it handles the duplicate-key violation and retries",
+        "sixteen genuinely concurrent first-ever allocations against a never-seeded sequence table all succeed and yield sixteen distinct ORD-###### references",
+        "OrderNumberAllocatorTests.AllocateNextAsync_ConcurrentFirstEverAllocations_CanRaceTheSelfSeedInsertAndFail is INVERTED, not deleted — it currently asserts the race reproduces, and must become an assertion that it no longer can",
+        "the fix is armed: reverting the lock (or the retry) makes the inverted test fail"
+      ],
+      "notes": "A defect in closed, committed feature 15 (orders_acceptance), found by feature 16's review and confirmed by an integration test written during it. Exposure is narrow — only concurrent allocations against a sequence table that has never been seeded — but the failure is a primary-key violation surfaced to the caller. Recorded here rather than left in a test comment so it cannot evaporate; see progress/review_order_saga_orchestrator.md advisory A1 and progress/impl_order_saga_orchestrator.md §12. RESTORED 2026-09-04 after a reviewer's `git checkout --` on this uncommitted file destroyed the original entry; wording is byte-identical to the original."
     },
     {
       "id": 44,

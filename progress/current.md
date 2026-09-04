@@ -1,16 +1,16 @@
 # Current session
 
-**Feature:** none — `orders_acceptance` (id 15) closed and committed, awaiting feature 16
+**Feature:** none — `order_saga_orchestrator` (id 16) closed, awaiting feature 42 or 45
 **Status:** idle
 **Session started:** —
 
 ## Goal
 
-Next: `order_saga_orchestrator` (id 16, phase 8, `"sdd": true`). It opens with a spec pass and a **human approval gate** before any code — no exceptions.
+Next: `orders_saga_terminal_rejection_classification` (id 42, `sdd: false`) or `order_number_allocator_seed_race` (id 45, `sdd: false`) — both phase 8, neither needs a spec gate.
 
 ## Decisions taken this session
 
-Feature 15 wrapped up: two commits pushed (`4c6ed34` code, `fb10544` docs), the four external assessment documents updated, and the service verified against the deployed stack rather than only Testcontainers.
+Feature 16 approved on the fourth review round. Two `CLAUDE.md` amendments landed: never forbid in a brief what the approved `tasks.md` mandates, and no agent runs `git checkout --` on `feature_list.json`.
 
 ## Blockers
 
@@ -18,18 +18,9 @@ None.
 
 ## Notes
 
-**Brief for feature 16, with #7's evidence attached so the gate is not asked to re-derive it.**
+Nothing committed since `850f32c` — feature 16's whole tree, the two `CLAUDE.md` amendments, the `docs/PROCESS.md` entry from feature 15's wrap-up, and backlog id 45 are all uncommitted.
 
-#7's baseline for this exact feature: 1 spec session + 1 gate revision + 1 implementation session + **1 review pass, approved first time** — ≈1 h 45 min implementation, ≈35 min review. Its own history calls it *"the cheapest `sdd: true` feature of phase 8 by a wide margin, on the most complex surface"*, and names the cause: a spec with 35 tasks and **a step table the implementer could transcribe**. That is the single most transferable fact about this feature, and it says where the spec pass should spend its effort.
-
-Two things #7 paid for here that #8 will not:
-
-- Its live-stack walkthrough found a **transport-binding crash** — the hybrid-app bug where one decorator registered on every connected transport. .NET has no such ambiguity, and `CLAUDE.md` forbids reintroducing it by multiplexing transports through one service class.
-- `saga_commands` pending/sent/parked plus the sweeper, and `saga_ignored_facts`, are already in the Orders schema since phase 6 — the tables exist and are migrated.
-
-Carried into this feature from feature 43's review, and still open: the no-MediatR guard reads **three hardcoded project paths of twenty-one**. Closed for the central-package-management route and open to a hand-written `VersionOverride`. **Glob** the project files when the solution-wide equivalent lands in `tests/Architecture.Tests` — a glob is what makes it closed, a list is what made it a whitelist.
-
-And the rule that ended feature 15, which belongs in every brief from here: the question to put to a subagent that has just fixed something is not *"does your fix work?"* but **"what fails if your fix is reverted?"**
+Carried for whoever takes id 45: the race test asserts the race **reproduces**, so it must be **inverted, not deleted**, when the allocator is fixed.
 
 ---
 

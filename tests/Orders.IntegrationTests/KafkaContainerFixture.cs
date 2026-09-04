@@ -4,6 +4,7 @@ using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
 using OrderToCash.Orders.Infrastructure.Outbox;
 using Xunit;
 
@@ -65,9 +66,17 @@ public sealed class KafkaContainerFixture : IAsyncLifetime
         // never auto-creation (the broker is configured with
         // KAFKA_AUTO_CREATE_TOPICS_ENABLE=false, and auto-creation would in
         // any case yield one partition and make R15's partitioning test
-        // vacuous).
+        // vacuous). Extended by order_saga_orchestrator (design.md §8.1) to
+        // create all THREE fact topics — the saga consumes
+        // otc.fulfillment.facts.v1 and otc.billing.facts.v1 too, not just
+        // its own producer's topic.
         using var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = BootstrapServers }).Build();
-        await admin.CreateTopicsAsync([new TopicSpecification { Name = OrdersFactTopic.Name, NumPartitions = 6, ReplicationFactor = 1 }]);
+        await admin.CreateTopicsAsync(
+        [
+            new TopicSpecification { Name = OrdersFactTopic.Name, NumPartitions = 6, ReplicationFactor = 1 },
+            new TopicSpecification { Name = SagaFactTopics.FulfillmentFacts, NumPartitions = 6, ReplicationFactor = 1 },
+            new TopicSpecification { Name = SagaFactTopics.BillingFacts, NumPartitions = 6, ReplicationFactor = 1 },
+        ]);
     }
 
     public async Task DisposeAsync()

@@ -21,6 +21,11 @@ var builder = OrdersHost.CreateBuilder(
     {
         options.Nats.Url = Environment.GetEnvironmentVariable("NATS_URL")
             ?? $"nats://localhost:{Environment.GetEnvironmentVariable("NATS_CLIENT_HOST_PORT") ?? "4222"}";
+    },
+    configureSaga: options =>
+    {
+        options.Kafka.BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS")
+            ?? $"localhost:{Environment.GetEnvironmentVariable("KAFKA_HOST_PORT") ?? "9092"}";
     });
 
 var host = builder.Build();

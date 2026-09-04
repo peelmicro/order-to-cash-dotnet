@@ -81,6 +81,29 @@ public sealed class OrdersDispatcherRegistrationTests
         Assert.Contains(nameof(IStockAvailabilityChecker), negativeException!.ToString());
     }
 
+    /// <summary>
+    /// feature <c>order_saga_orchestrator</c>, tasks.md I4 — the SAME "must
+    /// fail the boot, not the first message" guarantee, now proven for a
+    /// saga port. <c>AddOrdersSaga</c> registers <see cref="ISagaCommandStore"/>
+    /// with no assembly scan (design.md §9); removing it must fail
+    /// <c>Build()</c>, never surface only once a fact is first consumed.
+    /// </summary>
+    [Fact]
+    public void RealHostComposition_Build_SucceedsWithTheSagaRegisteredAndFailsWhenASagaPortIsRemoved()
+    {
+        var positiveBuilder = BuildRealHostBuilder();
+        var positiveException = Record.Exception(() => positiveBuilder.Build());
+        Assert.Null(positiveException);
+
+        var negativeBuilder = BuildRealHostBuilder();
+        var removed = System.Linq.Enumerable.Single(negativeBuilder.Services, d => d.ServiceType == typeof(ISagaCommandStore));
+        negativeBuilder.Services.Remove(removed);
+
+        var negativeException = Record.Exception(() => negativeBuilder.Build());
+        Assert.NotNull(negativeException);
+        Assert.Contains(nameof(ISagaCommandStore), negativeException!.ToString());
+    }
+
     private static Microsoft.Extensions.Hosting.HostApplicationBuilder BuildRealHostBuilder() =>
         OrdersHost.CreateBuilder(
             args: [],
@@ -94,5 +117,6 @@ public sealed class OrdersDispatcherRegistrationTests
                 options.ConnectionString = "Server=localhost;Database=otc_orders_validate_on_build_probe;Trusted_Connection=True;";
                 options.Kafka.BootstrapServers = "127.0.0.1:1";
             },
-            configureAcceptance: options => options.Nats.Url = "nats://127.0.0.1:1");
+            configureAcceptance: options => options.Nats.Url = "nats://127.0.0.1:1",
+            configureSaga: options => options.Kafka.BootstrapServers = "127.0.0.1:1");
 }

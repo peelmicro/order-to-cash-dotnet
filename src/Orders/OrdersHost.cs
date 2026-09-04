@@ -27,7 +27,8 @@ public static class OrdersHost
     public static HostApplicationBuilder CreateBuilder(
         string[] args,
         Action<OrdersOutboxOptions> configureOutbox,
-        Action<OrdersAcceptanceOptions> configureAcceptance)
+        Action<OrdersAcceptanceOptions> configureAcceptance,
+        Action<OrdersSagaOptions> configureSaga)
     {
         var builder = Host.CreateApplicationBuilder(args);
 
@@ -52,11 +53,20 @@ public static class OrdersHost
         builder.Services.AddOrdersOutbox(configureOutbox);
         builder.Services.AddOrdersAcceptance(configureAcceptance);
 
-        // AddDispatcher MUST run after the two calls above so every port
-        // PlaceOrderCommandHandler needs is already registered, and it
-        // throws DispatcherValidationException SYNCHRONOUSLY if
-        // PlaceOrderCommand has zero or more than one handler — a boot
-        // failure, never a first-dispatch surprise.
+        // AddOrdersSaga runs after the two calls above (it reuses their
+        // singleton INatsConnection and scoped OrdersDbContext/IClock/
+        // IUnitOfWork — design.md §9) and BEFORE AddDispatcher, for the same
+        // reason the other two extensions already precede it: every port a
+        // handler needs must be registered before the dispatcher's
+        // validation pass runs.
+        builder.Services.AddOrdersSaga(configureSaga);
+
+        // AddDispatcher MUST run after the three calls above so every port
+        // PlaceOrderCommandHandler and the ten saga fact command handlers
+        // need is already registered, and it throws
+        // DispatcherValidationException SYNCHRONOUSLY if a command has zero
+        // or more than one handler — a boot failure, never a first-dispatch
+        // surprise.
         builder.Services.AddDispatcher(Assembly.GetExecutingAssembly());
 
         return builder;
