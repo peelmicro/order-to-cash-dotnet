@@ -21,11 +21,11 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _loop;
 
-    /// <param name="answer">Returning <see langword="null"/> means "received the request, deliberately send no reply" — <see cref="StartSilentAsync"/>'s shape for a Fulfillment that is up (subscribed) but never answers, review D1's TIMEOUT case.</param>
-    private StandInFulfillmentStockCheckResponder(INatsConnection connection, Func<StockCheckRequestPayload, StockCheckReplyPayload?> answer)
+    /// <param name="rawAnswer">Returning <see langword="null"/> means "received the request, deliberately send no reply" — <see cref="StartSilentAsync"/>'s shape for a Fulfillment that is up (subscribed) but never answers, review D1's TIMEOUT case. Raw bytes, not the typed success payload, so <see cref="StartErrorAsync"/> (feature 46) can answer with an <c>RpcError</c>-shaped body over the same plumbing.</param>
+    private StandInFulfillmentStockCheckResponder(INatsConnection connection, Func<StockCheckRequestPayload, byte[]?> rawAnswer)
     {
         _connection = connection;
-        _loop = RunAsync(answer, _cts.Token);
+        _loop = RunAsync(rawAnswer, _cts.Token);
     }
 
     /// <summary>
@@ -42,10 +42,37 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
     /// one the caller needs, and a fault tearing down an already-broken
     /// connection is not new information.
     /// </summary>
-    public static async Task<StandInFulfillmentStockCheckResponder> StartAsync(string natsUrl, Func<StockCheckRequestPayload, StockCheckReplyPayload?> answer, CancellationToken cancellationToken)
+    public static Task<StandInFulfillmentStockCheckResponder> StartAsync(string natsUrl, Func<StockCheckRequestPayload, StockCheckReplyPayload?> answer, CancellationToken cancellationToken) =>
+        StartRawAsync(natsUrl, request => answer(request) is { } reply ? RpcJson.Serialize(reply) : null, cancellationToken);
+
+    /// <summary>
+    /// Feature 46: answers EVERY request with a real <c>RpcError</c>-shaped
+    /// reply, raw on the wire — exactly the shape a genuine Fulfillment
+    /// failure (a validation refusal, a data-access error) produces, and
+    /// the one <see cref="Orders.Infrastructure.Messaging.NatsStockAvailabilityChecker"/>
+    /// must discriminate before attempting the typed success deserialisation.
+    /// </summary>
+    public static Task<StandInFulfillmentStockCheckResponder> StartErrorAsync(string natsUrl, string code, string message, CancellationToken cancellationToken) =>
+        StartRawAsync(natsUrl, _ => RpcJson.Serialize(new RpcErrorPayload(code, message)), cancellationToken);
+
+    /// <summary>
+    /// Review A1 (round 2): a reply body that is not valid JSON at all — a
+    /// garbled write, a wire glitch, anything short of the two schemas
+    /// <see cref="Orders.Infrastructure.Messaging.NatsStockAvailabilityChecker"/>
+    /// ever attempts to deserialise. #7's <c>nats-stock-availability.adapter.ts</c> guards
+    /// exactly this seam ("reply payload was not valid JSON") rather than
+    /// letting a bare <c>JsonException</c> reach the caller as an opaque
+    /// <c>INTERNAL_ERROR</c>. The readiness probe in
+    /// <see cref="WaitUntilSubscribedAsync"/> only checks <c>Data is not
+    /// null</c>, so a non-JSON body is still a valid probe reply.
+    /// </summary>
+    public static Task<StandInFulfillmentStockCheckResponder> StartMalformedAsync(string natsUrl, CancellationToken cancellationToken) =>
+        StartRawAsync(natsUrl, _ => "not-json-at-all"u8.ToArray(), cancellationToken);
+
+    private static async Task<StandInFulfillmentStockCheckResponder> StartRawAsync(string natsUrl, Func<StockCheckRequestPayload, byte[]?> rawAnswer, CancellationToken cancellationToken)
     {
         var connection = new NatsConnection(new NatsOpts { Url = natsUrl });
-        var responder = new StandInFulfillmentStockCheckResponder(connection, answer);
+        var responder = new StandInFulfillmentStockCheckResponder(connection, rawAnswer);
         try
         {
             await responder.WaitUntilSubscribedAsync(cancellationToken).ConfigureAwait(false);
@@ -209,7 +236,7 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
         throw new TimeoutException("Stand-in Fulfillment responder never became reachable.");
     }
 
-    private async Task RunAsync(Func<StockCheckRequestPayload, StockCheckReplyPayload?> answer, CancellationToken cancellationToken)
+    private async Task RunAsync(Func<StockCheckRequestPayload, byte[]?> rawAnswer, CancellationToken cancellationToken)
     {
         await foreach (var message in _connection.SubscribeAsync<byte[]>(RpcSubjects.StockCheck, cancellationToken: cancellationToken).ConfigureAwait(false))
         {
@@ -219,13 +246,13 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
             }
 
             var request = RpcJson.Deserialize<StockCheckRequestPayload>(message.Data);
-            var reply = answer(request);
-            if (reply is null)
+            var replyBytes = rawAnswer(request);
+            if (replyBytes is null)
             {
                 continue;
             }
 
-            await message.ReplyAsync(RpcJson.Serialize(reply), cancellationToken: cancellationToken).ConfigureAwait(false);
+            await message.ReplyAsync(replyBytes, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 }

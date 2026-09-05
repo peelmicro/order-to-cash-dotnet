@@ -23,6 +23,9 @@ Your value is independent verification, not repetition. Re-running an entire sui
    `R7` but asserts nothing relevant fails this check.
 4. **Tasks.** Every task in `tasks.md` is genuinely done, not just ticked.
 5. **Tests are real.** Run them. Pure domain tests must reference no framework.
+   **A claimed absence must come with its enumerating command and complete output** —
+   the implementer's, and your own. Three prose sweeps have been reported clear and
+   disproved within minutes; each was caught by a `grep`, not by re-reading.
    **Probe two mutation families, not one:** delete the emission, *and* corrupt a payload
    field on the wire. A guard that counts rows without reading them passes the first
    and fails nothing on the second — that is how a payload defect survived a whole

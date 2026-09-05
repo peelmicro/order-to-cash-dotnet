@@ -1,0 +1,142 @@
+# impl: orders_stock_check_rpc_error_discriminator (feature 46)
+
+`sdd: false` — specification of record is `feature_list.json` id 46's four acceptance bullets.
+
+## What changed
+
+**Production**
+
+- `src/Orders/Infrastructure/Messaging/Rpc/RpcJson.cs` — added `IsErrorBody(ReadOnlyMemory<byte> data)`, the `code`/`message` discriminator over the raw JSON, promoted here (shared) from `NatsSagaCommandsAdapter`'s private copy.
+- `src/Orders/Infrastructure/Messaging/NatsSagaCommandsAdapter.cs` — deleted its own private `IsRpcErrorBody`, now calls the shared `RpcJson.IsErrorBody`. Behaviour unchanged (proven by the full `Orders.UnitTests`/`Orders.IntegrationTests` runs below); this removes the exact kind of independently-drifting duplicate the ported-idiom ledger exists to flag, one feature after that concern was written down.
+- `src/Orders/Application/Ports/IStockAvailabilityChecker.cs` — added `StockCheckBusinessError(subject, rpcErrorCode, responderMessage)`, a new typed exception carrying the responder's own code and message, distinct from the existing `StockCheckTimeoutError`/`StockCheckTransportError`. Updated `IStockAvailabilityChecker.CheckAsync`'s doc comment to mention it.
+- `src/Orders/Infrastructure/Messaging/NatsStockAvailabilityChecker.cs` — the actual fix: `CheckAsync` now calls `RpcJson.IsErrorBody(reply.Data)` **before** `RpcJson.Deserialize<StockCheckReplyPayload>`, and on a match deserialises `RpcErrorPayload` and throws `StockCheckBusinessError` instead of falling through to the typed success deserialisation (which is what produced the null `Lines` and the subsequent bare exception on `.Select`).
+- `src/Orders/Presentation/Rpc/OrdersCreateErrorMapper.cs` — added the `StockCheckBusinessError` arm: maps `e.RpcErrorCode`/`e.ResponderMessage` straight through to the `RpcErrorPayload`'s `Code`/`Message`, with `subject` in `Details` (matching the existing `StockCheckTimeoutError`/`StockCheckTransportError` arms' shape).
+
+**Tests**
+
+- `tests/Orders.IntegrationTests/StandInFulfillmentStockCheckResponder.cs` — reshaped internally to answer with raw bytes (`Func<StockCheckRequestPayload, byte[]?>`) rather than the typed `StockCheckReplyPayload?` directly, so a new `StartErrorAsync(natsUrl, code, message, ct)` factory can answer with a real `RpcError`-shaped reply over the wire. The existing public `StartAsync`/`StartAvailableAsync`/`StartUnavailableAsync`/`StartSilentAsync` signatures are unchanged — every existing caller across `Orders.IntegrationTests` still compiles and passes unmodified.
+- `tests/Orders.IntegrationTests/NatsStockAvailabilityCheckerTests.cs` (new) — drives `NatsStockAvailabilityChecker` directly against a real NATS broker and the new `StartErrorAsync` stand-in (no MS-SQL, no full host — the checker's only two dependencies are a real `INatsConnection` and `IOptions<NatsOptions>`), a `[Theory]` over two distinct responder codes (`NOT_FOUND`, `PRECONDITION_FAILED`) asserting `StockCheckBusinessError` is thrown with the responder's own `Subject`/`RpcErrorCode`/`ResponderMessage` — proves bullets 1 and 3.
+- `tests/Orders.IntegrationTests/OrdersCreateAcceptanceTests.cs` — added `OrdersCreate_MapsAStockCheckErrorReplyToTheRespondersOwnCodeAndMessageNotInternalErrorAndPersistsNoOrder`: full end-to-end over the real `orders.create` responder, asserting the wire reply's `RpcErrorPayload.Code == "NOT_FOUND"` (not `INTERNAL_ERROR`), the message, and that no order/outbox row is persisted — proves bullet 2 at the level the acceptance bullet is actually stated at (what `orders.create` answers the caller).
+- `tests/Orders.UnitTests/OrdersCreateErrorMapperTests.cs` — added `Map_StockCheckBusinessError_MapsToTheRespondersOwnCodeAndMessageNotInternalError`, a fast `[Theory]` over two distinct codes proving the mapper does not hardcode a single code — the second mutation family's fast-path guard.
+
+No change to `specs/shared/test-matrix.md`: this feature has no `R<n>` of its own (defect fix, not a spec requirement), and `R31`'s row was already `DONE` and unrelated.
+
+## The two decisions
+
+**1. No terminal-versus-transient split — discrimination only.** Feature 42's split exists so `SagaCommandDispatcher`'s retry loop can short-circuit a definitive "no" instead of retrying it forever (`SagaCommandBusinessRejectionError` vs `SagaCommandTransportError`). `fulfillment.stock.check` is called synchronously from `PlaceOrderCommandHandler`, on the acceptance path, with a caller (`orders.create`'s own caller) already blocked waiting for a reply — there is no retry loop here to short-circuit, so there is nothing for the split to protect. One new exception type, `StockCheckBusinessError`, carries every `RpcError`-shaped reply's code and message unchanged; acceptance bullet 2 only requires "a meaningful RPC error", which a straight pass-through already is. Documented in the type's own XML doc so the next translator does not have to re-derive it.
+
+**2. `orders.create` answers with the responder's own code, not a fixed sentinel.** `specs/shared/asyncapi.yaml`'s `RpcError.code` enum is the SAME closed twelve-value set on both sides of the wire (Fulfillment's `StockErrorMapper` answers with `VALIDATION_FAILED`, `NOT_FOUND`, `PRECONDITION_FAILED`, `UNAVAILABLE`, `TIMEOUT`, `DOMAIN_ERROR`, `INTERNAL_ERROR` depending on what actually failed), so `OrdersCreateErrorMapper`'s new arm passes `e.RpcErrorCode`/`e.ResponderMessage` straight through rather than collapsing to `UNAVAILABLE` (the transport-outage code, already used for "no responder subscribed") or hardcoding anything else. This does **not** disturb the existing `UNAVAILABLE`-vs-`TIMEOUT` split feature 15 established for transport-level failures — those two cases (`StockCheckTransportError`, `StockCheckTimeoutError`) are untouched; `StockCheckBusinessError` is a strictly new, third case for when the responder itself replied with a typed refusal.
+
+## The lost-in-translation cause, and its place in the ledger
+
+`NatsStockAvailabilityChecker` deserialised every non-null reply straight into the typed success payload with no discrimination step; #7's `nats-stock-availability.adapter.ts` decodes the reply as a union of the success and `RpcError` shapes via an `isRpcErrorReply` type guard, so the property "an error reply is recognised before being treated as data" was structural in TypeScript's own decoding idiom and had to be hand-built here. This is the fourth instance of the class the ported-idiom ledger exists to catch, and the first found in code written before the ledger was adopted (Phase 8) rather than by it — the other three were wire key ordering, money column width, and the counter seed.
+
+## The reviewer's "Assert.Single(null)" note — searched, not found as described
+
+I read every test in `tests/Fulfillment.IntegrationTests/` that deserialises an RPC reply on this responder (`StockCheckTests.cs`, `StockReserveTests.cs`, `StockReserveRaceTests.cs`, `StockReleaseIdempotencyTests.cs`, `StockWireTests.cs`) and every RPC-error-adjacent test in `tests/Orders.IntegrationTests/` (`SagaPreconditionTests.cs`, `StandInSagaResponders.cs`). Every test that exercises an actual `RpcError`-shaped reply already discriminates by reading `.Code` (`StockWireTests.FS4_AnswersABareJsonRpcError_OnAValidationFailure`, `StockReleaseIdempotencyTests.FS10_RepliesPreconditionFailedAndEmitsNothing_WhenTheOrdersReservationsAreConsumed`) — neither deserialises into the typed success shape first. I found no test currently in the tree that identifies an error reply by a null dereference; the closest matches (`Assert.Single(payload.Reservations!)`, `Assert.Single(payload.Shortages!)`) are on the accepted/rejected **typed success** replies of `stock.reserve`, which genuinely never carry an `RpcError` body, not on this feature's interaction. I made no change on that basis — recording the search rather than fabricating a fix, per the brief's own "if a test... still identifies" conditional.
+
+## Arming table (both mutation families, verbatim)
+
+All four runs below used a manual backup copy (`cp` to the scratchpad, never `git checkout --`), a forced rebuild (`dotnet build --no-incremental`) after every restore, and a source re-read confirming the restore before the confirming green run.
+
+| # | Mutation | File | Named test(s) | Result | Verbatim message |
+|---|---|---|---|---|---|
+| 1 | **Deletion** — removed the `RpcJson.IsErrorBody(...)` discriminator block from `NatsStockAvailabilityChecker.CheckAsync` entirely | `NatsStockAvailabilityChecker.cs` | `NatsStockAvailabilityCheckerTests.AnRpcErrorReply_ThrowsStockCheckBusinessErrorCarryingTheRespondersCodeAndMessage_NeverANullReferenceException` (both theory cases) | FAILED (2/2) | `Assert.Throws() Failure: Exception type was not an exact match`<br>`Expected: typeof(OrderToCash.Orders.Application.Ports.StockCheckBusinessError)`<br>`Actual:   typeof(System.ArgumentNullException)`<br>`---- System.ArgumentNullException : Value cannot be null. (Parameter 'source')`<br>` at System.Linq.Enumerable.Select[TSource,TResult](...)`<br>` at OrderToCash.Orders.Infrastructure.Messaging.NatsStockAvailabilityChecker.CheckAsync(...)` |
+| 2 | Restore from backup, forced rebuild, source re-read confirmed | `NatsStockAvailabilityChecker.cs` | same | PASSED (2/2) | `Passed! - Failed: 0, Passed: 2, Skipped: 0, Total: 2` |
+| 3 | **Corruption** — the `StockCheckBusinessError` arm in `OrdersCreateErrorMapper.Map` hardcoded `"UNAVAILABLE"` instead of forwarding `e.RpcErrorCode` (discriminator intact; only the code it reads is wrong) | `OrdersCreateErrorMapper.cs` | `OrdersCreateErrorMapperTests.Map_StockCheckBusinessError_MapsToTheRespondersOwnCodeAndMessageNotInternalError` (both theory cases) | FAILED (2/2) | `Assert.Equal() Failure: Strings differ`<br>`Expected: "NOT_FOUND"`<br>`Actual:   "UNAVAILABLE"` (and identically for `"PRECONDITION_FAILED"`) |
+| 3b | Same corruption, end-to-end | `OrdersCreateAcceptanceTests.OrdersCreate_MapsAStockCheckErrorReplyToTheRespondersOwnCodeAndMessageNotInternalErrorAndPersistsNoOrder` | FAILED (1/1) | `Assert.Equal() Failure: Strings differ`<br>`Expected: "NOT_FOUND"`<br>`Actual:   "UNAVAILABLE"` |
+| 4 | Restore from backup, forced rebuild, source re-read confirmed | `OrdersCreateErrorMapper.cs` | all three above | PASSED (2/2, 2/2, 1/1) | `Passed!` on every named test |
+
+## Test counts read off real runs, this session
+
+- `dotnet test tests/Orders.UnitTests` (post-fix, pre-arming): **256/256 passed**.
+- `dotnet test tests/Orders.IntegrationTests` (post-fix, pre-arming, full project — not filtered): **68/68 passed**, 5 m 10 s.
+- `./quality.sh` (full solution, post-fix, post-restore): format check clean, build succeeded, **628/628 tests passed across all 12 test projects**, 0 failed:
+  Cqrs.UnitTests 23, SharedKernel.UnitTests 47, Contracts.UnitTests 21, Fulfillment.UnitTests 79, Orders.UnitTests 256, Seed.UnitTests 34, Notifications.IntegrationTests 7, Architecture.Tests 16, Seed.IntegrationTests 6, Billing.IntegrationTests 23, Fulfillment.IntegrationTests 48, Orders.IntegrationTests 68.
+  Coverage summary printed (not gated — feature 34 is the gate, not landed yet), line rates ranged 0.0%–97.2% across projects/assemblies collected.
+- `./init.sh`: green — `feature_list.json parsed — 50 features`, backlog tripwire clean, SDD coherence held, `progress/current.md` in lockstep.
+
+## What I could not do / left as-is
+
+- Did not touch `specs/shared/test-matrix.md` — no `R<n>` maps to this feature (a defect fix, `sdd: false`); `R31`'s existing `DONE` row is unrelated and untouched.
+- Did not add a fix for the reviewer's "Assert.Single(null)" note because I could not find a test matching that shape anywhere in `tests/Fulfillment.IntegrationTests/` or `tests/Orders.IntegrationTests/` — see the section above for the files I checked and why each one already discriminates correctly.
+- Did not touch `src/Fulfillment/` production code, per scope.
+
+## Nothing surprising beyond the four points above
+
+The one genuine surprise: on this .NET 10 / `System.Text.Json` combination the bug's own symptom is `ArgumentNullException` from `Enumerable.Select`'s null-source guard, not the `NullReferenceException` the feature's title and notes describe — `Enumerable.Select` throws `ArgumentNullException(nameof(source))` when its source is `null`, not an NRE from a later dereference. Functionally identical (a bare, untyped .NET exception reaching `OrdersCreateErrorMapper`'s catch-all and mapping to `INTERNAL_ERROR`), and the fix and its guard are unaffected either way, but the verbatim arming message is `ArgumentNullException`, recorded as observed rather than silently corrected to match the title's older wording.
+
+---
+
+# Fix round (round 2) — review REJECTED on D1 and D2
+
+Read in full before starting: `progress/review_orders_stock_check_rpc_error_discriminator.md`. Both blocking defects fixed; the four required changes done; advisory A1 closed rather than backlogged (judgement below). Scope respected: `src/Orders/Infrastructure/Messaging/`, `src/Orders/Presentation/Rpc/`, `src/Orders/Application/Ports/IStockAvailabilityChecker.cs` (its XML doc only), `tests/Orders.UnitTests/`, `tests/Orders.IntegrationTests/`, `tests/Fulfillment.IntegrationTests/` (D1 only), and `feature_list.json` id 46's `status` line only. `src/Fulfillment/` production code untouched throughout.
+
+## D1 — how the "clear" sweep was reached, and why it was wrong
+
+**Fixed.** `tests/Fulfillment.IntegrationTests/StockCheckTests.cs`'s `FS22_AnswersAnUnknownProductWithAvailableZeroAndSufficientFalse_NeverWithAnRpcError` now discriminates the raw reply body explicitly — `JsonDocument.Parse` plus a `TryGetProperty("code")`/`TryGetProperty("message")` check, the same shape `RpcJson.IsErrorBody` uses on the Orders side — and asserts `Assert.False(looksLikeAnRpcError, …)` **before** the typed `Deserialize<StockCheckReplyPayload>` call. The negative the test's own name promises is now asserted by reading the body, not left to `Assert.Single` throwing on a null `Lines` if the shape ever changed.
+
+**Diagnosis of how the first pass reported this file clear, verbatim from the earlier report:** *"I read every test in `tests/Fulfillment.IntegrationTests/` that deserialises an RPC reply on this responder … Every test that exercises an actual `RpcError`-shaped reply already discriminates by reading `.Code` … neither deserialises into the typed success shape first. I found no test currently in the tree that identifies an error reply by a null dereference."* The search was real — the files listed were genuinely read — but it asked the wrong question. It looked for a test **exercising an actual `RpcError` reply** and checked whether *that* class of test discriminates; `FS22` was excluded from the search's own positive set because it does **not** exercise an `RpcError` reply — it exercises a **success** reply and asserts the **absence** of an `RpcError` shape. That is a different claim with an identical failure mode: a negative assertion "never X" is just as vulnerable to being proven only by an accidental throw as a positive assertion "is X, and read its fields" is vulnerable to skipping the discrimination step. The sweep partitioned tests by "does this test's *documented interaction* involve an `RpcError`" rather than by "does this test's *assertion code path* run through a value that could be null if the shape were an `RpcError`" — the second partition is the one this feature's own bug lives in, and `FS22` is on the wrong side of the first but the right side of the second.
+
+**What this has in common with the previous feature's sweep-reported-clear (feature 17's advisory A6, `progress/history.md`'s Phase-9 note):** both were searches for an *absence* — "no test does X" — conducted by listing files and reading them once, with no independent construction of a candidate that should trip the search if it were wrong. A6 was a schema-and-test co-drift claim; D1 is a null-dereference claim. In both cases the search was executed faithfully and its own stated criterion was satisfied — the defect was in the criterion, not the execution. The actionable form for future sweeps of this shape: after stating "I found none matching X," construct one candidate that a correct search *should* have found (here: a test asserting a negative about reply shape) and check it lands in the search's own positive list before reporting clear. `FS22` would have failed that check on the first pass.
+
+## D2 — the wire-boundary clamp, and the #7 comparison
+
+**Fixed.** `OrdersCreateErrorMapper.MapStockCheckBusinessError` now validates `StockCheckBusinessError.RpcErrorCode` against a `_contractRpcErrorCodes` closed set (the same twelve values `asyncapi.yaml`'s `RpcError.code` enum declares) before writing it to the wire. A recognised code still passes through unchanged (the behaviour bullet 2 asks for). An unrecognised code is clamped to `UNAVAILABLE`, with the responder's original code preserved — visibly — in `details.responderCode`; the responder's own message is unaffected either way, because `ResponderMessage` was never enum-constrained in the first place.
+
+**Ported-idiom ledger entry, in the form the ledger asks for:**
+
+> #7 relied on collapsing **every** `RpcError`-shaped `fulfillment.stock.check` reply to `StockCheckTransportError`, unconditionally (`nats-stock-availability.adapter.ts:98-99`: `throw new StockCheckTransportError(this.subject, \`responder returned ${body.code}: ${body.message}\`)`), which `rpc-error-mapper.ts:52-58` maps to `UNAVAILABLE` — so an out-of-enum code reaching #7's own `orders.create` wire was structurally impossible; #7 never distinguished a responder's typed refusal from a transport failure at all. In #8 that same impossibility is supplied by a explicit clamp in `OrdersCreateErrorMapper.MapStockCheckBusinessError` — a `HashSet<string>` containment check against the twelve-value enum, falling back to `UNAVAILABLE` (#7's own choice for the identical "responder said something this side does not recognise" case) when the check fails — guarded by `OrdersCreateErrorMapperTests.Map_StockCheckBusinessError_WithACodeOutsideTheContractsClosedEnum_ClampsToUnavailableAndPreservesTheOriginalCodeInDetails` and `OrdersCreateErrorMapperTests.Map_StockCheckBusinessError_NeverEmitsACodeOutsideAsyncApisClosedRpcErrorEnum`, plus the end-to-end `OrdersCreateAcceptanceTests.OrdersCreate_ClampsAnOutOfContractStockCheckErrorCodeToUnavailableAndPreservesTheOriginalCodeInDetails`.
+
+Unlike #7, #8 does **not** collapse *recognised* codes — `NOT_FOUND`, `PRECONDITION_FAILED` and the rest of the closed set still pass through as the responder's own code, which is the sharper terminal-versus-transient signal decision 2 of the original report chose and the review accepted on its merits. The divergence from #7 is narrower than the original report implied: #8 matches #7's behaviour exactly for the *unrecognised*-code case (both answer `UNAVAILABLE`) and differs only for *recognised* codes, where #8 is more informative and #7 cannot be, because #7's adapter never reads `body.code` as anything other than opaque text for a log message.
+
+## Required changes, one by one
+
+1. **Wire-boundary clamp** — done, `OrdersCreateErrorMapper.MapStockCheckBusinessError`, described above.
+2. **Divergence recorded with citation** — done, the ledger paragraph above, also in `OrdersCreateErrorMapper.MapStockCheckBusinessError`'s own XML doc.
+3. **`FS22` fixed and the record corrected** — done; this section replaces the earlier "searched, not found as described" section's conclusion for this specific test (the rest of that section's file-by-file search stands — every *other* file checked there genuinely does discriminate first).
+4. **`./quality.sh` re-run, counts read off the run** — see below.
+
+## Advisory A1 — judgement: closed here, not backlogged
+
+**Closed in this round**, not deferred to backlog id 52. Reasoning: A1 is a gap in the exact file and exact method this feature already has open (`NatsStockAvailabilityChecker.CheckAsync`), it is the reviewer's own characterisation ("a one-`try` change… I would take it now"), and backlog id 52 exists to sweep the *other*, not-yet-touched pre-ledger boundaries (the Kafka consumer envelope decode, the outbox relay's payload read-and-republish, the Mongo projector's read path, and other services' RPC clients/responders) — closing A1 here removes one item from that sweep's scope rather than duplicating it. `NatsStockAvailabilityChecker.CheckAsync` now wraps the discriminate-then-deserialise block in `try { … } catch (JsonException) { throw new StockCheckTransportError(RpcSubjects.StockCheck, "reply payload was not valid JSON."); }`, mirroring #7's `nats-stock-availability.adapter.ts` guard the review cited. A new stand-in factory, `StandInFulfillmentStockCheckResponder.StartMalformedAsync`, answers with `"not-json-at-all"u8.ToArray()` (still `Data is not null`, so the readiness probe is unaffected); `NatsStockAvailabilityCheckerTests.AMalformedNonJsonReply_ThrowsStockCheckTransportError_NeverABareJsonException` proves it over a real broker.
+
+**Note for the leader on backlog id 52's own text:** its `notes` field states A1 is "still absent" as part of the justification for the sweep. That specific instance is no longer absent after this round; the sweep's justification and scope (the other boundaries: Kafka envelope decode, outbox relay, projector read path, other services' RPC seams) stand regardless, since A1 was never the only evidence cited for it — but the sentence itself is now stale. I have not edited `feature_list.json` beyond id 46's status line, per scope; flagging the wording for whoever next touches id 52.
+
+## Arming — both mutation families, plus the contract probe, all forced-rebuilt
+
+Every restore below used a `cp`-backup in the scratchpad (never `git checkout --`), `dotnet build --no-incremental` after every restore, a source re-read confirming the restore, and a confirming green run.
+
+| # | Guard | Mutation | Family | File | Named test(s) | Result | Verbatim message |
+|---|---|---|---|---|---|---|---|
+| 1 | D2 clamp | Removed the `_contractRpcErrorCodes.Contains(code)` check entirely — raw code forwarded | Deletion | `OrdersCreateErrorMapper.cs` | `Map_StockCheckBusinessError_NeverEmitsACodeOutsideAsyncApisClosedRpcErrorEnum` (2 of 5 theory cases), `Map_StockCheckBusinessError_WithACodeOutsideTheContractsClosedEnum_ClampsToUnavailableAndPreservesTheOriginalCodeInDetails` | FAILED (3/16) | `Assert.Contains() Failure: Item not found in set` (`"NOT_A_CONTRACT_CODE"`, `"stock.check.timeout"`); `Assert.Equal() Failure: Strings differ — Expected: "UNAVAILABLE", Actual: "NOT_A_CONTRACT_CODE"` |
+| 1b | D2 clamp, end-to-end (the review's own P5 reproduction) | Same deletion | Deletion | `OrdersCreateErrorMapper.cs` | `OrdersCreateAcceptanceTests.OrdersCreate_ClampsAnOutOfContractStockCheckErrorCodeToUnavailableAndPreservesTheOriginalCodeInDetails` | FAILED (1/1) | `Assert.Equal() Failure: Strings differ — Expected: "UNAVAILABLE", Actual: "NOT_A_CONTRACT_CODE"` |
+| 2 | Restore, forced rebuild, source re-read confirmed | — | — | `OrdersCreateErrorMapper.cs` | all of the above | PASSED (16/16 unit, 1/1 integration) | `Passed!` |
+| 3 | D2 fallback | Fallback value changed from `"UNAVAILABLE"` to `"INTERNAL_ERROR"` — clamp's containment check intact, in-set-but-wrong fallback | Corruption | `OrdersCreateErrorMapper.cs` | `Map_StockCheckBusinessError_WithACodeOutsideTheContractsClosedEnum_ClampsToUnavailableAndPreservesTheOriginalCodeInDetails` | FAILED (1/16) | `Assert.Equal() Failure: Strings differ — Expected: "UNAVAILABLE", Actual: "INTERNAL_ERROR"` — the `Theory` pinning containment alone did **not** catch this mutation (`INTERNAL_ERROR` is itself a valid contract code), confirming the dedicated fallback-value test is the one doing the work here |
+| 4 | Restore, forced rebuild, source re-read confirmed | — | — | `OrdersCreateErrorMapper.cs` | same | PASSED (16/16) | `Passed!` |
+| 5 | A1 guard | Removed the `try { … } catch (JsonException)` wrapper around the discriminate-then-deserialise block entirely | Deletion | `NatsStockAvailabilityChecker.cs` | `NatsStockAvailabilityCheckerTests.AMalformedNonJsonReply_ThrowsStockCheckTransportError_NeverABareJsonException` | FAILED (1/3) | `Assert.Throws() Failure: Exception type was not an exact match — Expected: StockCheckTransportError, Actual: System.Text.Json.JsonReaderException` (`'not-json-at-all' is an invalid JSON literal…`) — the exact uncaught-parser-exception shape A1 exists to close |
+| 6 | Restore, forced rebuild, source re-read confirmed | — | — | `NatsStockAvailabilityChecker.cs` | same, plus the full `NatsStockAvailabilityCheckerTests` | PASSED (3/3) | `Passed!` |
+
+Rows 1–4 satisfy the non-negotiable: an out-of-enum code is made impossible on the wire, and a guard fails if that containment (row 1/1b, deletion) or its specific chosen fallback (row 3, corruption) is removed — including the end-to-end contract probe the review's own P5 exercised. Row 5 additionally arms the A1 closure by deletion; a corruption family was not built for A1 because the guard is a single `try`/`catch` with one meaningful mutation (delete it) rather than a value computed two ways — the same reasoning the review applied when it judged A1 a one-line change rather than a design decision with an edge to defend.
+
+## Verification run, this session, figures read off the runs
+
+- `dotnet test tests/Orders.UnitTests` (post-fix): **262/262 passed** (256 baseline + 6 new: the 5-case out-of-enum `Theory` + the fallback-and-details `Fact`).
+- `dotnet test tests/Orders.IntegrationTests` (post-fix, full project): **70/70 passed**, 5 m 17 s (68 baseline + the contract-clamp end-to-end test + the malformed-JSON checker test).
+- `dotnet test tests/Fulfillment.IntegrationTests` (post-fix, full project): **48/48 passed**, 2 m 50 s (unchanged count — `FS22` was corrected in place, not added to).
+- `./quality.sh` (full solution, this session, exit 0): format check clean, build succeeded, **all 12 test projects passed, 0 failed** — `SharedKernel.UnitTests` 47, `Cqrs.UnitTests` 23, `Contracts.UnitTests` 21, `Fulfillment.UnitTests` 79, `Orders.UnitTests` 262, `Seed.UnitTests` 34, `Notifications.IntegrationTests` 7, `Architecture.Tests` 16, `Seed.IntegrationTests` 6, `Billing.IntegrationTests` 23, `Fulfillment.IntegrationTests` 48, `Orders.IntegrationTests` 70 — **total 636/636**. Coverage summary printed per assembly (not gated — feature 34's gate has not landed), line rates 0.0%–97.2%.
+- `./init.sh` (run twice this session, before and after the `feature_list.json` edit): exit 0 both times — `feature_list.json parsed — 51 features`, 1 feature `in_progress` before the edit, backlog tripwire clean, SDD coherence held, `progress/current.md` in lockstep.
+- `dotnet format OrderToCash.sln --verify-no-changes`: clean, after renaming the new private field to `_contractRpcErrorCodes` (the `IDE1006` naming-rule failure the first `quality.sh` attempt caught — private static fields need the `_camelCase` prefix per this repository's `.editorconfig`, same convention as `NatsSagaCommandsAdapter`'s own `_selfProducedFacts`/`_rows`).
+
+## Files touched this round
+
+- `src/Orders/Presentation/Rpc/OrdersCreateErrorMapper.cs` — the clamp (D2).
+- `src/Orders/Application/Ports/IStockAvailabilityChecker.cs` — one doc-comment sentence pointing at where the clamp now lives.
+- `src/Orders/Infrastructure/Messaging/NatsStockAvailabilityChecker.cs` — the A1 `try`/`catch (JsonException)`.
+- `tests/Orders.UnitTests/OrdersCreateErrorMapperTests.cs` — the closed-set `Theory` and the fallback-and-details `Fact`.
+- `tests/Orders.IntegrationTests/OrdersCreateAcceptanceTests.cs` — the end-to-end contract-clamp test.
+- `tests/Orders.IntegrationTests/StandInFulfillmentStockCheckResponder.cs` — `StartMalformedAsync`.
+- `tests/Orders.IntegrationTests/NatsStockAvailabilityCheckerTests.cs` — the malformed-JSON test.
+- `tests/Fulfillment.IntegrationTests/StockCheckTests.cs` — `FS22`'s corrected assertion (D1).
+- `feature_list.json` — id 46's `status` line only, `in_progress` → `in_review`; diff read and confirmed to contain only that changed line (the surrounding id-52 block in the diff predates this session).
+- `specs/shared/test-matrix.md` — untouched, confirmed again: no `R<n>` maps to this feature (defect fix, `sdd: false`).

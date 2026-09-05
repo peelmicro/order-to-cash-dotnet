@@ -18,6 +18,21 @@ namespace OrderToCash.Orders.Presentation.Rpc;
 /// </summary>
 public static class OrdersCreateErrorMapper
 {
+    /// <summary>
+    /// <c>asyncapi.yaml</c> <c>components.schemas.RpcError.code</c>'s closed
+    /// twelve-value enum, mirrored here so this mapper can validate BEFORE
+    /// writing to the wire — the same discipline
+    /// <c>NatsSagaCommandsAdapter.IsTerminalRpcErrorCode</c> already applies
+    /// one file over (review D2, round 2): an external string must not
+    /// reach a wire enum field unvalidated.
+    /// </summary>
+    private static readonly HashSet<string> _contractRpcErrorCodes =
+    [
+        "VALIDATION_FAILED", "NOT_FOUND", "CONFLICT", "PRECONDITION_FAILED",
+        "ORDER_NOT_CANCELLABLE", "STOCK_UNAVAILABLE", "INVOICE_NOT_PAYABLE",
+        "PAYMENT_MISMATCH", "DOMAIN_ERROR", "INTERNAL_ERROR", "UNAVAILABLE", "TIMEOUT",
+    ];
+
     public static RpcErrorPayload Map(Exception error, DateTimeOffset occurredAt) => error switch
     {
         // review A2 — a request that does not even satisfy the wire schema
@@ -44,6 +59,15 @@ public static class OrdersCreateErrorMapper
             new Dictionary<string, object?> { ["subject"] = e.Subject },
             OccurredAt: occurredAt),
 
+        // Feature 46: the responder answered with its OWN RpcError — code
+        // and message pass through unchanged rather than collapsing to
+        // INTERNAL_ERROR (the bug this case fixes; see
+        // NatsStockAvailabilityChecker's discriminator). Review D2 (round
+        // 2): the pass-through is only safe while the responder's code is
+        // itself one of the twelve the wire enum permits, so it is clamped
+        // below rather than forwarded raw.
+        StockCheckBusinessError e => MapStockCheckBusinessError(e, occurredAt),
+
         ReferenceDataNotFoundError e => new RpcErrorPayload(
             "NOT_FOUND",
             e.Message,
@@ -68,4 +92,38 @@ public static class OrdersCreateErrorMapper
 
         _ => new RpcErrorPayload("INTERNAL_ERROR", error.Message, OccurredAt: occurredAt),
     };
+
+    /// <summary>
+    /// Review D2 (round 2), the ported-idiom ledger's own form: #7's
+    /// <c>nats-stock-availability.adapter.ts:98-99</c> collapses EVERY
+    /// <c>RpcError</c>-shaped reply to <c>StockCheckTransportError</c>,
+    /// which <c>rpc-error-mapper.ts:52-58</c> maps to <c>UNAVAILABLE</c> —
+    /// so an out-of-enum code reaching #7's own <c>orders.create</c> wire
+    /// was structurally impossible there. #8 forwards the responder's own
+    /// code instead, for the sharper terminal-versus-transient signal that
+    /// gives the caller, so here that same impossibility is supplied by
+    /// this clamp: a code the responder sent that is not one of
+    /// <see cref="_contractRpcErrorCodes"/>'s twelve values is never written
+    /// to the wire's <c>code</c> field. It falls back to
+    /// <c>UNAVAILABLE</c> — #7's own choice for the identical
+    /// "responder answered something this side does not recognise" case —
+    /// while the responder's original code stays visible, unlike #7, in
+    /// <c>details.responderCode</c>, and the responder's own message is
+    /// still the wire message either way (that half of "visible" needed no
+    /// clamp: <see cref="StockCheckBusinessError.ResponderMessage"/> was
+    /// never enum-constrained).
+    /// </summary>
+    private static RpcErrorPayload MapStockCheckBusinessError(StockCheckBusinessError e, DateTimeOffset occurredAt)
+    {
+        var details = new Dictionary<string, object?> { ["subject"] = e.Subject };
+        var code = e.RpcErrorCode;
+
+        if (!_contractRpcErrorCodes.Contains(code))
+        {
+            details["responderCode"] = code;
+            code = "UNAVAILABLE";
+        }
+
+        return new RpcErrorPayload(code, e.ResponderMessage, details, OccurredAt: occurredAt);
+    }
 }

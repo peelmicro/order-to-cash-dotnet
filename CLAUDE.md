@@ -184,6 +184,10 @@ Dependencies point **inwards**: presentation → application → domain. Infrast
 
   Both features armed their **flagged** tasks perfectly — 11 of 11 and 12 of 12. The defect is not carelessness, it is that the arming discipline attaches to the flag rather than to the claim, so a task whose prose says *exactly one row* gets written, ticked and never mutated because nobody marked it. **A tick is not evidence the assertion exists.** If a task asserts a count, an identity, an ordering or an absence, it is a guard, and a guard is not done until it has been seen to fail.
 
+- **A negative claim about the repository is a search result, not a reading.** *"No test does X"*, *"no instrument does Y"*, *"nothing else has this shape"* — a claim of absence is reportable only as **(a)** the exact command that enumerates the candidate set, **(b)** its complete output, and **(c)** one classification line per hit. Prose sweeps have been reported clear and disproved within minutes **three times** (feature 17, then feature 46 twice), each time by someone who ran a command instead of re-reading. A missed hit must be visible as an **unclassified line**, not invisible as a sentence.
+
+  The decisive evidence is that the third miss was already written down: the instance the sweep failed to mention was sitting in `progress/history.md`'s own Phase-9 note, committed eleven minutes before that feature started. **Recording something in prose does not stop a prose sweep from missing it** — only enumeration does. And the corollary that makes this cheap rather than bureaucratic: the enumerating command is usually one `grep`, and it is the same artefact whether the answer is "clear" or "three hits".
+
 - Coverage gates: **≥80% domain layer, ≥60% overall**, enforced by coverlet in `./quality.sh` regardless of SonarQube — and **verified to fail when breached**. #7 found its gate had been inert for twenty phases.
 - Every EARS requirement `R<n>` maps to at least one named test in `specs/shared/test-matrix.md`. The ids are #7's: reusing one is a claim that the same requirement is satisfied here.
 

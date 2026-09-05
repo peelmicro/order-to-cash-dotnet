@@ -55,6 +55,79 @@ public sealed class OrdersCreateErrorMapperTests
         Assert.Equal("fulfillment.stock.check", payload.Details!["subject"]);
     }
 
+    /// <summary>
+    /// Feature 46 (`R46`): the responder's OWN code and message pass through
+    /// to the wire unchanged — this is what "a meaningful RPC error rather
+    /// than INTERNAL_ERROR" means for <c>OrdersCreateErrorMapper</c>. Two
+    /// distinct codes on purpose: a mapper that ignored
+    /// <see cref="StockCheckBusinessError.RpcErrorCode"/> and hardcoded a
+    /// single sentinel would still pass a single-code test.
+    /// </summary>
+    [Theory]
+    [InlineData("NOT_FOUND", "product ZZZ is not known to Fulfillment")]
+    [InlineData("PRECONDITION_FAILED", "stock item is locked for replenishment")]
+    public void Map_StockCheckBusinessError_MapsToTheRespondersOwnCodeAndMessageNotInternalError(string responderCode, string responderMessage)
+    {
+        var error = new StockCheckBusinessError("fulfillment.stock.check", responderCode, responderMessage);
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal(responderCode, payload.Code);
+        Assert.NotEqual("INTERNAL_ERROR", payload.Code);
+        Assert.Equal(responderMessage, payload.Message);
+        Assert.Equal("fulfillment.stock.check", payload.Details!["subject"]);
+    }
+
+    /// <summary>
+    /// Review D2 (round 2), required change 1: a <c>[Theory]</c> pinning the
+    /// closed set — including at least one code outside
+    /// <c>asyncapi.yaml</c>'s twelve-value <c>RpcError.code</c> enum — and
+    /// asserting the mapper NEVER writes anything else to the wire.
+    /// </summary>
+    private static readonly HashSet<string> _contractRpcErrorCodes =
+    [
+        "VALIDATION_FAILED", "NOT_FOUND", "CONFLICT", "PRECONDITION_FAILED",
+        "ORDER_NOT_CANCELLABLE", "STOCK_UNAVAILABLE", "INVOICE_NOT_PAYABLE",
+        "PAYMENT_MISMATCH", "DOMAIN_ERROR", "INTERNAL_ERROR", "UNAVAILABLE", "TIMEOUT",
+    ];
+
+    [Theory]
+    [InlineData("NOT_FOUND")]
+    [InlineData("PRECONDITION_FAILED")]
+    [InlineData("UNAVAILABLE")]
+    [InlineData("NOT_A_CONTRACT_CODE")]
+    [InlineData("stock.check.timeout")]
+    public void Map_StockCheckBusinessError_NeverEmitsACodeOutsideAsyncApisClosedRpcErrorEnum(string responderCode)
+    {
+        var error = new StockCheckBusinessError("fulfillment.stock.check", responderCode, "some message");
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Contains(payload.Code, _contractRpcErrorCodes);
+    }
+
+    /// <summary>
+    /// Review D2 (round 2): the specific fallback the clamp chooses, and the
+    /// original code preserved — visibly — for a caller that wants it. Kills
+    /// BOTH mutation families in one assertion set: deleting the clamp makes
+    /// <c>payload.Code</c> the raw, out-of-enum string; corrupting the
+    /// fallback to anything other than <c>UNAVAILABLE</c> (whether or not the
+    /// corrupted value is itself in the closed set) fails the first
+    /// assertion below.
+    /// </summary>
+    [Fact]
+    public void Map_StockCheckBusinessError_WithACodeOutsideTheContractsClosedEnum_ClampsToUnavailableAndPreservesTheOriginalCodeInDetails()
+    {
+        var error = new StockCheckBusinessError("fulfillment.stock.check", "NOT_A_CONTRACT_CODE", "some odd responder message");
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal("UNAVAILABLE", payload.Code);
+        Assert.Equal("some odd responder message", payload.Message);
+        Assert.Equal("NOT_A_CONTRACT_CODE", payload.Details!["responderCode"]);
+        Assert.Equal("fulfillment.stock.check", payload.Details!["subject"]);
+    }
+
     [Fact]
     public void Map_ReferenceDataNotFoundError_MapsToNotFoundWithFieldAndValue()
     {

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using OrderToCash.Orders.Application.Ports;
@@ -118,7 +117,7 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
             throw new SagaCommandTimeoutError(subject, timeoutMs);
         }
 
-        if (IsRpcErrorBody(reply.Data))
+        if (RpcJson.IsErrorBody(reply.Data))
         {
             var error = RpcJson.Deserialize<RpcErrorPayload>(reply.Data);
 
@@ -155,22 +154,6 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
             or "PAYMENT_MISMATCH" or "DOMAIN_ERROR" => true,
         _ => false, // TIMEOUT, UNAVAILABLE, INTERNAL_ERROR, and anything outside the closed set.
     };
-
-    /// <summary>
-    /// The <c>RpcError</c> schema's two REQUIRED fields (<c>code</c>,
-    /// <c>message</c>) appear together on no success reply payload this
-    /// adapter deserialises (design.md §6.1's ten reply shapes never pair
-    /// them) — a cheap, generic discriminator over the raw JSON that needs
-    /// no second deserialisation attempt-and-catch.
-    /// </summary>
-    private static bool IsRpcErrorBody(ReadOnlyMemory<byte> data)
-    {
-        using var document = JsonDocument.Parse(data);
-        var root = document.RootElement;
-        return root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty("code", out _)
-            && root.TryGetProperty("message", out _);
-    }
 
     private static RawRequester BuildRequester(INatsConnection connection) =>
         (subject, payload, headers, replyOpts, cancellationToken) =>

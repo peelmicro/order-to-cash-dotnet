@@ -621,7 +621,7 @@
       "phase": 9,
       "title": "NatsStockAvailabilityChecker: an RpcError reply body must map to a typed error, not deserialise to a null Lines and throw NullReferenceException",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "an RpcError-shaped reply to fulfillment.stock.check is discriminated before the typed deserialisation, exactly as NatsSagaCommandsAdapter does for saga commands",
         "the resulting error carries the responder's own code and message, and orders.create maps it to a meaningful RPC error rather than INTERNAL_ERROR",
@@ -695,9 +695,41 @@
       "acceptance": [
         "both instruments derive their expected property names by parsing specs/shared/asyncapi.yaml — the pattern RpcSubjectsTests and OrdersFactTopicTests already use — covering every fulfillment.stock.* and saga-command request and reply schema",
         "armed: editing one schema's property name in a scratch copy makes the named test fail",
-        "the three documents' sentences are made true or corrected — design.md §6.3, tasks.md C3, and the test's own XML doc"
+        "the three documents' sentences are made true or corrected — design.md §6.3, tasks.md C3, and the test's own XML doc",
+        "also derives asyncapi.yaml's twelve-value RpcError.code enum by parsing the spec, and asserts the three hand-retyped copies of it agree with the parsed set — OrdersCreateErrorMapper._contractRpcErrorCodes, its test's own copy, and NatsSagaCommandsAdapter's terminal-code set"
       ],
-      "notes": "Found by feature 17's review round 3 (advisory A6). NOT a defect today: the review parsed all sixteen schemas and confirmed every key set matches, and the retyped lists do catch unilateral drift of the code (a renamed reply property was killed by probe). What is missing is the correlated authoring error — a schema and a test changed together, wrongly. Filed because feature 19 copies this instrument, and the false sentence, into three more services. Cheapest at the relay-family consolidation."
+      "notes": "Found by feature 17's review round 3 (advisory A6). NOT a defect today: the review parsed all sixteen schemas and confirmed every key set matches, and the retyped lists do catch unilateral drift of the code (a renamed reply property was killed by probe). What is missing is the correlated authoring error — a schema and a test changed together, wrongly. Filed because feature 19 copies this instrument, and the false sentence, into three more services. Cheapest at the relay-family consolidation. Widened by feature 46's review round 2: the D2 fix added a THIRD hand-retyped copy of the same enum, and deleting one value from the mapper's set left all 262 unit tests green because the test holds its own retyped copy. The cure carried the disease."
+    },
+    {
+      "id": 52,
+      "name": "retroactive_ported_idiom_ledger_decode_boundaries",
+      "phase": 10,
+      "title": "Retroactive ported-idiom ledger for the value-crossing boundaries in services ported before the ledger was adopted",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "every value-crossing boundary in the pre-ledger services is walked: each NATS RPC client reply decode, each RPC responder request decode, the Kafka consumer envelope decode, the outbox relay's payload read-and-republish, and the Mongo projector's read path",
+        "for each boundary, #7's counterpart is read and one question answered in one line: what did #7's version guarantee here, and what supplies that in #8",
+        "output is a retroactive ledger section per service, plus a SEPARATE backlog entry for every gap found",
+        "NOTHING is fixed in place — a fix inside a sweep is a change nobody reviewed against a spec",
+        "the read is time-boxed; a boundary taking more than ten minutes to compare is itself recorded as a finding"
+      ],
+      "notes": "Recommended by feature 46's review, which produced the evidence that decides it. Feature 46 was dispatched specifically to port a missing guard from #7's stock-availability adapter; the implementer read that file; and a SECOND missing guard from the same thirty-line method (#7's malformed-JSON catch) went unported until the fix round closed it in-feature — advisory A1. Two unported guards in one method, one still unported after a dedicated repair pass, says the class is denser than its four known instances and that reading a file for one gap does not surface the next. The class has a cheap signature: every instance so far sits at a boundary where a value crosses into or out of the process, and those sites are enumerable rather than open-ended — roughly eight in the shipped services. The ledger protects new translations only; four services were ported before it existed."
+    },
+    {
+      "id": 53,
+      "name": "test_reply_shape_assertions_that_only_throw",
+      "phase": 10,
+      "title": "Three integration tests detect a wrong-shaped RPC reply only by a null dereference, or not at all",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "tests/Orders.IntegrationTests/OrdersCreateAcceptanceTests.cs:159 asserts something: it deserialises an OrdersCreateReplyPayload and asserts NOTHING — the comment \"// the request succeeded\" is the whole claim, and an RpcError body constructs an all-defaults object without throwing",
+        "tests/Fulfillment.IntegrationTests/StockReplenishTests.cs:52 and StockListTests.cs:27 assert the reply's own discriminating field before touching a collection that is null for any error body",
+        "each uses the shape FS22 adopted after feature 46's D1 — read the body, then deserialise",
+        "armed: making the responder answer a real RpcError makes each named test fail on its own assertion rather than on a dereference"
+      ],
+      "notes": "Found by feature 46's review round 2 with ONE grep over every typed deserialiser call site in tests/, after a prose sweep of the same question had been reported clear. Nine other sites pass the same check because they open with an Assert.Equal on a string field. Not a production defect — the responders answer correctly, and each test does fail today, opaquely or (in OrdersCreateAcceptanceTests' case) not at all."
     },
     {
       "id": 44,

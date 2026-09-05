@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using OrderToCash.Orders.Application.Ports;
@@ -57,10 +58,38 @@ public sealed class NatsStockAvailabilityChecker(INatsConnection connection, IOp
             throw new StockCheckTimeoutError(RpcSubjects.StockCheck, options.Value.StockCheckTimeoutMs);
         }
 
-        var payload = RpcJson.Deserialize<StockCheckReplyPayload>(reply.Data);
+        try
+        {
+            // Feature 46: discriminate BEFORE the typed deserialisation
+            // below — exactly the shape NatsSagaCommandsAdapter.SendAsync
+            // uses (feature 42). Without this, an RpcError-shaped reply
+            // deserialises into StockCheckReplyPayload with a null Lines,
+            // and the LINQ .Select on the next line throws a bare
+            // NullReferenceException that reaches the caller as an opaque
+            // INTERNAL_ERROR rather than the responder's own, meaningful
+            // code.
+            if (RpcJson.IsErrorBody(reply.Data))
+            {
+                var error = RpcJson.Deserialize<RpcErrorPayload>(reply.Data);
+                throw new StockCheckBusinessError(RpcSubjects.StockCheck, error.Code, error.Message);
+            }
 
-        return new StockAvailabilityResult(
-            payload.Available,
-            payload.Lines.Select(line => new StockAvailabilityLineResult(line.ProductCode, line.Requested, line.Available, line.Sufficient)).ToList());
+            var payload = RpcJson.Deserialize<StockCheckReplyPayload>(reply.Data);
+
+            return new StockAvailabilityResult(
+                payload.Available,
+                payload.Lines.Select(line => new StockAvailabilityLineResult(line.ProductCode, line.Requested, line.Available, line.Sufficient)).ToList());
+        }
+        catch (JsonException)
+        {
+            // Advisory A1 (round 2): a reply body that is not valid JSON at
+            // all — RpcJson.IsErrorBody's own JsonDocument.Parse, or either
+            // typed Deserialize call below it, throws JsonException on a
+            // garbled body. #7's nats-stock-availability.adapter.ts guards
+            // this exact seam ("reply payload was not valid JSON") rather
+            // than letting the raw parse exception reach the caller as an
+            // opaque INTERNAL_ERROR with no transport-level explanation.
+            throw new StockCheckTransportError(RpcSubjects.StockCheck, "reply payload was not valid JSON.");
+        }
     }
 }

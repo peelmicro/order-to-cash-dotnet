@@ -224,6 +224,129 @@ public sealed class OrdersCreateAcceptanceTests(NatsContainerFixture nats, MsSql
     }
 
     /// <summary>
+    /// Feature 46 (`orders_stock_check_rpc_error_discriminator`): when
+    /// Fulfillment's own <c>fulfillment.stock.check</c> responder answers
+    /// with an <c>RpcError</c> — not a timeout, not "no responder", a real
+    /// typed refusal from ITS OWN domain — <c>orders.create</c> must answer
+    /// the caller with THAT code and message, never the opaque
+    /// <c>INTERNAL_ERROR</c> a bare <c>NullReferenceException</c> produced
+    /// before this fix (<c>NatsStockAvailabilityChecker</c> deserialising an
+    /// error body into the typed success payload's null <c>Lines</c>).
+    /// </summary>
+    [Fact]
+    public async Task OrdersCreate_MapsAStockCheckErrorReplyToTheRespondersOwnCodeAndMessageNotInternalErrorAndPersistsNoOrder()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_accept8_{Guid.NewGuid():N}");
+        await using (var seedDb = mssql.CreateDbContext(connectionString))
+        {
+            await seedDb.Database.MigrateAsync();
+            await OrderPersistenceTestSupport.SeedReferenceDataAsync(seedDb);
+        }
+
+        using var host = BuildHost(connectionString);
+        await host.StartAsync();
+        try
+        {
+            await using var fulfillment = await StandInFulfillmentStockCheckResponder.StartErrorAsync(
+                nats.Url, "NOT_FOUND", "product is not known to Fulfillment", CancellationToken.None);
+            await using var caller = new NatsConnection(new NatsOpts { Url = nats.Url });
+            await WaitUntilOrdersCreateReachableAsync(caller, CancellationToken.None);
+
+            var request = new OrdersCreateRequestPayload(
+                RequestId: null,
+                OrderPersistenceTestSupport.RetailerCode,
+                OrderPersistenceTestSupport.CompanyCode,
+                OrderPersistenceTestSupport.Currency,
+                Lines: [new OrdersCreateRequestLine(OrderPersistenceTestSupport.ProductCode1, 1, UnitPrice: 1_000, LineDiscount: null)],
+                OrderDiscount: null,
+                Notes: null);
+
+            var replyMsg = await caller.RequestAsync<byte[], byte[]>(
+                RpcSubjects.OrdersCreate,
+                RpcJson.Serialize(request),
+                replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromSeconds(10) },
+                cancellationToken: CancellationToken.None);
+
+            Assert.NotNull(replyMsg.Data);
+            var error = RpcJson.Deserialize<RpcErrorPayload>(replyMsg.Data!);
+
+            Assert.Equal("NOT_FOUND", error.Code);
+            Assert.NotEqual("INTERNAL_ERROR", error.Code);
+            Assert.Equal("product is not known to Fulfillment", error.Message);
+
+            await using var assertDb = mssql.CreateDbContext(connectionString);
+            Assert.Equal(0, await assertDb.Orders.CountAsync());
+            Assert.Equal(0, await assertDb.OutboxMessages.CountAsync());
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    /// <summary>
+    /// Review D2 (round 2), probe P5's end-to-end reproduction: a responder
+    /// answering a code outside <c>asyncapi.yaml</c>'s twelve-value
+    /// <c>RpcError.code</c> enum must never reach the real
+    /// <c>orders.create</c> wire reply as-is — it clamps to
+    /// <c>UNAVAILABLE</c>, with the responder's original code preserved,
+    /// visibly, in <c>details.responderCode</c>. Before the fix this
+    /// produced exactly <c>"NOT_A_CONTRACT_CODE"</c> on the wire (the
+    /// review's own probe); this test is that probe, promoted into the
+    /// suite.
+    /// </summary>
+    [Fact]
+    public async Task OrdersCreate_ClampsAnOutOfContractStockCheckErrorCodeToUnavailableAndPreservesTheOriginalCodeInDetails()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_accept9_{Guid.NewGuid():N}");
+        await using (var seedDb = mssql.CreateDbContext(connectionString))
+        {
+            await seedDb.Database.MigrateAsync();
+            await OrderPersistenceTestSupport.SeedReferenceDataAsync(seedDb);
+        }
+
+        using var host = BuildHost(connectionString);
+        await host.StartAsync();
+        try
+        {
+            await using var fulfillment = await StandInFulfillmentStockCheckResponder.StartErrorAsync(
+                nats.Url, "NOT_A_CONTRACT_CODE", "the responder answered with something Orders does not recognise", CancellationToken.None);
+            await using var caller = new NatsConnection(new NatsOpts { Url = nats.Url });
+            await WaitUntilOrdersCreateReachableAsync(caller, CancellationToken.None);
+
+            var request = new OrdersCreateRequestPayload(
+                RequestId: null,
+                OrderPersistenceTestSupport.RetailerCode,
+                OrderPersistenceTestSupport.CompanyCode,
+                OrderPersistenceTestSupport.Currency,
+                Lines: [new OrdersCreateRequestLine(OrderPersistenceTestSupport.ProductCode1, 1, UnitPrice: 1_000, LineDiscount: null)],
+                OrderDiscount: null,
+                Notes: null);
+
+            var replyMsg = await caller.RequestAsync<byte[], byte[]>(
+                RpcSubjects.OrdersCreate,
+                RpcJson.Serialize(request),
+                replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromSeconds(10) },
+                cancellationToken: CancellationToken.None);
+
+            Assert.NotNull(replyMsg.Data);
+            var error = RpcJson.Deserialize<RpcErrorPayload>(replyMsg.Data!);
+
+            Assert.Equal("UNAVAILABLE", error.Code);
+            Assert.Equal("the responder answered with something Orders does not recognise", error.Message);
+            Assert.Equal("NOT_A_CONTRACT_CODE", ((System.Text.Json.JsonElement)error.Details!["responderCode"]!).GetString());
+
+            await using var assertDb = mssql.CreateDbContext(connectionString);
+            Assert.Equal(0, await assertDb.Orders.CountAsync());
+            Assert.Equal(0, await assertDb.OutboxMessages.CountAsync());
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    /// <summary>
     /// review A9 (round 2) — A2's validation claim, proven at the level A2
     /// was actually about: a malformed request reaches the caller as
     /// <c>VALIDATION_FAILED</c> over the REAL wire, never

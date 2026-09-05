@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using NATS.Client.Core;
@@ -51,6 +52,35 @@ public sealed class StockCheckTests(MsSqlContainerFixture mssql, NatsContainerFi
 
         var request = RpcJson.Serialize(new StockCheckRequestPayload("ACME", [new StockCheckRequestLine("UNKNOWN", 1)]));
         var reply = await FulfillmentHostFixture.RequestBareAsync(connection, StockSubjects.StockCheck, request);
+
+        // review D1 (round 2): this test's own name is a NEGATIVE — "never
+        // with an RpcError" — so it must be asserted by READING the reply
+        // body's shape, not left to an accidental null throw from
+        // deserialising an error body straight into the typed success
+        // payload's non-nullable `Lines`. Same discriminator shape as
+        // RpcJson.IsErrorBody (Orders' NatsStockAvailabilityChecker /
+        // NatsSagaCommandsAdapter, feature 46) — the RpcError schema's two
+        // REQUIRED fields, code and message, together on no success reply.
+        using (var document = JsonDocument.Parse(reply.Data!))
+        {
+            var root = document.RootElement;
+            string? codeIfPresent = null;
+            string? messageIfPresent = null;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("code", out var codeElement))
+            {
+                codeIfPresent = codeElement.GetString();
+            }
+
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("message", out var messageElement))
+            {
+                messageIfPresent = messageElement.GetString();
+            }
+
+            var looksLikeAnRpcError = codeIfPresent is not null && messageIfPresent is not null;
+            Assert.False(
+                looksLikeAnRpcError,
+                $"fulfillment.stock.check answered an unknown product with an RpcError-shaped reply, not a StockCheckReplyPayload: code={codeIfPresent}, message={messageIfPresent}");
+        }
 
         var payload = RpcJson.Deserialize<StockCheckReplyPayload>(reply.Data!);
         Assert.False(payload.Available);

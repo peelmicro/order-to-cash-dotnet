@@ -35,7 +35,7 @@ public sealed record StockAvailabilityResult(bool Available, IReadOnlyList<Stock
 /// </remarks>
 public interface IStockAvailabilityChecker
 {
-    /// <summary>Never throws for a business rejection — <c>available: false</c> IS the answer. Throws only <see cref="StockCheckTimeoutError"/>/<see cref="StockCheckTransportError"/> for a transport-level failure.</summary>
+    /// <summary>Never throws for a stock-shortage rejection — <c>available: false</c> IS the answer. Throws <see cref="StockCheckTimeoutError"/>/<see cref="StockCheckTransportError"/> for a transport-level failure, or <see cref="StockCheckBusinessError"/> (feature 46) when the responder itself answers with an <c>RpcError</c>.</summary>
     Task<StockAvailabilityResult> CheckAsync(string companyCode, IReadOnlyList<StockAvailabilityLine> lines, CancellationToken cancellationToken);
 }
 
@@ -53,4 +53,35 @@ public sealed class StockCheckTransportError(string subject, string reason)
     : Exception($"fulfillment.stock.check: transport failure on subject \"{subject}\": {reason}")
 {
     public string Subject { get; } = subject;
+}
+
+/// <summary>
+/// The responder answered with an <c>RpcError</c>-shaped reply — a
+/// definitive answer from Fulfillment's OWN domain (e.g. a malformed
+/// request it rejected, or a data-access failure it could diagnose), not a
+/// transport failure to reach it at all. Feature 46: unlike
+/// <c>NatsSagaCommandsAdapter</c>'s saga commands (feature 42), this call is
+/// synchronous on the acceptance path with a caller already waiting — there
+/// is no retry loop to short-circuit, so there is no terminal-versus-
+/// transient split to make here. Every <c>RpcError</c> body, whatever its
+/// <see cref="RpcErrorCode"/>, is surfaced carrying the responder's OWN code
+/// and message so <c>OrdersCreateErrorMapper</c> can answer the caller with
+/// it directly, rather than the typed success payload's <c>Lines</c>
+/// deserialising to <see langword="null"/> and the very next line throwing
+/// a bare <see cref="NullReferenceException"/> (the bug this type fixes).
+/// This type itself is a plain, unvalidated carrier of whatever the
+/// responder sent — the closed-enum clamp before the value reaches the wire
+/// lives at the wire boundary, in
+/// <c>OrdersCreateErrorMapper.MapStockCheckBusinessError</c> (review D2,
+/// round 2), not here.
+/// </summary>
+public sealed class StockCheckBusinessError(string subject, string rpcErrorCode, string responderMessage)
+    : Exception($"fulfillment.stock.check: responder returned {rpcErrorCode}: {responderMessage}")
+{
+    public string Subject { get; } = subject;
+
+    public string RpcErrorCode { get; } = rpcErrorCode;
+
+    /// <summary>The responder's own, unwrapped message — what reaches the wire via <c>OrdersCreateErrorMapper</c>; <see cref="Exception.Message"/> above adds subject/code context for logs only.</summary>
+    public string ResponderMessage { get; } = responderMessage;
 }
