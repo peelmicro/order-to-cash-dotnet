@@ -42,8 +42,19 @@ public static class StockErrorMapper
 
         ReservationTerminalError e => new RpcErrorPayload("PRECONDITION_FAILED", e.Message, OccurredAt: occurredAt),
 
+        // despatch.create's R36 refusal: the order and its reservations
+        // genuinely exist, they are simply not in the state despatch.create
+        // requires — the same PRECONDITION_FAILED slot ReservationTerminalError
+        // uses one branch above, for the same reason.
+        NoReservedStockForDespatchError e => new RpcErrorPayload(
+            "PRECONDITION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["orderReference"] = e.OrderReference },
+            OccurredAt: occurredAt),
+
         // TRANSIENT — never CONFLICT (see the class summary).
         ConcurrentReservationChangeError e => new RpcErrorPayload("UNAVAILABLE", e.Message, OccurredAt: occurredAt),
+        ConcurrentDespatchChangeError e => new RpcErrorPayload("UNAVAILABLE", e.Message, OccurredAt: occurredAt),
         DbUpdateConcurrencyException e => new RpcErrorPayload("UNAVAILABLE", e.Message, OccurredAt: occurredAt),
         SqlException e when e.Number is DeadlockVictim or LockRequestTimeout => new RpcErrorPayload("UNAVAILABLE", e.Message, OccurredAt: occurredAt),
         SqlException e => new RpcErrorPayload("UNAVAILABLE", e.Message, OccurredAt: occurredAt),

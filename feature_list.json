@@ -287,7 +287,7 @@
       "phase": 9,
       "title": "DespatchAdvice (DESADV) creation consuming reservations",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "reservations move to consumed",
         "OrderDespatched emitted via outbox"
@@ -664,7 +664,7 @@
       "phase": 10,
       "title": "OrderStockReservation.Release allocates its fact's EventId with UniqueId.New() while Reserve takes a newId delegate",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Release takes the same Func<UniqueId> newId seam as Reserve, and its one caller in StockReservationService.ReleaseAsync supplies it",
         "a named unit test asserts the released fact's EventId is the one the delegate returned"
@@ -730,6 +730,20 @@
         "armed: making the responder answer a real RpcError makes each named test fail on its own assertion rather than on a dereference"
       ],
       "notes": "Found by feature 46's review round 2 with ONE grep over every typed deserialiser call site in tests/, after a prose sweep of the same question had been reported clear. Nine other sites pass the same check because they open with an Assert.Equal on a string field. Not a production defect — the responders answer correctly, and each test does fail today, opaquely or (in OrdersCreateAcceptanceTests' case) not at all."
+    },
+    {
+      "id": 54,
+      "name": "fulfillment_ledger_row_for_unhinted_in_transaction_reread",
+      "phase": 10,
+      "title": "The ported-idiom ledger has no row for the un-hinted in-transaction re-read in DespatchCreationService, whose correctness depends on two unstated properties",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "specs/fulfillment_stock/design.md §15 gains a row for the un-hinted re-read at src/Fulfillment/Application/DespatchCreationService.cs:67 (the F8 in-flight-race decision)",
+        "the row names both properties its correctness rests on: that the read is issued only after LockForOrderAsync is granted, and that EfCoreUnitOfWork opens IsolationLevel.ReadCommitted under RCSI, which makes the snapshot statement-scoped rather than transaction-scoped",
+        "the row states the consequence for #9 explicitly: under a transaction-scoped snapshot (PostgreSQL REPEATABLE READ) the same code returns a stale read and turns a correct idempotent repeat into a permanent UNAVAILABLE"
+      ],
+      "notes": "Found by feature 18's review round 2. Not a defect in #8 — the code is correct here, for two reasons neither of which is written down. It is a ledger GAP, which is the ledger's own failure mode: the row nobody wrote. Text ready in progress/review_fulfillment_despatch.md §5, row \"L1, second face\"."
     },
     {
       "id": 44,

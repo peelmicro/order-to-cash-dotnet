@@ -116,6 +116,29 @@ public sealed class StockRpcPayloadTests
         AssertKeys(json, "items");
     }
 
+    [Fact]
+    public void DespatchCreateRequestPayload_SerialisesWithTheDeclaredCamelCaseKeys()
+    {
+        var payload = new DespatchCreateRequestPayload("ORD-000001");
+        var json = RoundTrip(payload);
+
+        AssertKeys(json, "orderReference");
+    }
+
+    [Fact]
+    public void DespatchCreateReplyPayload_OmitsAbsentLinesRatherThanEmittingNull()
+    {
+        var withoutLines = new DespatchCreateReplyPayload("ORD-000001", "DES-000001", DateTimeOffset.UtcNow, false);
+        var withoutLinesJson = RoundTrip(withoutLines);
+        AssertKeys(withoutLinesJson, "orderReference", "despatchReference", "despatchDate", "created");
+        Assert.False(withoutLinesJson.RootElement.TryGetProperty("lines", out _));
+
+        var withLines = new DespatchCreateReplyPayload("ORD-000001", "DES-000001", DateTimeOffset.UtcNow, true, [new DespatchLine("P1", 3)]);
+        var withLinesJson = RoundTrip(withLines);
+        AssertKeys(withLinesJson, "orderReference", "despatchReference", "despatchDate", "created", "lines");
+        AssertKeys(withLinesJson.RootElement.GetProperty("lines")[0], "productCode", "units");
+    }
+
     private static JsonDocument RoundTrip<T>(T payload)
     {
         var bytes = RpcJson.Serialize(payload);

@@ -127,4 +127,21 @@ public sealed class StockRequestValidatorTests
         var request = new StockCheckRequestPayload("ACME", []);
         Assert.Throws<InvalidStockRequestError>(() => StockRequestValidator.ValidateCheck(request));
     }
+
+    [Fact]
+    public void ValidateDespatchCreate_AcceptsAWellFormedRequest()
+    {
+        var request = new DespatchCreateRequestPayload("ORD-000001");
+        StockRequestValidator.ValidateDespatchCreate(request); // must not throw
+    }
+
+    [Theory]
+    [InlineData("ORD-1")] // too few digits
+    [InlineData("ORDER-000001")]
+    [InlineData("")]
+    public void ValidateDespatchCreate_RejectsAMalformedOrderReference(string orderReference)
+    {
+        var request = new DespatchCreateRequestPayload(orderReference);
+        Assert.Throws<InvalidStockRequestError>(() => StockRequestValidator.ValidateDespatchCreate(request));
+    }
 }

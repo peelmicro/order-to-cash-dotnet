@@ -39,3 +39,36 @@ public sealed class ConcurrentReservationChangeError(string orderReference)
 {
     public string OrderReference { get; } = orderReference;
 }
+
+/// <summary>
+/// `despatch.create`'s R36 refusal: the order holds no reservation in status
+/// <c>reserved</c> — never reserved at all, or every reservation is already
+/// <c>released</c>. A TERMINAL application-layer refusal (mapped to
+/// <c>PRECONDITION_FAILED</c>): the order and its reservations genuinely
+/// exist, they are simply not in the state <c>despatch.create</c> requires —
+/// the same split <see cref="NoKnownStockItemError"/>/
+/// <see cref="ConcurrentReservationChangeError"/> already use between
+/// application-layer refusals and domain invariant violations.
+/// </summary>
+public sealed class NoReservedStockForDespatchError(string orderReference)
+    : Exception($"Order '{orderReference}' holds no reservation in status 'reserved' — nothing for despatch.create to consume.")
+{
+    public string OrderReference { get; } = orderReference;
+}
+
+/// <summary>
+/// `despatch.create`'s defensive branch — mirrors
+/// <see cref="ConcurrentReservationChangeError"/>: the order's reservations
+/// moved to <c>consumed</c> under this same lock (an in-flight F8 race with
+/// another <c>despatch.create</c>), but the despatch row it must have
+/// produced could not be found on the re-read. Impossible in practice — a
+/// despatch and its reservations' <c>consumed</c> transition commit
+/// together, in one transaction — so this refuses rather than fabricates a
+/// reply, and maps to the TRANSIENT code <c>UNAVAILABLE</c> so the
+/// orchestrator retries.
+/// </summary>
+public sealed class ConcurrentDespatchChangeError(string orderReference)
+    : Exception($"Order '{orderReference}': reservations moved to 'consumed' under this lock but no despatch row was found on the re-read.")
+{
+    public string OrderReference { get; } = orderReference;
+}

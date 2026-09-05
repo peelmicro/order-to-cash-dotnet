@@ -1,8 +1,9 @@
 namespace OrderToCash.Fulfillment.Presentation.Rpc;
 
 /// <summary>
-/// The five subjects this responder speaks — <c>specs/shared/asyncapi.yaml</c>
-/// channels' own <c>address</c>. Guarded by
+/// The six subjects this responder speaks — <c>specs/shared/asyncapi.yaml</c>
+/// channels' own <c>address</c> (five <c>fulfillment.stock.*</c> plus
+/// <c>fulfillment.despatch.create</c>, feature 18). Guarded by
 /// <c>tests/Fulfillment.UnitTests/StockSubjectsTests.cs</c>, which reads the
 /// spec as text rather than retyping the subjects — the discipline
 /// <c>OrdersFactTopic</c>/<c>RpcSubjects</c> already establish.
@@ -18,4 +19,6 @@ public static class StockSubjects
     public const string StockList = "fulfillment.stock.list";
 
     public const string StockReplenish = "fulfillment.stock.replenish";
+
+    public const string DespatchCreate = "fulfillment.despatch.create";
 }

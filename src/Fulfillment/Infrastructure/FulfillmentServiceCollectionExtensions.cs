@@ -39,9 +39,12 @@ public static class FulfillmentServiceCollectionExtensions
         services.AddScoped<OutboxWriter>();
         services.AddScoped<IStockItemRepository, EfCoreStockItemRepository>();
         services.AddScoped<IStockReadPort, EfCoreStockReadRepository>();
+        services.AddScoped<IDespatchRepository, EfCoreDespatchRepository>();
+        services.AddScoped<IDespatchNumberAllocator, EfCoreDespatchNumberAllocator>();
 
         services.AddScoped<StockReservationService>();
         services.AddScoped<StockReplenishService>();
+        services.AddScoped<DespatchCreationService>();
 
         // KafkaFactPublisher: singleton, disposed by the container — one
         // producer, IDisposable (CA2213 is an error here).

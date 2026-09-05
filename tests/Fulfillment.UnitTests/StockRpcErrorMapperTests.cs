@@ -40,6 +40,8 @@ public sealed partial class StockRpcErrorMapperTests
             new UnknownStockItemError("ACME", "P1"),
             new ReservationTerminalError(Fulfillment.Domain.ReservationStatus.Consumed, "release"),
             new ConcurrentReservationChangeError("ORD-000001"),
+            new NoReservedStockForDespatchError("ORD-000001"),
+            new ConcurrentDespatchChangeError("ORD-000001"),
             BuildDeadlockException(),
             new DbUpdateConcurrencyException("optimistic concurrency conflict"),
             new InvalidOperationException("anything else"),
@@ -55,8 +57,18 @@ public sealed partial class StockRpcErrorMapperTests
         SqlExceptionFactory.WithNumber(4060, "cannot open database (any other SqlException number)"),
         new DbUpdateConcurrencyException("optimistic concurrency conflict"),
         new ConcurrentReservationChangeError("ORD-000001"),
+        new ConcurrentDespatchChangeError("ORD-000001"),
         new InvalidOperationException("something unexpected"),
     };
+
+    /// <summary>`despatch.create`'s R36 refusal is TERMINAL (`PRECONDITION_FAILED`) — the same code the release/reserve terminal-reservation refusal uses one branch above it in the mapper.</summary>
+    [Fact]
+    public void NoReservedStockForDespatchError_MapsToPreconditionFailed()
+    {
+        var reply = StockErrorMapper.Map(new NoReservedStockForDespatchError("ORD-000001"), DateTimeOffset.UtcNow);
+
+        Assert.Equal("PRECONDITION_FAILED", reply.Code);
+    }
 
     private static Exception BuildDeadlockException() => SqlExceptionFactory.WithNumber(1205, "deadlock victim");
 

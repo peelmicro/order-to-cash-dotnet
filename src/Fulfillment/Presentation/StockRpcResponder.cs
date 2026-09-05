@@ -16,14 +16,18 @@ using OrderToCash.Fulfillment.Presentation.Rpc;
 namespace OrderToCash.Fulfillment.Presentation;
 
 /// <summary>
-/// ONE <see cref="BackgroundService"/>, five subjects (design.md §6.1) — one
-/// transport (NATS), five subscription loops running CONCURRENTLY. Per
-/// message: extract <see cref="RpcMeta"/> where required (`FS3`) -&gt;
-/// deserialise with <see cref="RpcJson"/> -&gt; validate (§6.4) -&gt; resolve
-/// <see cref="IDispatcher"/> from a FRESH DI scope -&gt; dispatch -&gt; reply.
-/// Never throws and never leaves a request unanswered — every path is
-/// wrapped, and the catch replies a mapped <see cref="RpcErrorPayload"/>
-/// (§6.5), the rule <c>OrdersCreateResponder</c> already follows.
+/// ONE <see cref="BackgroundService"/>, six subjects — the five
+/// <c>fulfillment.stock.*</c> subjects (design.md §6.1) plus
+/// <c>fulfillment.despatch.create</c> (feature 18, joining the SAME NATS
+/// transport rather than a second responder class — "one BackgroundService
+/// per transport", CLAUDE.md). One transport (NATS), six subscription loops
+/// running CONCURRENTLY. Per message: extract <see cref="RpcMeta"/> where
+/// required (`FS3`) -&gt; deserialise with <see cref="RpcJson"/> -&gt;
+/// validate (§6.4) -&gt; resolve <see cref="IDispatcher"/> from a FRESH DI
+/// scope -&gt; dispatch -&gt; reply. Never throws and never leaves a request
+/// unanswered — every path is wrapped, and the catch replies a mapped
+/// <see cref="RpcErrorPayload"/> (§6.5), the rule <c>OrdersCreateResponder</c>
+/// already follows.
 /// </summary>
 /// <remarks>
 /// `FS18`/§6.2 — deliberately NOT <c>OrdersCreateResponder</c>'s sequential
@@ -52,6 +56,7 @@ public sealed class StockRpcResponder(
             SubscribeLoopAsync(StockSubjects.StockRelease, stoppingToken),
             SubscribeLoopAsync(StockSubjects.StockList, stoppingToken),
             SubscribeLoopAsync(StockSubjects.StockReplenish, stoppingToken),
+            SubscribeLoopAsync(StockSubjects.DespatchCreate, stoppingToken),
         };
 
         await Task.WhenAll(loops).ConfigureAwait(false);
@@ -167,6 +172,9 @@ public sealed class StockRpcResponder(
             case StockSubjects.StockReplenish:
                 return await HandleReplenishAsync(dispatcher, message.Data, cancellationToken).ConfigureAwait(false);
 
+            case StockSubjects.DespatchCreate:
+                return await HandleDespatchCreateAsync(dispatcher, message, cancellationToken).ConfigureAwait(false);
+
             default:
                 throw new InvalidOperationException($"Unrecognised subject '{subject}'.");
         }
@@ -228,6 +236,24 @@ public sealed class StockRpcResponder(
 
         var command = new ReplenishStockCommand(request.CompanyCode, request.Lines);
         var reply = await dispatcher.SendAsync<ReplenishStockCommand, StockReplenishReplyPayload>(command, cancellationToken).ConfigureAwait(false);
+
+        return RpcJson.Serialize(reply);
+    }
+
+    private static async Task<byte[]> HandleDespatchCreateAsync(IDispatcher dispatcher, NatsMsg<byte[]> message, CancellationToken cancellationToken)
+    {
+        var request = RpcJson.Deserialize<DespatchCreateRequestPayload>(message.Data);
+        StockRequestValidator.ValidateDespatchCreate(request);
+
+        // Mirrors FS3 for stock.reserve/.release: despatch.create is a saga
+        // command too (Orders sends it via the SAME SagaCommandMeta-carrying
+        // path), so a missing/malformed header is refused BEFORE dispatch —
+        // a fact emitted without the order id would land on an arbitrary
+        // Kafka partition and break per-order ordering for the orchestrator.
+        var meta = RequireMeta(message.Headers, StockSubjects.DespatchCreate);
+
+        var command = new CreateDespatchCommand(request.OrderReference, meta.CorrelationId, meta.RequestId);
+        var reply = await dispatcher.SendAsync<CreateDespatchCommand, DespatchCreateReplyPayload>(command, cancellationToken).ConfigureAwait(false);
 
         return RpcJson.Serialize(reply);
     }

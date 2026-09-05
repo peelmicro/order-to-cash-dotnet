@@ -106,7 +106,7 @@ public sealed class StockReservationService(
                 var input = new ReleaseOrderInput(orderReference, command.Reason, command.CorrelationId);
                 var context = new StockContext(clock.UtcNow, command.RequestId);
 
-                var outcome = OrderStockReservation.Release(items!, input, context);
+                var outcome = OrderStockReservation.Release(items!, input, context, UniqueId.New);
 
                 if (outcome.Kind == ReleaseOutcomeKind.AlreadyReleased)
                 {

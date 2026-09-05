@@ -19,6 +19,7 @@ public sealed partial class StockSubjectsTests
     [InlineData("stockRelease", StockSubjects.StockRelease)]
     [InlineData("stockList", StockSubjects.StockList)]
     [InlineData("stockReplenish", StockSubjects.StockReplenish)]
+    [InlineData("despatchCreate", StockSubjects.DespatchCreate)]
     public void StockSubjects_EqualTheAsyncApiChannelAddress(string channelKey, string expectedSubject)
     {
         var address = ReadChannelAddress(channelKey);

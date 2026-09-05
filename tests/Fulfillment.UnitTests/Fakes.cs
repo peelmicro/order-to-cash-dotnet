@@ -58,3 +58,43 @@ internal sealed class FakeStockItemRepository : IStockItemRepository
         }
     }
 }
+
+internal sealed class FakeDespatchRepository : IDespatchRepository
+{
+    /// <summary>Returned by every call unless <see cref="FindByCallIndex"/> is set — the F8 in-flight race needs the FIRST call (the fast path) to answer differently from the SECOND (the re-read under lock), which a single fixed value cannot express.</summary>
+    public DespatchSnapshot? ExistingSnapshot { get; set; }
+
+    public Func<int, DespatchSnapshot?>? FindByCallIndex { get; set; }
+
+    public int FindCallCount { get; private set; }
+
+    public int SaveCallCount { get; private set; }
+
+    public Domain.DespatchAdvice? Saved { get; private set; }
+
+    public Task<DespatchSnapshot?> FindByOrderReferenceAsync(OrderNumber orderReference, CancellationToken cancellationToken)
+    {
+        FindCallCount++;
+        return Task.FromResult(FindByCallIndex is not null ? FindByCallIndex(FindCallCount) : ExistingSnapshot);
+    }
+
+    public Task SaveAsync(Domain.DespatchAdvice despatch, CancellationToken cancellationToken)
+    {
+        SaveCallCount++;
+        Saved = despatch;
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class FakeDespatchNumberAllocator : IDespatchNumberAllocator
+{
+    public string NextReference { get; set; } = "DES-000001";
+
+    public int CallCount { get; private set; }
+
+    public Task<string> AllocateNextAsync(CancellationToken cancellationToken)
+    {
+        CallCount++;
+        return Task.FromResult(NextReference);
+    }
+}

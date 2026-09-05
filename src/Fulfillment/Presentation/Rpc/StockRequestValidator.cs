@@ -130,6 +130,14 @@ public static partial class StockRequestValidator
         ThrowIfAny(errors, "fulfillment.stock.replenish");
     }
 
+    public static void ValidateDespatchCreate(DespatchCreateRequestPayload request)
+    {
+        var errors = new List<string>();
+        ValidateOrderReference(request.OrderReference, errors);
+
+        ThrowIfAny(errors, "fulfillment.despatch.create");
+    }
+
     private static void ValidateOrderReference(string? value, List<string> errors)
     {
         if (value is null || !OrderReferencePattern().IsMatch(value))

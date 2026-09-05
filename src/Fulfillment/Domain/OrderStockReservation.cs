@@ -203,9 +203,13 @@ public static class OrderStockReservation
     /// <see cref="StockReleased"/> to the carrier (the first item whose call
     /// actually released something, `FS13`); otherwise returns
     /// <see cref="ReleaseOutcomeKind.AlreadyReleased"/> and appends nothing
-    /// (F5, `R34`, `FS9`).
+    /// (F5, `R34`, `FS9`). Takes <paramref name="newId"/> the same way
+    /// <see cref="Reserve"/> does — backlog 49: this method used to mint the
+    /// fact's <c>EventId</c> with <c>UniqueId.New()</c> directly, the one id
+    /// this feature's "no ids beyond those <c>newId</c> supplies" promise
+    /// did not actually keep.
     /// </summary>
-    public static ReleaseOrderOutcome Release(IReadOnlyList<StockItem> items, ReleaseOrderInput input, StockContext context)
+    public static ReleaseOrderOutcome Release(IReadOnlyList<StockItem> items, ReleaseOrderInput input, StockContext context, Func<UniqueId> newId)
     {
         var allReleased = new List<Reservation>();
         StockItem? carrier = null;
@@ -227,7 +231,7 @@ public static class OrderStockReservation
         }
 
         var fact = new StockReleased(
-            EventId: UniqueId.New(),
+            EventId: newId(),
             AggregateId: carrier.Id,
             CorrelationId: input.CorrelationId,
             CausationId: context.CausationId,

@@ -44,7 +44,7 @@ public sealed class StockItemRepositoryTests(MsSqlContainerFixture mssql)
         {
             var locked = await repo.LockForOrderAsync("ACME", ["P1"], orderReference, CancellationToken.None);
             var item = locked.ItemsByProductCode["P1"];
-            OrderStockReservation.Release([item], new ReleaseOrderInput(orderReference, "order_cancelled", UniqueId.New()), new StockContext(DateTimeOffset.UtcNow, UniqueId.New()));
+            OrderStockReservation.Release([item], new ReleaseOrderInput(orderReference, "order_cancelled", UniqueId.New()), new StockContext(DateTimeOffset.UtcNow, UniqueId.New()), UniqueId.New);
             await repo.SaveChangesAsync(CancellationToken.None);
         });
 

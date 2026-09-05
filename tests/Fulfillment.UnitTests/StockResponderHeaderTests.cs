@@ -15,6 +15,8 @@ public sealed class StockResponderHeaderTests
     [InlineData(StockSubjects.StockReserve, HeaderCase.Malformed)]
     [InlineData(StockSubjects.StockRelease, HeaderCase.Missing)]
     [InlineData(StockSubjects.StockRelease, HeaderCase.Malformed)]
+    [InlineData(StockSubjects.DespatchCreate, HeaderCase.Missing)]
+    [InlineData(StockSubjects.DespatchCreate, HeaderCase.Malformed)]
     public async Task FS3_RepliesValidationFailedAndDispatchesNothing_WhenACorrelationOrRequestHeaderIsMissingOrMalformed(string subject, HeaderCase headerCase)
     {
         var dispatcher = new RecordingDispatcher();
@@ -46,6 +48,7 @@ public sealed class StockResponderHeaderTests
     {
         StockSubjects.StockReserve => RpcJson.Serialize(new StockReserveRequestPayload("ORD-000001", "RETAILER1", "ACME", [new StockReserveRequestLine("P1", 1)])),
         StockSubjects.StockRelease => RpcJson.Serialize(new StockReleaseRequestPayload("ORD-000001", "order_cancelled")),
+        StockSubjects.DespatchCreate => RpcJson.Serialize(new DespatchCreateRequestPayload("ORD-000001")),
         _ => throw new ArgumentOutOfRangeException(nameof(subject)),
     };
 

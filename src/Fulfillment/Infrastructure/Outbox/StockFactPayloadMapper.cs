@@ -32,6 +32,13 @@ public static class StockFactPayloadMapper
             released.Released,
             released.Reason,
             released.RetailerCode),
+        OrderDespatched despatched => new ContractsPayloads.OrderDespatchedPayload(
+            despatched.OrderReference.Value,
+            despatched.DespatchReference,
+            despatched.DespatchDate,
+            despatched.CompanyCode,
+            despatched.RetailerCode,
+            despatched.Lines),
         _ => throw new InvalidOperationException($"StockFactPayloadMapper has no mapping for event type '{domainEvent.GetType().FullName}' (eventType '{domainEvent.EventType}')."),
     };
 }

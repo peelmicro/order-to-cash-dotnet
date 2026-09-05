@@ -20,7 +20,7 @@ public sealed class OrderStockReservationTests
         var item = ReservationTests.BuildItem("ACME", "P1", units: 10, reservedUnits: 4, reservation);
 
         var input = new ReleaseOrderInput(orderReference, "order_cancelled", UniqueId.New());
-        var outcome = OrderStockReservation.Release([item], input, ReservationTests.SampleContext());
+        var outcome = OrderStockReservation.Release([item], input, ReservationTests.SampleContext(), UniqueId.New);
 
         Assert.Equal(ReleaseOutcomeKind.Released, outcome.Kind);
         Assert.Single(outcome.Released);
@@ -31,6 +31,82 @@ public sealed class OrderStockReservationTests
         Assert.Single(fact.Released);
     }
 
+    /// <summary>
+    /// Backlog 49: <c>Release</c> used to mint its fact's <c>EventId</c> with
+    /// <c>UniqueId.New()</c> directly rather than the <c>newId</c> delegate
+    /// <c>Reserve</c> already took — the one id "no ids beyond those
+    /// <c>newId</c> supplies" (design.md §3.3) did not actually keep. A
+    /// deterministic fake proves the fact's <c>EventId</c> IS the delegate's
+    /// return value, not an id <c>Release</c> minted on its own.
+    /// </summary>
+    [Fact]
+    public void Release_TheFactsEventId_IsTheOneTheNewIdDelegateReturned()
+    {
+        var orderReference = new OrderNumber(1);
+        var reservation = new ReservationSnapshot(UniqueId.New(), orderReference, "ACME", "RETAILER1", "P1", 4, ReservationStatus.Reserved);
+        var item = ReservationTests.BuildItem("ACME", "P1", units: 10, reservedUnits: 4, reservation);
+        var expectedEventId = UniqueId.New();
+
+        var input = new ReleaseOrderInput(orderReference, "order_cancelled", UniqueId.New());
+        var outcome = OrderStockReservation.Release([item], input, ReservationTests.SampleContext(), () => expectedEventId);
+
+        Assert.Equal(expectedEventId, outcome.Fact!.EventId);
+    }
+
+    /// <summary>
+    /// A1 (review round 1, `fulfillment_despatch`): the same "no ids beyond
+    /// those <c>newId</c> supplies" property backlog 49 pinned for <c>Release</c>
+    /// was unguarded for <c>Reserve</c>'s two facts — <c>StockReserved</c>
+    /// and <c>StockRejected</c> could both be minted with <c>UniqueId.New()</c>
+    /// directly on a green suite. <c>Reserve</c> calls <c>newId()</c> once per
+    /// reservation line before calling it once more for the fact's own
+    /// <c>EventId</c>, so the queue's LAST value is the one that must land on
+    /// <see cref="StockReserved.EventId"/>.
+    /// </summary>
+    [Fact]
+    public void Reserve_TheReservedFactsEventId_IsTheOneTheNewIdDelegateReturnedLast()
+    {
+        var item = ReservationTests.BuildItem("ACME", "P1", units: 10, reservedUnits: 0);
+        var itemsByProductCode = new Dictionary<string, StockItem>(StringComparer.OrdinalIgnoreCase) { ["P1"] = item };
+
+        var input = new ReserveOrderInput(
+            new OrderNumber(1),
+            "ACME",
+            "RETAILER1",
+            [new ReserveOrderLine("P1", new Quantity(2))],
+            UniqueId.New());
+
+        var reservationLineId = UniqueId.New();
+        var expectedFactEventId = UniqueId.New();
+        var minted = new Queue<UniqueId>([reservationLineId, expectedFactEventId]);
+
+        var outcome = OrderStockReservation.Reserve(itemsByProductCode, input, ReservationTests.SampleContext(), () => minted.Dequeue());
+
+        Assert.Equal(ReserveOutcomeKind.Reserved, outcome.Kind);
+        Assert.Equal(expectedFactEventId, outcome.ReservedFact!.EventId);
+    }
+
+    /// <summary>A1's sibling for the rejection path — see <see cref="Reserve_TheReservedFactsEventId_IsTheOneTheNewIdDelegateReturnedLast"/>. `Rejected` calls `newId()` exactly once (the shortage check consumes no id), so a single known value pins the whole call.</summary>
+    [Fact]
+    public void Reserve_TheRejectedFactsEventId_IsTheOneTheNewIdDelegateReturned()
+    {
+        var itemP1 = ReservationTests.BuildItem("ACME", "P1", units: 10, reservedUnits: 0);
+        var itemsByProductCode = new Dictionary<string, StockItem>(StringComparer.OrdinalIgnoreCase) { ["P1"] = itemP1 };
+
+        var input = new ReserveOrderInput(
+            new OrderNumber(1),
+            "ACME",
+            "RETAILER1",
+            [new ReserveOrderLine("P1", new Quantity(2)), new ReserveOrderLine("UNKNOWN", new Quantity(1))],
+            UniqueId.New());
+        var expectedEventId = UniqueId.New();
+
+        var outcome = OrderStockReservation.Reserve(itemsByProductCode, input, ReservationTests.SampleContext(), () => expectedEventId);
+
+        Assert.Equal(ReserveOutcomeKind.Rejected, outcome.Kind);
+        Assert.Equal(expectedEventId, outcome.RejectedFact!.EventId);
+    }
+
     [Fact]
     public void F5_ReleaseOfAnOrderWithNoReservedReservationIsASuccessNoOpThatEmitsNothing()
     {
@@ -39,7 +115,7 @@ public sealed class OrderStockReservationTests
         var item = ReservationTests.BuildItem("ACME", "P1", units: 10, reservedUnits: 0, already);
 
         var input = new ReleaseOrderInput(orderReference, "order_cancelled", UniqueId.New());
-        var outcome = OrderStockReservation.Release([item], input, ReservationTests.SampleContext());
+        var outcome = OrderStockReservation.Release([item], input, ReservationTests.SampleContext(), UniqueId.New);
 
         Assert.Equal(ReleaseOutcomeKind.AlreadyReleased, outcome.Kind);
         Assert.Empty(outcome.Released);
@@ -106,7 +182,7 @@ public sealed class OrderStockReservationTests
         var neverReserved = ReservationTests.BuildItem("ACME", "P4", units: 10, reservedUnits: 0);
         var reservation = new ReservationSnapshot(UniqueId.New(), orderReference, "ACME", "RETAILER1", "P5", 2, ReservationStatus.Reserved);
         var releasedFrom = ReservationTests.BuildItem("ACME", "P5", units: 10, reservedUnits: 2, reservation);
-        var releaseOutcome = OrderStockReservation.Release([neverReserved, releasedFrom], new ReleaseOrderInput(orderReference, "order_cancelled", UniqueId.New()), ReservationTests.SampleContext());
+        var releaseOutcome = OrderStockReservation.Release([neverReserved, releasedFrom], new ReleaseOrderInput(orderReference, "order_cancelled", UniqueId.New()), ReservationTests.SampleContext(), UniqueId.New);
         Assert.Equal(releasedFrom.Id, releaseOutcome.Fact!.AggregateId);
     }
 

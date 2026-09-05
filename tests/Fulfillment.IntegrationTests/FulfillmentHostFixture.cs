@@ -159,6 +159,18 @@ internal static class FulfillmentHostFixture
         return await db.OutboxMessages.AsNoTracking().Where(m => m.CorrelationId == correlationId && m.EventType == eventType).ToListAsync();
     }
 
+    public static async Task<Despatch?> FindDespatchAsync(MsSqlContainerFixture mssql, string connectionString, string orderReference)
+    {
+        await using var db = mssql.CreateDbContext(connectionString);
+        return await db.Despatches.AsNoTracking().SingleOrDefaultAsync(d => d.OrderReference == orderReference);
+    }
+
+    public static async Task<List<DespatchItem>> DespatchItemsOfAsync(MsSqlContainerFixture mssql, string connectionString, Guid despatchId)
+    {
+        await using var db = mssql.CreateDbContext(connectionString);
+        return await db.DespatchItems.AsNoTracking().Where(i => i.DespatchId == despatchId).ToListAsync();
+    }
+
     /// <summary>Waits for a terminal/monotonic condition — never polls a mid-flight counter (the reviewer's binding synchronisation rule since feature 16).</summary>
     public static async Task<T> WaitForAsync<T>(Func<Task<T>> probe, Func<T, bool> isDone, TimeSpan timeout)
     {
