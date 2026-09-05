@@ -93,7 +93,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 6 | EF Core models + migrations for the four write databases | ✅ 20 tables, 60 integration tests against real MS-SQL, cross-context reliability-table parity asserted from the live schema |
 | 7 | Deterministic seed job | ✅ identifiers provably byte-identical to #7's, derived by the same SHA-256 scheme; 3 currencies, 12 products, 7 retailers, 22 companies, 215 stock rows, 6 sample orders and their read-model documents |
 | 8 | Orders service + saga orchestrator | ✅ aggregate, hand-rolled dispatcher, transactional outbox, `orders.create` acceptance, the saga with both compensation paths, and terminal-vs-retryable command classification — 7 features, 3 of them defects found in already-closed work; 16 armed architecture rules |
-| 9 | Fulfillment service | 🚧 `StockItem` aggregate, reservation lifecycle and the `fulfillment.stock.*` RPC responder done — and starting it resumed four saga commands that had been parked since Phase 8, unattended |
+| 9 | Fulfillment service | 🚧 `StockItem` aggregate, reservation lifecycle and the `fulfillment.stock.*` RPC responder done — starting it resumed four saga commands parked since Phase 8, unattended; despatch advice remains |
 | 10 | Billing service | ⬜ |
 | 11 | Notifications service | ⬜ |
 | 12 | Projector service + MongoDB read model | ⬜ |
