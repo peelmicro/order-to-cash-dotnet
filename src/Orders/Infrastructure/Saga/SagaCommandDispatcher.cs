@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Infrastructure.Saga;
 
@@ -77,11 +78,18 @@ public sealed class SagaCommandDispatcher(
         var policy = options.Value.Command;
         Exception? lastFailure = null;
 
+        // FS2: the order id and the row id, stable across every attempt of
+        // this cycle AND across every sweeper re-issue of this same row —
+        // built once per DispatchClaimedAsync call, not once per attempt,
+        // because it is the SAME value on every attempt by construction
+        // (both fields come from `claimed`, never from the attempt loop).
+        var meta = new SagaCommandMeta(UniqueId.From(claimed.OrderId), UniqueId.From(claimed.Id));
+
         for (var attempt = 1; attempt <= policy.MaxAttempts; attempt++)
         {
             try
             {
-                await InvokeAsync(claimed.Command, claimed.Payload, cancellationToken).ConfigureAwait(false);
+                await InvokeAsync(claimed.Command, claimed.Payload, meta, cancellationToken).ConfigureAwait(false);
 
                 // A reply was delivered — including outcome: rejected (SO6):
                 // the responder has emitted (or will emit) the rejection
@@ -148,13 +156,13 @@ public sealed class SagaCommandDispatcher(
             errorMessage);
     }
 
-    private Task InvokeAsync(SagaCommandKind command, string payloadJson, CancellationToken cancellationToken) => command switch
+    private Task InvokeAsync(SagaCommandKind command, string payloadJson, SagaCommandMeta meta, CancellationToken cancellationToken) => command switch
     {
-        SagaCommandKind.StockReserve => sagaCommands.ReserveStockAsync(RpcJson.Deserialize<StockReserveRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), cancellationToken),
-        SagaCommandKind.StockRelease => sagaCommands.ReleaseStockAsync(RpcJson.Deserialize<StockReleaseRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), cancellationToken),
-        SagaCommandKind.DespatchCreate => sagaCommands.CreateDespatchAsync(RpcJson.Deserialize<DespatchCreateRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), cancellationToken),
-        SagaCommandKind.CreditHold => sagaCommands.HoldCreditAsync(RpcJson.Deserialize<CreditHoldRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), cancellationToken),
-        SagaCommandKind.InvoiceIssue => sagaCommands.IssueInvoiceAsync(RpcJson.Deserialize<InvoiceIssueRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), cancellationToken),
+        SagaCommandKind.StockReserve => sagaCommands.ReserveStockAsync(RpcJson.Deserialize<StockReserveRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
+        SagaCommandKind.StockRelease => sagaCommands.ReleaseStockAsync(RpcJson.Deserialize<StockReleaseRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
+        SagaCommandKind.DespatchCreate => sagaCommands.CreateDespatchAsync(RpcJson.Deserialize<DespatchCreateRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
+        SagaCommandKind.CreditHold => sagaCommands.HoldCreditAsync(RpcJson.Deserialize<CreditHoldRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
+        SagaCommandKind.InvoiceIssue => sagaCommands.IssueInvoiceAsync(RpcJson.Deserialize<InvoiceIssueRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unrecognised SagaCommandKind member."),
     };
 }

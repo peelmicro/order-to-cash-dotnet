@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Fulfillment.UnitTests</RootNamespace>
+    <AssemblyName>OrderToCash.Fulfillment.UnitTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- FulfillmentDispatcherRegistrationTests only — a real
+         ServiceCollection/ServiceProvider, never a mock container. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Fulfillment/Fulfillment.csproj" />
+    <ProjectReference Include="../../src/SharedKernel/SharedKernel.csproj" />
+    <ProjectReference Include="../../src/Contracts/Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

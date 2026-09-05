@@ -273,7 +273,7 @@
       "phase": 9,
       "title": "StockItem aggregate + reservation lifecycle (reserve / release / consume)",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "invariant reservedUnits <= units enforced in the aggregate",
         "StockRejected when insufficient",
@@ -644,6 +644,60 @@
         "armed: the concurrency guard from feature 45 still fails when the lock hint is removed"
       ],
       "notes": "Found by feature 45's review (advisory A1) with the actual plan attached: Clustered Index Scan over dbo.orders, Rows = 5000, Executes = 1, with an anti-semi-join discarding the row afterwards. Not blocking and not a regression against #7, whose own seeding runs an unconditional max() too — but #8's table will grow and #7's would have as well. Deferred to phase 21 rather than phase 9 because it is a performance concern with a correctness constraint attached, and phase 21 is where measurement work belongs. See progress/review_order_number_allocator_seed_race.md advisory A1."
+    },
+    {
+      "id": 48,
+      "name": "saga_command_headers_thread_safety_guard",
+      "phase": 10,
+      "title": "NatsSagaCommandsAdapter: the \"a fresh NatsHeaders per call\" property is structural and guarded by nothing",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "a named test in tests/Orders.UnitTests/NatsSagaCommandsAdapterTests.cs captures the NatsHeaders instance passed to RawRequester on two consecutive SendAsync calls and asserts they are reference-distinct",
+        "armed: hoisting the instance to a field and clearing/re-adding per call makes that test fail while every existing header-value assertion stays green"
+      ],
+      "notes": "Found by feature 17's review (advisory A2). NatsHeaders is documented not thread-safe; the adapter is AddScoped and the sweeper dispatches sequentially, so the hazard is latent today — but the class remark asserts a property no test holds, and five more services will copy this shape."
+    },
+    {
+      "id": 49,
+      "name": "stock_release_deterministic_event_id",
+      "phase": 10,
+      "title": "OrderStockReservation.Release allocates its fact's EventId with UniqueId.New() while Reserve takes a newId delegate",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "Release takes the same Func<UniqueId> newId seam as Reserve, and its one caller in StockReservationService.ReleaseAsync supplies it",
+        "a named unit test asserts the released fact's EventId is the one the delegate returned"
+      ],
+      "notes": "Found by feature 17's review (advisory A3); a deviation from specs/fulfillment_stock/design.md §3.3's \"no ids beyond those newId supplies\", disclosed after the fact. Harmless today and asymmetric. Cheapest to close in feature 18, which opens the same file for Consume."
+    },
+    {
+      "id": 50,
+      "name": "rpc_responder_shutdown_fault_isolation",
+      "phase": 10,
+      "title": "StockRpcResponder.StopAsync rethrows out of host shutdown when a drained request's ReplyAsync faults",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "a faulted in-flight task no longer propagates out of StopAsync",
+        "the drain still waits for every in-flight request",
+        "a named test proves shutdown completes with one faulted and one healthy in-flight task"
+      ],
+      "notes": "Found by feature 17's review (advisory A5), cosmetic today. Worth doing BEFORE Billing and Despatch copy the responder rather than after — the fix belongs wherever the responder family is consolidated."
+    },
+    {
+      "id": 51,
+      "name": "rpc_payload_schema_parity_from_asyncapi",
+      "phase": 10,
+      "title": "StockRpcPayloadTests and SagaCommandPayloadTests compare wire records against hand-retyped key lists while three documents claim they read asyncapi.yaml as text",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "both instruments derive their expected property names by parsing specs/shared/asyncapi.yaml — the pattern RpcSubjectsTests and OrdersFactTopicTests already use — covering every fulfillment.stock.* and saga-command request and reply schema",
+        "armed: editing one schema's property name in a scratch copy makes the named test fail",
+        "the three documents' sentences are made true or corrected — design.md §6.3, tasks.md C3, and the test's own XML doc"
+      ],
+      "notes": "Found by feature 17's review round 3 (advisory A6). NOT a defect today: the review parsed all sixteen schemas and confirmed every key set matches, and the retyped lists do catch unilateral drift of the code (a renamed reply property was killed by probe). What is missing is the correlated authoring error — a schema and a test changed together, wrongly. Filed because feature 19 copies this instrument, and the false sentence, into three more services. Cheapest at the relay-family consolidation."
     },
     {
       "id": 44,

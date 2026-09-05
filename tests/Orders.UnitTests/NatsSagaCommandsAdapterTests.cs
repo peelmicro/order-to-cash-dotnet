@@ -5,6 +5,7 @@ using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure;
 using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.SharedKernel;
 using Xunit;
 
 namespace OrderToCash.Orders.UnitTests;
@@ -28,7 +29,7 @@ public sealed class NatsSagaCommandsAdapterTests
     public async Task EachMethod_SendsOnItsOwnSubjectAndReturnsTheTypedReply(RpcSubjectUnderTest subjectUnderTest)
     {
         string? observedSubject = null;
-        var adapter = BuildAdapter((subject, payload, opts, ct) =>
+        var adapter = BuildAdapter((subject, payload, headers, opts, ct) =>
         {
             observedSubject = subject;
             return new ValueTask<NatsMsg<byte[]>>(BuildReply(SuccessBodyFor(subjectUnderTest)));
@@ -39,13 +40,43 @@ public sealed class NatsSagaCommandsAdapterTests
         Assert.Equal(ExpectedSubject(subjectUnderTest), observedSubject);
     }
 
+    /// <summary>
+    /// `FS2` — every one of the five saga commands carries the order id as
+    /// <c>x-correlation-id</c> and the durable row's id as
+    /// <c>x-request-id</c>, both well-formed <see cref="UniqueId"/> strings.
+    /// </summary>
+    [Theory]
+    [InlineData(RpcSubjectUnderTest.StockReserve)]
+    [InlineData(RpcSubjectUnderTest.StockRelease)]
+    [InlineData(RpcSubjectUnderTest.DespatchCreate)]
+    [InlineData(RpcSubjectUnderTest.CreditHold)]
+    [InlineData(RpcSubjectUnderTest.InvoiceIssue)]
+    public async Task FS2_SendsCorrelationAndRequestIdHeaders_OnEverySagaCommandRequest(RpcSubjectUnderTest subjectUnderTest)
+    {
+        NatsHeaders? observedHeaders = null;
+        var adapter = BuildAdapter((subject, payload, headers, opts, ct) =>
+        {
+            observedHeaders = headers;
+            return new ValueTask<NatsMsg<byte[]>>(BuildReply(SuccessBodyFor(subjectUnderTest)));
+        });
+
+        var correlationId = UniqueId.New();
+        var requestId = UniqueId.New();
+
+        await InvokeAsync(adapter, subjectUnderTest, new SagaCommandMeta(correlationId, requestId));
+
+        Assert.NotNull(observedHeaders);
+        Assert.Equal(correlationId.Value.ToString(), observedHeaders!["x-correlation-id"].ToString());
+        Assert.Equal(requestId.Value.ToString(), observedHeaders["x-request-id"].ToString());
+    }
+
     [Fact]
     public async Task NatsNoRespondersException_MapsToSagaCommandTransportError()
     {
-        var adapter = BuildAdapter((_, _, _, _) => throw new NatsNoRespondersException());
+        var adapter = BuildAdapter((_, _, _, _, _) => throw new NatsNoRespondersException());
 
         var error = await Assert.ThrowsAsync<SagaCommandTransportError>(
-            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), CancellationToken.None));
+            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), SampleMeta(), CancellationToken.None));
 
         Assert.Equal(RpcSubjects.StockReserve, error.Subject);
     }
@@ -53,10 +84,10 @@ public sealed class NatsSagaCommandsAdapterTests
     [Fact]
     public async Task NatsNoReplyException_MapsToSagaCommandTimeoutError()
     {
-        var adapter = BuildAdapter((_, _, _, _) => throw new NatsNoReplyException());
+        var adapter = BuildAdapter((_, _, _, _, _) => throw new NatsNoReplyException());
 
         var error = await Assert.ThrowsAsync<SagaCommandTimeoutError>(
-            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), CancellationToken.None));
+            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), SampleMeta(), CancellationToken.None));
 
         Assert.Equal(RpcSubjects.StockReserve, error.Subject);
     }
@@ -64,10 +95,10 @@ public sealed class NatsSagaCommandsAdapterTests
     [Fact]
     public async Task ANullDataReply_MapsToSagaCommandTimeoutError()
     {
-        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(new NatsMsg<byte[]>("reply", null!, 0, null!, null!, null!, default)));
+        var adapter = BuildAdapter((_, _, _, _, _) => new ValueTask<NatsMsg<byte[]>>(new NatsMsg<byte[]>("reply", null!, 0, null!, null!, null!, default)));
 
         await Assert.ThrowsAsync<SagaCommandTimeoutError>(
-            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), CancellationToken.None));
+            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), SampleMeta(), CancellationToken.None));
     }
 
     [Fact]
@@ -76,10 +107,10 @@ public sealed class NatsSagaCommandsAdapterTests
         // feature 42: UNAVAILABLE is on the transient/infra side of the
         // closed-set split — still classified retryable, unchanged.
         var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = "UNAVAILABLE", message = "fulfillment is down" });
-        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
+        var adapter = BuildAdapter((_, _, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
 
         var error = await Assert.ThrowsAsync<SagaCommandTransportError>(
-            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), CancellationToken.None));
+            () => adapter.ReserveStockAsync(SampleStockReserveRequest(), SampleMeta(), CancellationToken.None));
 
         Assert.Contains("UNAVAILABLE", error.Message, StringComparison.Ordinal);
     }
@@ -107,10 +138,10 @@ public sealed class NatsSagaCommandsAdapterTests
     public async Task R42_ATerminalRpcErrorCode_MapsToSagaCommandBusinessRejectionErrorNotTransportError(string terminalCode)
     {
         var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = terminalCode, message = "reservation already consumed" });
-        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
+        var adapter = BuildAdapter((_, _, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
 
         var error = await Assert.ThrowsAsync<SagaCommandBusinessRejectionError>(
-            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), CancellationToken.None));
+            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), SampleMeta(), CancellationToken.None));
 
         Assert.Equal(RpcSubjects.StockRelease, error.Subject);
         Assert.Equal(terminalCode, error.RpcErrorCode);
@@ -127,10 +158,10 @@ public sealed class NatsSagaCommandsAdapterTests
     public async Task R42_ReleaseStockAgainstAnAlreadyConsumedReservation_PreconditionFailedIsTerminalNotTransport()
     {
         var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = "PRECONDITION_FAILED", message = "reservation already consumed" });
-        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
+        var adapter = BuildAdapter((_, _, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
 
         var error = await Assert.ThrowsAsync<SagaCommandBusinessRejectionError>(
-            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), CancellationToken.None));
+            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), SampleMeta(), CancellationToken.None));
 
         Assert.Equal(RpcSubjects.StockRelease, error.Subject);
         Assert.Equal("PRECONDITION_FAILED", error.RpcErrorCode);
@@ -143,10 +174,10 @@ public sealed class NatsSagaCommandsAdapterTests
     public async Task R42_ATransientRpcErrorCode_StillMapsToSagaCommandTransportErrorUnchanged(string transientCode)
     {
         var errorBody = JsonSerializer.SerializeToUtf8Bytes(new { code = transientCode, message = "boom" });
-        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
+        var adapter = BuildAdapter((_, _, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(errorBody)));
 
         var error = await Assert.ThrowsAsync<SagaCommandTransportError>(
-            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), CancellationToken.None));
+            () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), SampleMeta(), CancellationToken.None));
 
         Assert.Contains(transientCode, error.Message, StringComparison.Ordinal);
     }
@@ -156,9 +187,9 @@ public sealed class NatsSagaCommandsAdapterTests
     {
         // SO6, unit half: a business rejection resolves normally.
         var body = JsonSerializer.SerializeToUtf8Bytes(new { outcome = "rejected", orderReference = "ORD-000001", shortages = new object[0] });
-        var adapter = BuildAdapter((_, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(body)));
+        var adapter = BuildAdapter((_, _, _, _, _) => new ValueTask<NatsMsg<byte[]>>(BuildReply(body)));
 
-        var reply = await adapter.ReserveStockAsync(SampleStockReserveRequest(), CancellationToken.None);
+        var reply = await adapter.ReserveStockAsync(SampleStockReserveRequest(), SampleMeta(), CancellationToken.None);
 
         Assert.Equal("rejected", reply.Outcome);
     }
@@ -182,15 +213,19 @@ public sealed class NatsSagaCommandsAdapterTests
         _ => throw new ArgumentOutOfRangeException(nameof(subject)),
     };
 
-    private static Task InvokeAsync(NatsSagaCommandsAdapter adapter, RpcSubjectUnderTest subject) => subject switch
+    private static Task InvokeAsync(NatsSagaCommandsAdapter adapter, RpcSubjectUnderTest subject) => InvokeAsync(adapter, subject, SampleMeta());
+
+    private static Task InvokeAsync(NatsSagaCommandsAdapter adapter, RpcSubjectUnderTest subject, SagaCommandMeta meta) => subject switch
     {
-        RpcSubjectUnderTest.StockReserve => adapter.ReserveStockAsync(SampleStockReserveRequest(), CancellationToken.None),
-        RpcSubjectUnderTest.StockRelease => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "credit_rejected"), CancellationToken.None),
-        RpcSubjectUnderTest.DespatchCreate => adapter.CreateDespatchAsync(new DespatchCreateRequestPayload("ORD-000001"), CancellationToken.None),
-        RpcSubjectUnderTest.CreditHold => adapter.HoldCreditAsync(new CreditHoldRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", new SagaMoney(1000, "EUR")), CancellationToken.None),
-        RpcSubjectUnderTest.InvoiceIssue => adapter.IssueInvoiceAsync(new InvoiceIssueRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", []), CancellationToken.None),
+        RpcSubjectUnderTest.StockReserve => adapter.ReserveStockAsync(SampleStockReserveRequest(), meta, CancellationToken.None),
+        RpcSubjectUnderTest.StockRelease => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "credit_rejected"), meta, CancellationToken.None),
+        RpcSubjectUnderTest.DespatchCreate => adapter.CreateDespatchAsync(new DespatchCreateRequestPayload("ORD-000001"), meta, CancellationToken.None),
+        RpcSubjectUnderTest.CreditHold => adapter.HoldCreditAsync(new CreditHoldRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", new SagaMoney(1000, "EUR")), meta, CancellationToken.None),
+        RpcSubjectUnderTest.InvoiceIssue => adapter.IssueInvoiceAsync(new InvoiceIssueRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", []), meta, CancellationToken.None),
         _ => throw new ArgumentOutOfRangeException(nameof(subject)),
     };
+
+    private static SagaCommandMeta SampleMeta() => new(UniqueId.New(), UniqueId.New());
 
     private static byte[] SuccessBodyFor(RpcSubjectUnderTest subject) => subject switch
     {

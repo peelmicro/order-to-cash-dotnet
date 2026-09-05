@@ -6,6 +6,7 @@ using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Infrastructure;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Infrastructure.Saga;
+using OrderToCash.SharedKernel;
 using Xunit;
 
 namespace OrderToCash.Orders.UnitTests;
@@ -131,6 +132,35 @@ public sealed class SagaCommandDispatcherTests
         Assert.Equal(3, parked.AttemptsMade);
     }
 
+    /// <summary>
+    /// `FS2` (Orders-side half) — every attempt of a cycle, including the
+    /// retry after a failed first attempt, carries the SAME
+    /// <see cref="SagaCommandMeta"/>: the claimed row's <c>OrderId</c> as
+    /// <see cref="SagaCommandMeta.CorrelationId"/> and its <c>Id</c> as
+    /// <see cref="SagaCommandMeta.RequestId"/>.
+    /// </summary>
+    [Fact]
+    public async Task FS2_PassesTheOrderIdAndTheRowIdAsCorrelationAndRequestIds_OnEveryAttempt_UnchangedAcrossRetries()
+    {
+        var store = new FakeSagaCommandStore { ClaimResult = BuildClaimed() };
+        var delay = new FakeSagaRetryDelay();
+        var sagaCommands = new FakeSagaCommands(attempt => attempt < 2
+            ? throw new SagaCommandTimeoutError(RpcSubjects.StockReserve, 5_000)
+            : Task.FromResult(new StockReserveReplyPayload("accepted", "ORD-000001")));
+
+        var dispatcher = BuildDispatcher(store, sagaCommands, delay);
+
+        await dispatcher.DispatchAsync(_orderId, SagaCommandKind.StockReserve, CancellationToken.None);
+
+        Assert.Equal(2, sagaCommands.ObservedMeta.Count);
+        Assert.All(sagaCommands.ObservedMeta, meta =>
+        {
+            Assert.Equal(_orderId, meta.CorrelationId.Value);
+            Assert.Equal(_commandId, meta.RequestId.Value);
+        });
+        Assert.Equal(sagaCommands.ObservedMeta[0], sagaCommands.ObservedMeta[1]);
+    }
+
     [Fact]
     public async Task AZeroRowClaimDispatchesNothing()
     {
@@ -206,18 +236,21 @@ public sealed class SagaCommandDispatcherTests
     {
         public int CallCount { get; private set; }
 
-        public Task<StockReserveReplyPayload> ReserveStockAsync(StockReserveRequestPayload request, CancellationToken cancellationToken)
+        public List<SagaCommandMeta> ObservedMeta { get; } = [];
+
+        public Task<StockReserveReplyPayload> ReserveStockAsync(StockReserveRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken)
         {
             CallCount++;
+            ObservedMeta.Add(meta);
             return reserveStock(CallCount);
         }
 
-        public Task<StockReleaseReplyPayload> ReleaseStockAsync(StockReleaseRequestPayload request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<StockReleaseReplyPayload> ReleaseStockAsync(StockReleaseRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<DespatchCreateReplyPayload> CreateDespatchAsync(DespatchCreateRequestPayload request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<DespatchCreateReplyPayload> CreateDespatchAsync(DespatchCreateRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

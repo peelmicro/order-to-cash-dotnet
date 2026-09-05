@@ -82,6 +82,12 @@ So your work shifts:
   defaults, connection and concurrency behaviour, serialisation shape. If the answer is
   "the engine did it", say who does it here.
 
+## Flag every task that makes a countable claim
+
+`tasks.md` marks tasks that must be armed. **The mark has to follow the claim, not your sense of which lines are dangerous.** If a task's own prose asserts a count, an identity, an ordering or an absence — *"exactly one such row"*, *"read it from the broker, do not infer it"*, *"no second order is created"* — it is a guard, and it must carry the arming flag.
+
+This is written from two identical failures. In both, every **flagged** task was armed correctly (11 of 11, then 12 of 12) and the defect was in an **unflagged** task whose prose made exactly that kind of claim: a committed offset that was inferred rather than read, and a domain fact whose persistence could be deleted with both suites staying green. Neither was carelessness. The implementer armed what you flagged and wrote what you did not, which is precisely what it should do — **so which tasks carry the flag is your decision and your responsibility.**
+
 ## `specs/shared/` — the trilogy contract
 
 You also own `specs/shared/`, reused **verbatim** by assessments #8 (.NET) and

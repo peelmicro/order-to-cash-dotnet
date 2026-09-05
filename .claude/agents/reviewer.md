@@ -23,6 +23,10 @@ Your value is independent verification, not repetition. Re-running an entire sui
    `R7` but asserts nothing relevant fails this check.
 4. **Tasks.** Every task in `tasks.md` is genuinely done, not just ticked.
 5. **Tests are real.** Run them. Pure domain tests must reference no framework.
+   **Probe two mutation families, not one:** delete the emission, *and* corrupt a payload
+   field on the wire. A guard that counts rows without reading them passes the first
+   and fails nothing on the second — that is how a payload defect survived a whole
+   review pass in feature 17, when all six probes attacked deletion.
    Integration tests must hit real containers, not mocks. Check they would fail
    if the behaviour regressed — a test asserting `Assert.True(true)` is a lie.
 6. **Conventions** from `CLAUDE.md`: domain purity (run the NetArchTest suite —

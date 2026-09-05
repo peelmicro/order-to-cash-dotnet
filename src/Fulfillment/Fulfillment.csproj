@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <RootNamespace>OrderToCash.Fulfillment</RootNamespace>
     <AssemblyName>OrderToCash.Fulfillment</AssemblyName>
   </PropertyGroup>
@@ -8,6 +9,11 @@
   <ItemGroup>
     <ProjectReference Include="../SharedKernel/SharedKernel.csproj" />
     <ProjectReference Include="../Contracts/Contracts.csproj" />
+    <!-- Application/Commands, Application/Queries only — the hand-rolled
+         dispatcher (CLAUDE.md's binding dispatcher ruling, Phase 8 gate).
+         No Domain/ namespace may reference OrderToCash.Cqrs:
+         CqrsDomainPurityTests fails the build if one ever does. -->
+    <ProjectReference Include="../Cqrs/Cqrs.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,6 +26,38 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Outbox only — the fact-stream producer (feature
+         fulfillment_stock, copied from Orders' outbox_and_idempotency).
+         tests/Architecture.Tests/FactPublisherConfinementTests.cs fails the
+         build if any type outside *.Infrastructure.Outbox depends on
+         Confluent.Kafka. -->
+    <PackageReference Include="Confluent.Kafka" />
+    <!-- Infrastructure/Outbox and Presentation (StockRpcResponder is a
+         BackgroundService) — the host's BackgroundService/IHostedService
+         shape. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- Infrastructure/Outbox, Infrastructure (FulfillmentOptions) and
+         Presentation (StockResponderOptions) — IOptions&lt;T&gt;. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- Infrastructure/Outbox and Presentation — ILogger&lt;T&gt; on the
+         relay, the producer adapter and the responder. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Messaging and Presentation only — the RPC transport
+         (specs/shared/asyncapi.yaml rpcTransport server: "NATS core
+         request-reply. No durability, no replay, no stream"). -->
+    <PackageReference Include="NATS.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Program.cs only — the first runnable Fulfillment host (feature
+         fulfillment_stock). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
   </ItemGroup>
 
 </Project>

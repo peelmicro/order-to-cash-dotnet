@@ -13,10 +13,17 @@ namespace OrderToCash.Orders.Infrastructure.Messaging;
 /// <see cref="NatsStockAvailabilityChecker"/>'s shape verbatim in structure:
 /// the shared connection, <see cref="RpcJson"/>, a per-call
 /// <see cref="NatsSubOpts"/> timeout. The class name is fixed by feature 42's
-/// own acceptance text — do not rename it.
+/// own acceptance text — do not rename it. Feature 17 (`FS2`): every call
+/// carries a FRESH <see cref="NatsHeaders"/> instance with
+/// <c>x-correlation-id</c>/<c>x-request-id</c> — <c>NATS.Client.Core</c>'s
+/// own XML doc: "Not thread-safe. Do not share a single NatsHeaders instance
+/// across concurrent" calls, so one is built per request rather than reused.
 /// </summary>
 public sealed class NatsSagaCommandsAdapter : ISagaCommands
 {
+    private const string CorrelationIdHeader = "x-correlation-id";
+    private const string RequestIdHeader = "x-request-id";
+
     /// <summary>
     /// The one NATS call this adapter needs — matching
     /// <c>INatsConnection.RequestAsync&lt;TRequest,TReply&gt;</c>'s own shape
@@ -28,9 +35,11 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
     /// request-reply surface the taxonomy below depends on
     /// (<see cref="NatsNoRespondersException"/>, <see cref="NatsNoReplyException"/>)
     /// is proven with a REAL broker in the integration suite, never mocked
-    /// (this feature's own testing discipline).
+    /// (this feature's own testing discipline). Widened by
+    /// <see cref="NatsHeaders"/> (feature 17) so the test seam can record
+    /// what was sent.
     /// </summary>
-    public delegate ValueTask<NatsMsg<byte[]>> RawRequester(string subject, byte[] payload, NatsSubOpts replyOpts, CancellationToken cancellationToken);
+    public delegate ValueTask<NatsMsg<byte[]>> RawRequester(string subject, byte[] payload, NatsHeaders headers, NatsSubOpts replyOpts, CancellationToken cancellationToken);
 
     private readonly RawRequester _request;
     private readonly IOptions<OrdersSagaOptions> _options;
@@ -47,20 +56,20 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
         _options = options;
     }
 
-    public Task<StockReserveReplyPayload> ReserveStockAsync(StockReserveRequestPayload request, CancellationToken cancellationToken) =>
-        SendAsync<StockReserveRequestPayload, StockReserveReplyPayload>(RpcSubjects.StockReserve, request, cancellationToken);
+    public Task<StockReserveReplyPayload> ReserveStockAsync(StockReserveRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) =>
+        SendAsync<StockReserveRequestPayload, StockReserveReplyPayload>(RpcSubjects.StockReserve, request, meta, cancellationToken);
 
-    public Task<StockReleaseReplyPayload> ReleaseStockAsync(StockReleaseRequestPayload request, CancellationToken cancellationToken) =>
-        SendAsync<StockReleaseRequestPayload, StockReleaseReplyPayload>(RpcSubjects.StockRelease, request, cancellationToken);
+    public Task<StockReleaseReplyPayload> ReleaseStockAsync(StockReleaseRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) =>
+        SendAsync<StockReleaseRequestPayload, StockReleaseReplyPayload>(RpcSubjects.StockRelease, request, meta, cancellationToken);
 
-    public Task<DespatchCreateReplyPayload> CreateDespatchAsync(DespatchCreateRequestPayload request, CancellationToken cancellationToken) =>
-        SendAsync<DespatchCreateRequestPayload, DespatchCreateReplyPayload>(RpcSubjects.DespatchCreate, request, cancellationToken);
+    public Task<DespatchCreateReplyPayload> CreateDespatchAsync(DespatchCreateRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) =>
+        SendAsync<DespatchCreateRequestPayload, DespatchCreateReplyPayload>(RpcSubjects.DespatchCreate, request, meta, cancellationToken);
 
-    public Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, CancellationToken cancellationToken) =>
-        SendAsync<CreditHoldRequestPayload, CreditHoldReplyPayload>(RpcSubjects.CreditHold, request, cancellationToken);
+    public Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) =>
+        SendAsync<CreditHoldRequestPayload, CreditHoldReplyPayload>(RpcSubjects.CreditHold, request, meta, cancellationToken);
 
-    public Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, CancellationToken cancellationToken) =>
-        SendAsync<InvoiceIssueRequestPayload, InvoiceIssueReplyPayload>(RpcSubjects.InvoiceIssue, request, cancellationToken);
+    public Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) =>
+        SendAsync<InvoiceIssueRequestPayload, InvoiceIssueReplyPayload>(RpcSubjects.InvoiceIssue, request, meta, cancellationToken);
 
     /// <summary>
     /// The taxonomy of design.md §6.1's table, in the ONE place it is
@@ -70,15 +79,24 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
     /// transient/infra set (<see cref="SagaCommandTransportError"/>, retried
     /// exactly as before) via <see cref="IsTerminalRpcErrorCode"/>.
     /// </summary>
-    private async Task<TReply> SendAsync<TRequest, TReply>(string subject, TRequest request, CancellationToken cancellationToken)
+    private async Task<TReply> SendAsync<TRequest, TReply>(string subject, TRequest request, SagaCommandMeta meta, CancellationToken cancellationToken)
     {
         var timeoutMs = _options.Value.Command.TimeoutMs;
         var replyOpts = new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
 
+        // A FRESH NatsHeaders per call — see the class remark; NatsHeaders is
+        // documented not thread-safe and must never be shared across
+        // concurrent requests.
+        var headers = new NatsHeaders
+        {
+            { CorrelationIdHeader, meta.CorrelationId.Value.ToString() },
+            { RequestIdHeader, meta.RequestId.Value.ToString() },
+        };
+
         NatsMsg<byte[]> reply;
         try
         {
-            reply = await _request(subject, RpcJson.Serialize(request), replyOpts, cancellationToken).ConfigureAwait(false);
+            reply = await _request(subject, RpcJson.Serialize(request), headers, replyOpts, cancellationToken).ConfigureAwait(false);
         }
         catch (NatsNoRespondersException)
         {
@@ -155,6 +173,6 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
     }
 
     private static RawRequester BuildRequester(INatsConnection connection) =>
-        (subject, payload, replyOpts, cancellationToken) =>
-            connection.RequestAsync<byte[], byte[]>(subject, payload, replyOpts: replyOpts, cancellationToken: cancellationToken);
+        (subject, payload, headers, replyOpts, cancellationToken) =>
+            connection.RequestAsync<byte[], byte[]>(subject, payload, headers: headers, replyOpts: replyOpts, cancellationToken: cancellationToken);
 }

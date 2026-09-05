@@ -1,6 +1,19 @@
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Application.Ports;
+
+/// <summary>
+/// The two correlation values every saga command carries on the wire
+/// (<c>asyncapi.yaml</c>'s <c>RpcHeaders</c>): <see cref="CorrelationId"/> is
+/// the order id (<c>x-correlation-id</c>) and <see cref="RequestId"/> is the
+/// id of the durable <c>saga_commands</c> row being dispatched
+/// (<c>x-request-id</c>). Both are stable across every in-line retry and
+/// every sweeper re-issue of the same row — a retry reuses the same value,
+/// which is what lets a responder recognise a duplicate (design.md §11,
+/// `FS2`).
+/// </summary>
+public readonly record struct SagaCommandMeta(UniqueId CorrelationId, UniqueId RequestId);
 
 /// <summary>
 /// The five outbound saga commands over the RPC transport (design.md §6.1).
@@ -9,19 +22,21 @@ namespace OrderToCash.Orders.Application.Ports;
 /// <c>Infrastructure/Messaging/Rpc/SagaCommandPayloads.cs</c>, referenced
 /// directly here rather than duplicated behind a second, port-local DTO
 /// shape — the same reuse this feature's design explicitly chooses (design.md
-/// §6.1's own snippet).
+/// §6.1's own snippet). Every method now carries a <see cref="SagaCommandMeta"/>
+/// (feature 17, `FS2`) so the responder on the other end can stamp
+/// <c>correlationId</c>/<c>causationId</c> on any fact it emits (`R12`).
 /// </summary>
 public interface ISagaCommands
 {
-    Task<StockReserveReplyPayload> ReserveStockAsync(StockReserveRequestPayload request, CancellationToken cancellationToken);
+    Task<StockReserveReplyPayload> ReserveStockAsync(StockReserveRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
 
-    Task<StockReleaseReplyPayload> ReleaseStockAsync(StockReleaseRequestPayload request, CancellationToken cancellationToken);
+    Task<StockReleaseReplyPayload> ReleaseStockAsync(StockReleaseRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
 
-    Task<DespatchCreateReplyPayload> CreateDespatchAsync(DespatchCreateRequestPayload request, CancellationToken cancellationToken);
+    Task<DespatchCreateReplyPayload> CreateDespatchAsync(DespatchCreateRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
 
-    Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, CancellationToken cancellationToken);
+    Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
 
-    Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, CancellationToken cancellationToken);
+    Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
 }
 
 /// <summary>

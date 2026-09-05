@@ -49,6 +49,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cqrs", "src\Cqrs\Cqrs.cspro
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cqrs.UnitTests", "tests\Cqrs.UnitTests\Cqrs.UnitTests.csproj", "{A66DE860-AD45-49AD-8CAF-A7C74A3041BF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fulfillment.UnitTests", "tests\Fulfillment.UnitTests\Fulfillment.UnitTests.csproj", "{03339E3E-B820-4C3A-A5C4-A703581BC9B7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -311,6 +313,18 @@ Global
 		{A66DE860-AD45-49AD-8CAF-A7C74A3041BF}.Release|x64.Build.0 = Release|Any CPU
 		{A66DE860-AD45-49AD-8CAF-A7C74A3041BF}.Release|x86.ActiveCfg = Release|Any CPU
 		{A66DE860-AD45-49AD-8CAF-A7C74A3041BF}.Release|x86.Build.0 = Release|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Debug|x64.Build.0 = Debug|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Debug|x86.Build.0 = Debug|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Release|x64.ActiveCfg = Release|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Release|x64.Build.0 = Release|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Release|x86.ActiveCfg = Release|Any CPU
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -337,5 +351,6 @@ Global
 		{717854C3-E5DD-4027-9AC5-4BFA7152CEBD} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{B7D0A196-8B55-4BD2-9840-9C5D85027C09} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{A66DE860-AD45-49AD-8CAF-A7C74A3041BF} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{03339E3E-B820-4C3A-A5C4-A703581BC9B7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

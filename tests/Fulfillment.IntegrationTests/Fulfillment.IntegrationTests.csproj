@@ -20,6 +20,14 @@
     <!-- Real MS-SQL container — never a mock, never SQLite-in-memory
          (CLAUDE.md testing conventions). -->
     <PackageReference Include="Testcontainers.MsSql" />
+    <!-- KafkaContainerFixture and NatsContainerFixture only — the generic
+         Testcontainers ContainerBuilder drives both apache/kafka:4.3.1 and
+         nats:2.14.5-alpine directly (Testcontainers.Kafka is deliberately
+         NOT referenced — see KafkaContainerFixture's own remarks, copied
+         verbatim from tests/Orders.IntegrationTests). -->
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Confluent.Kafka" />
+    <PackageReference Include="NATS.Net" />
   </ItemGroup>
 
   <ItemGroup>
