@@ -93,7 +93,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 6 | EF Core models + migrations for the four write databases | ✅ 20 tables, 60 integration tests against real MS-SQL, cross-context reliability-table parity asserted from the live schema |
 | 7 | Deterministic seed job | ✅ identifiers provably byte-identical to #7's, derived by the same SHA-256 scheme; 3 currencies, 12 products, 7 retailers, 22 companies, 215 stock rows, 6 sample orders and their read-model documents |
 | 8 | Orders service + saga orchestrator | ✅ aggregate, hand-rolled dispatcher, transactional outbox, `orders.create` acceptance, the saga with both compensation paths, and terminal-vs-retryable command classification — 7 features, 3 of them defects found in already-closed work; 16 armed architecture rules |
-| 9 | Fulfillment service | ⬜ |
+| 9 | Fulfillment service | 🚧 `StockItem` aggregate, reservation lifecycle and the `fulfillment.stock.*` RPC responder done — and starting it resumed four saga commands that had been parked since Phase 8, unattended |
 | 10 | Billing service | ⬜ |
 | 11 | Notifications service | ⬜ |
 | 12 | Projector service + MongoDB read model | ⬜ |
@@ -125,7 +125,15 @@ SELECT order_reference, command, status, attempts, last_error FROM dbo.saga_comm
 ORD-000010 | stock.reserve | parked | attempts=6 | fulfillment.stock.reserve: transport failure: no responder i...
 ```
 
-Parked rows plus structured logs are the **correct** steady state until Phase 9, not a stall: the sweeper keeps retrying on capped backoff, and they resume unattended the moment a responder exists. The stand-in above answers `fulfillment.stock.check` — the synchronous check the acceptance path makes — and deliberately not `fulfillment.stock.reserve`, which is the saga's own command.
+Parked rows plus structured logs are the **correct** steady state, not a stall: the sweeper keeps retrying on capped backoff, and they resume unattended the moment a responder exists. The stand-in above answers `fulfillment.stock.check` — the synchronous check the acceptance path makes — and deliberately not `fulfillment.stock.reserve`, which is the saga's own command.
+
+**That last claim is now demonstrated rather than designed.** Four commands sat parked for a day, at six attempts each. Starting the real Fulfillment service resumed all four with no operator action:
+
+```bash
+dotnet run --project src/Fulfillment    # in place of the stand-in
+```
+
+so the stand-in above is only needed until you run the real thing.
 
 ```bash
 docker compose -f docker-compose.infra.yml up -d
