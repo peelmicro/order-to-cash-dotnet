@@ -28,7 +28,7 @@ public sealed class IdempotentConsumerTests(MsSqlContainerFixture fixture)
                 ConsumerName.OrdersSaga,
                 async ct =>
                 {
-                    var repository = new EfCoreOrderRepository(db, new OutboxWriter(new FakeClock(FakeClock.UtcNowToTheMillisecond())));
+                    var repository = new EfCoreOrderRepository(db, new OutboxWriter(new FakeClock(FakeClock.UtcNowToTheMillisecond()), new OrderFactPayloadMapper()));
                     var order = await repository.GetByIdAsync(orderId, ct);
                     order!.Confirm(FakeClock.UtcNowToTheMillisecond(), UniqueId.New());
                     await repository.SaveChangesAsync(ct);
@@ -82,7 +82,7 @@ public sealed class IdempotentConsumerTests(MsSqlContainerFixture fixture)
         Func<OrdersDbContext, CancellationToken, Task> work = async (db, ct) =>
         {
             workCallCount++;
-            var repository = new EfCoreOrderRepository(db, new OutboxWriter(new FakeClock(FakeClock.UtcNowToTheMillisecond())));
+            var repository = new EfCoreOrderRepository(db, new OutboxWriter(new FakeClock(FakeClock.UtcNowToTheMillisecond()), new OrderFactPayloadMapper()));
             var order = await repository.GetByIdAsync(orderId, ct);
             order!.Confirm(FakeClock.UtcNowToTheMillisecond(), UniqueId.New());
             await repository.SaveChangesAsync(ct);
@@ -132,7 +132,7 @@ public sealed class IdempotentConsumerTests(MsSqlContainerFixture fixture)
                 async ct =>
                 {
                     Interlocked.Increment(ref effectsRun);
-                    var repository = new EfCoreOrderRepository(db, new OutboxWriter(new FakeClock(FakeClock.UtcNowToTheMillisecond())));
+                    var repository = new EfCoreOrderRepository(db, new OutboxWriter(new FakeClock(FakeClock.UtcNowToTheMillisecond()), new OrderFactPayloadMapper()));
                     var order = await repository.GetByIdAsync(orderId, ct);
                     order!.Confirm(FakeClock.UtcNowToTheMillisecond(), UniqueId.New());
                     await repository.SaveChangesAsync(ct);
@@ -191,7 +191,7 @@ public sealed class IdempotentConsumerTests(MsSqlContainerFixture fixture)
         order.MarkStockReserved(clock.UtcNow.AddSeconds(1));
         order.ApproveCredit(clock.UtcNow.AddSeconds(2));
 
-        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
         await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 

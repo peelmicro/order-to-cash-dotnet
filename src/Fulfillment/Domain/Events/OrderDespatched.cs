@@ -8,7 +8,7 @@ namespace OrderToCash.Fulfillment.Domain.Events;
 /// half (specs/shared/asyncapi.yaml <c>OrderDespatchedPayload</c>). Unlike
 /// <see cref="StockReserved"/>/<see cref="StockReleased"/>, whose carrier is a
 /// <see cref="StockItem"/> because no despatch exists yet at that point in
-/// the saga, THIS fact's <see cref="StockDomainEvent.AggregateId"/> is the
+/// the saga, THIS fact's <see cref="FactEvent.AggregateId"/> is the
 /// <see cref="DespatchAdvice"/>'s own id — the despatch IS the aggregate that
 /// produced it. <see cref="Lines"/> reuses <see cref="DespatchLine"/> from
 /// <c>Contracts.Facts</c> directly, the same domain-event-may-reference-
@@ -27,7 +27,7 @@ public sealed record OrderDespatched(
     string CompanyCode,
     string RetailerCode,
     IReadOnlyList<DespatchLine> Lines)
-    : StockDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+    : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
 {
     public override string EventType => "order.despatched.v1";
 }

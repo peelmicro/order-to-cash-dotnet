@@ -1,16 +1,16 @@
 # Current session
 
-**Feature:** none — **Phase 9 complete**, 24 of 53 features done
+**Feature:** none — `billing_credit` (id 19) closed with four backlog entries, 29 of 53 done
 **Status:** idle
 **Session started:** —
 
 ## Goal
 
-**Phase 10 — Billing.** Four features: `billing_credit` (`sdd: true`, so it opens with a spec pass and a human gate), then the `.99` credit simulator, invoicing, and remittance intake.
+Phase 10 continues: `billing_credit_simulator` (id 20, `sdd: false`), then invoicing (id 21, `sdd: true` — a spec gate), then remittance intake (id 22).
 
 ## Decisions taken this session
 
-Phase 9 closed: features 17, 46 and 18 done, backlog id 49 closed inside feature 18. The ported-idiom ledger had its first real test. Three convention amendments landed, and a fourth was **declined on the reviewer's advice** in favour of one clause on an existing rule — the count stays at four.
+The human **overruled both** of `billing_credit`'s gate recommendations with a standing instruction: **stop leaving issues to the next phase — fix them.** That ruling produced the cross-service outbox unification, checked money arithmetic, and four backlog closures inside one feature. It also produced the build's first observable save from the ported-idiom ledger.
 
 ## Blockers
 
@@ -18,9 +18,14 @@ None.
 
 ## Notes
 
-**Carried into Phase 10's brief, and it must be written before the first implementer is dispatched:** seven backlog entries now sit in phase 10 (ids 48, 50, 51, 52, 53, 54 and the Billing features themselves). The only closure mechanism this build has ever demonstrated is **closing an entry inside a feature that already has the file open** — id 49 took one minute that way. A `phase` field is not a schedule. Name which entry attaches to which Billing feature up front.
+**Backlog attachment map for the rest of phase 10** — ids 48, 50, 51 and 53 are now closed. What remains:
 
-**A confound to record from here on, per rejection:** part of #8's per-feature gap is a deliberately raised review bar rather than a slower language. Record whether #7's standard would have caught each rejection, or the final benchmark table will report harness maturity as a language penalty.
+| Entry | Rides | Why |
+|---|---|---|
+| **52** — retroactive boundary ledger for pre-ledger services | **standalone** | Its own acceptance forbids fixing anything in place; folding it into a feature would put un-specced fixes into that feature's review |
+| **55** — `BC32`'s universal claim is false at six more sites | **feature 20 or 21** | Three of the six are in `tests/Billing.IntegrationTests/CreditListTests.cs`, which the Billing features keep open |
+
+**The ledger's standing caveat, to repeat in the final benchmark:** you cannot observe a prevented defect. *"It prevents"* is an inference from one instance — the client id the unification destroyed and the ledger row re-created — not a measurement.
 
 ---
 

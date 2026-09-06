@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -156,13 +157,70 @@ public sealed class OrdersCreateAcceptanceTests(NatsContainerFixture nats, MsSql
                 cancellationToken: CancellationToken.None);
 
             Assert.NotNull(replyMsg.Data);
-            RpcJson.Deserialize<OrdersCreateReplyPayload>(replyMsg.Data!); // the request succeeded
+            var reply = RpcJson.Deserialize<OrdersCreateReplyPayload>(replyMsg.Data!);
+            Assert.Matches(new Regex("^ORD-[0-9]{6,}$"), reply.OrderReference);
 
             Assert.NotNull(observed);
             Assert.Equal(OrderPersistenceTestSupport.CompanyCode, observed!.CompanyCode);
             var line = Assert.Single(observed.Lines);
             Assert.Equal(OrderPersistenceTestSupport.ProductCode1, line.ProductCode);
             Assert.Equal(3, line.Quantity);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    /// <summary>
+    /// `K2` (backlog id 53) — the weak spot immediately above this test:
+    /// <c>RpcJson.Deserialize&lt;OrdersCreateReplyPayload&gt;(replyMsg.Data!);
+    /// // the request succeeded</c> deserialises an <c>RpcError</c> body into
+    /// an all-defaults <see cref="OrdersCreateReplyPayload"/> without ever
+    /// throwing, so a caller that never inspects the result cannot tell a
+    /// real success from a silently-absorbed error. This asserts the
+    /// reply's OWN discriminating field — <c>orderReference</c> must match
+    /// <c>ORD-######</c> — which is false, and false ON ITS OWN TERMS
+    /// (not via a <see cref="NullReferenceException"/>), for an all-defaults
+    /// reply.
+    /// </summary>
+    [Fact]
+    public async Task BC32_FailsOnItsOwnAssertion_WhenTheResponderAnswersAnRpcError()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_bc32_{Guid.NewGuid():N}");
+        await using (var seedDb = mssql.CreateDbContext(connectionString))
+        {
+            await seedDb.Database.MigrateAsync();
+            await OrderPersistenceTestSupport.SeedReferenceDataAsync(seedDb);
+        }
+
+        using var host = BuildHost(connectionString);
+        await host.StartAsync();
+        try
+        {
+            await using var fulfillment = await StandInFulfillmentStockCheckResponder.StartAvailableAsync(nats.Url, CancellationToken.None);
+            await using var caller = new NatsConnection(new NatsOpts { Url = nats.Url });
+            await WaitUntilOrdersCreateReachableAsync(caller, CancellationToken.None);
+
+            var request = new OrdersCreateRequestPayload(
+                RequestId: null,
+                OrderPersistenceTestSupport.RetailerCode,
+                OrderPersistenceTestSupport.CompanyCode,
+                OrderPersistenceTestSupport.Currency,
+                Lines: [new OrdersCreateRequestLine(OrderPersistenceTestSupport.ProductCode1, 1, UnitPrice: 1_000, LineDiscount: null)],
+                OrderDiscount: null,
+                Notes: null);
+
+            var replyMsg = await caller.RequestAsync<byte[], byte[]>(
+                RpcSubjects.OrdersCreate,
+                RpcJson.Serialize(request),
+                replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromSeconds(10) },
+                cancellationToken: CancellationToken.None);
+
+            Assert.NotNull(replyMsg.Data);
+            var reply = RpcJson.Deserialize<OrdersCreateReplyPayload>(replyMsg.Data!);
+
+            Assert.Matches(new Regex("^ORD-[0-9]{6,}$"), reply.OrderReference);
         }
         finally
         {

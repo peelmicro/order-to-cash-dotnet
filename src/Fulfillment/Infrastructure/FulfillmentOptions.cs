@@ -23,7 +23,7 @@ public sealed class FulfillmentOptions
 
     public NatsOptions Nats { get; } = new();
 
-    public KafkaOptions Kafka { get; } = new();
+    public KafkaOptions Kafka { get; } = new() { ClientId = "otc-fulfillment" };
 
     public OutboxRelayOptions Relay { get; } = new();
 

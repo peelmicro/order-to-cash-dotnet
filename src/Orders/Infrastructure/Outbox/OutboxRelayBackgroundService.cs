@@ -30,8 +30,8 @@ public sealed class OutboxRelayBackgroundService(
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             // One DI scope per cycle, disposed at the end (design.md §2.1's
-            // price, paid here) — the OrdersDbContext and its change
-            // tracker are fresh every cycle.
+            // price, paid here) — the write model's DbContext and its
+            // change tracker are fresh every cycle.
             using var scope = scopeFactory.CreateScope();
             var relay = scope.ServiceProvider.GetRequiredService<IOutboxRelay>();
 

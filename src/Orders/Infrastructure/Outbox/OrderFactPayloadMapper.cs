@@ -1,3 +1,4 @@
+using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Domain;
 using OrderToCash.Orders.Domain.Events;
 using ContractsPayloads = OrderToCash.Contracts.Facts.Payloads;
@@ -16,10 +17,10 @@ namespace OrderToCash.Orders.Infrastructure.Outbox;
 /// <c>GLN</c> become <c>string</c> and <c>Quantity</c> becomes <c>int</c>.
 /// No <c>decimal</c> appears anywhere on this path, in either direction.
 /// </summary>
-public static class OrderFactPayloadMapper
+public sealed class OrderFactPayloadMapper : IFactPayloadMapper
 {
     /// <summary>One method per fact type, dispatched by the event's CLR type. An unmapped event type throws, naming it — this is the writer's second guard, alongside <see cref="OrderToCash.SharedKernel.DomainEventEnvelope.Validate"/>.</summary>
-    public static object ToPayload(OrderDomainEvent domainEvent) => domainEvent switch
+    public object ToPayload(FactEvent domainEvent) => domainEvent switch
     {
         OrderPlaced placed => ToOrderPlacedPayload(placed),
         OrderConfirmed confirmed => ToOrderConfirmedPayload(confirmed),

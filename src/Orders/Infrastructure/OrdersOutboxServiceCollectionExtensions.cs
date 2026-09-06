@@ -38,6 +38,7 @@ public static class OrdersOutboxServiceCollectionExtensions
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
+        services.AddSingleton<IFactPayloadMapper, OrderFactPayloadMapper>();
         services.AddScoped<OutboxWriter>();
         services.AddScoped<IOrderRepository, EfCoreOrderRepository>();
 

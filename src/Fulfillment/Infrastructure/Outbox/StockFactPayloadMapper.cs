@@ -1,3 +1,4 @@
+using OrderToCash.Fulfillment.Application.Ports;
 using OrderToCash.Fulfillment.Domain.Events;
 using ContractsPayloads = OrderToCash.Contracts.Facts.Payloads;
 
@@ -11,9 +12,9 @@ namespace OrderToCash.Fulfillment.Infrastructure.Outbox;
 /// never reference <c>Contracts</c> for the ENVELOPE; this mapper lives in
 /// <c>Infrastructure/Outbox/</c>.
 /// </summary>
-public static class StockFactPayloadMapper
+public sealed class StockFactPayloadMapper : IFactPayloadMapper
 {
-    public static object ToPayload(StockDomainEvent domainEvent) => domainEvent switch
+    public object ToPayload(FactEvent domainEvent) => domainEvent switch
     {
         StockReserved reserved => new ContractsPayloads.StockReservedPayload(
             reserved.OrderReference.Value,

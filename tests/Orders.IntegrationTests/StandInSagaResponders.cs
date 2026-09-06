@@ -223,7 +223,7 @@ internal static class StandInSagaResponders
         CancellationToken cancellationToken,
         Guid? eventId = null)
     {
-        using var producer = new ProducerBuilder<string, byte[]>(KafkaFactPublisher.BuildProducerConfig(new KafkaOptions { BootstrapServers = bootstrapServers })).Build();
+        using var producer = new ProducerBuilder<string, byte[]>(KafkaFactPublisher.BuildProducerConfig(new KafkaOptions { BootstrapServers = bootstrapServers, ClientId = "otc-orders-standin" })).Build();
 
         var envelope = new Envelope<TPayload>(eventId ?? Guid.NewGuid(), eventType, correlationId, correlationId, causationId, occurredAt, payload);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonWire.Options);

@@ -31,7 +31,7 @@ public sealed class FulfillmentOutboxRelayTests(KafkaContainerFixture kafka, MsS
 
         await using (var db = mssql.CreateDbContext(connectionString))
         {
-            var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock()), new FixedClock());
+            var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock(), new StockFactPayloadMapper()), new FixedClock());
             var uow = new EfCoreUnitOfWork(db);
 
             await uow.ExecuteAsync(async ct =>
@@ -109,7 +109,7 @@ public sealed class FulfillmentOutboxRelayTests(KafkaContainerFixture kafka, MsS
 
         await using (var db = mssql.CreateDbContext(connectionString))
         {
-            var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock()), new FixedClock());
+            var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock(), new StockFactPayloadMapper()), new FixedClock());
             var uow = new EfCoreUnitOfWork(db);
 
             await uow.ExecuteAsync(async ct =>

@@ -42,22 +42,22 @@ public readonly record struct Money : IComparable<Money>
 
     public static Money Zero(string currency) => new(0, currency);
 
-    /// <summary>M3 — closed arithmetic: returns a <see cref="Money"/> of the same currency, or raises M2.</summary>
+    /// <summary>M3 — closed arithmetic: returns a <see cref="Money"/> of the same currency, or raises M2. `checked` (`BC30`) — raises <see cref="OverflowException"/> rather than wrapping past <see cref="long.MaxValue"/>/<see cref="long.MinValue"/>.</summary>
     public Money Add(Money other)
     {
         EnsureSameCurrency(other);
-        return new Money(MinorUnits + other.MinorUnits, Currency);
+        return new Money(checked(MinorUnits + other.MinorUnits), Currency);
     }
 
-    /// <summary>M3 — closed arithmetic: returns a <see cref="Money"/> of the same currency, or raises M2.</summary>
+    /// <summary>M3 — closed arithmetic: returns a <see cref="Money"/> of the same currency, or raises M2. `checked` (`BC30`) — raises <see cref="OverflowException"/> rather than wrapping past <see cref="long.MaxValue"/>/<see cref="long.MinValue"/>.</summary>
     public Money Subtract(Money other)
     {
         EnsureSameCurrency(other);
-        return new Money(MinorUnits - other.MinorUnits, Currency);
+        return new Money(checked(MinorUnits - other.MinorUnits), Currency);
     }
 
-    /// <summary>M3 — multiply by a <see cref="Quantity"/>, returning a <see cref="Money"/> of the same currency. Division is deliberately not offered.</summary>
-    public Money Multiply(Quantity quantity) => new(MinorUnits * quantity.Value, Currency);
+    /// <summary>M3 — multiply by a <see cref="Quantity"/>, returning a <see cref="Money"/> of the same currency. Division is deliberately not offered. `checked` (`BC30`) — raises <see cref="OverflowException"/> rather than wrapping.</summary>
+    public Money Multiply(Quantity quantity) => new(checked(MinorUnits * quantity.Value), Currency);
 
     /// <summary>M4 — a negative amount is representable (discounts, reversals); rejecting a negative *total* is the caller's invariant, not this type's.</summary>
     public bool IsNegative => MinorUnits < 0;

@@ -20,7 +20,7 @@ public sealed record StockReleased(
     string? RetailerCode,
     IReadOnlyList<ReservationRef> Released,
     string Reason)
-    : StockDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+    : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
 {
     public override string EventType => "stock.released.v1";
 }

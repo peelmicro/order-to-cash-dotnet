@@ -2,14 +2,16 @@
 using Confluent.Kafka;
 using Microsoft.Extensions.Options;
 using OrderToCash.Fulfillment.Application.Ports;
+using FactTopic = OrderToCash.Fulfillment.Infrastructure.Outbox.FulfillmentFactTopic;
 
 namespace OrderToCash.Fulfillment.Infrastructure.Outbox;
 
 /// <summary>
-/// The one implementation of <see cref="IFactPublisher"/>. <c>Confluent.Kafka</c>
-/// directly, not a wrapper: the relay needs explicit control of the key, the
-/// idempotence flags and the acknowledgement point. The producer is
-/// <see cref="IDisposable"/> (<c>CA2213</c> is an error in this repository).
+/// The one implementation of <see cref="IFactPublisher"/> — design.md §5.3.
+/// <c>Confluent.Kafka</c> directly, not a wrapper: the relay needs explicit
+/// control of the key, the idempotence flags and the acknowledgement point.
+/// The producer is <see cref="IDisposable"/> (<c>CA2213</c> is an error in
+/// this repository, so a forgotten dispose fails the build).
 /// </summary>
 public sealed class KafkaFactPublisher : IFactPublisher, IDisposable
 {
@@ -23,11 +25,20 @@ public sealed class KafkaFactPublisher : IFactPublisher, IDisposable
     /// <summary>Test seam — a caller may hand in an already-built producer (e.g. pointed at a Testcontainers broker) without going through <see cref="IOptions{TOptions}"/>.</summary>
     public KafkaFactPublisher(IProducer<string, byte[]> producer) => _producer = producer;
 
-    /// <summary>The <see cref="ProducerConfig"/> this adapter builds — exposed so a config test can assert on it without mocking a broker.</summary>
+    /// <summary>The <see cref="ProducerConfig"/> this adapter builds — exposed so <c>KafkaFactPublisherConfigTests</c> (OI7) can assert on it without mocking a broker.</summary>
     public static ProducerConfig BuildProducerConfig(KafkaOptions options) => new()
     {
         BootstrapServers = options.BootstrapServers,
         ClientId = options.ClientId,
+        // OI7: a client-internal retry must neither reorder a partition's
+        // records nor create a broker-side duplicate of a record the broker
+        // already accepted. EnableIdempotence pins Acks=All and keeps
+        // retries effectively unbounded; MaxInFlight stays at librdkafka's
+        // default of 5 DELIBERATELY — the idempotent producer preserves
+        // per-partition order at up to five in-flight requests, which is
+        // the substantive difference from #7's kafkajs client, which pins
+        // maxInFlightRequests = 1 to get the same guarantee (design.md
+        // §5.3).
         EnableIdempotence = true,
         Acks = Acks.All,
         MessageSendMaxRetries = int.MaxValue,
@@ -54,7 +65,11 @@ public sealed class KafkaFactPublisher : IFactPublisher, IDisposable
                 Headers = headers,
             };
 
-            await _producer.ProduceAsync(FulfillmentFactTopic.Name, message, cancellationToken);
+            // ProduceAsync completes when the broker acknowledges (Acks.All
+            // above) or throws — never a fire-and-forget Produce() with a
+            // delivery-report callback, so a failure here propagates
+            // synchronously to the relay's own await (R14, OI14).
+            await _producer.ProduceAsync(FactTopic.Name, message, cancellationToken);
         }
     }
 

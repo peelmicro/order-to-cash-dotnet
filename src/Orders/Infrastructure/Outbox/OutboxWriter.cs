@@ -11,13 +11,12 @@ namespace OrderToCash.Orders.Infrastructure.Outbox;
 /// <summary>
 /// <see cref="IReadOnlyList{IDomainEvent}"/> -&gt; <see cref="OutboxMessage"/>
 /// rows, column by column exactly as design.md §4.4's table prescribes.
-/// Called from inside the write-model transaction
-/// (<see cref="Persistence.EfCoreOrderRepository.SaveChangesAsync"/>), never
-/// by the relay, which only ever reads what this class already wrote (R14's
-/// "only the relay publishes" — this class is the OTHER half: only the
-/// writer stores).
+/// Called from inside the write-model transaction (<c>SaveChangesAsync</c>
+/// on the aggregate repository), never by the relay, which only ever reads
+/// what this class already wrote (R14's "only the relay publishes" — this
+/// class is the OTHER half: only the writer stores).
 /// </summary>
-public sealed class OutboxWriter(IClock clock)
+public sealed class OutboxWriter(IClock clock, IFactPayloadMapper payloadMapper)
 {
     /// <summary>
     /// Builds one row per event, in list (= raise) order, so <c>seq</c>
@@ -38,28 +37,28 @@ public sealed class OutboxWriter(IClock clock)
 
         foreach (var domainEvent in domainEvents)
         {
-            var orderEvent = (OrderDomainEvent)domainEvent;
+            var factEvent = (FactEvent)domainEvent;
 
-            DomainEventEnvelope.Validate(orderEvent);
+            DomainEventEnvelope.Validate(factEvent);
 
-            if (!FactCatalog.PayloadTypesByEventType.ContainsKey(orderEvent.EventType))
+            if (!FactCatalog.PayloadTypesByEventType.ContainsKey(factEvent.EventType))
             {
                 throw new InvalidOperationException(
-                    $"Outbox writer refuses to store a fact whose eventType '{orderEvent.EventType}' is not in the declared FactCatalog.");
+                    $"Outbox writer refuses to store a fact whose eventType '{factEvent.EventType}' is not in the declared FactCatalog.");
             }
 
-            var payload = OrderFactPayloadMapper.ToPayload(orderEvent);
+            var payload = payloadMapper.ToPayload(factEvent);
 
             rows.Add(new OutboxMessage
             {
                 Id = Guid.NewGuid(),
-                EventId = orderEvent.EventId.Value,
-                EventType = orderEvent.EventType,
-                AggregateId = orderEvent.AggregateId.Value,
-                CorrelationId = orderEvent.CorrelationId.Value,
-                CausationId = orderEvent.CausationId.Value,
+                EventId = factEvent.EventId.Value,
+                EventType = factEvent.EventType,
+                AggregateId = factEvent.AggregateId.Value,
+                CorrelationId = factEvent.CorrelationId.Value,
+                CausationId = factEvent.CausationId.Value,
                 Payload = JsonSerializer.Serialize(payload, JsonWire.Options),
-                OccurredAt = orderEvent.OccurredAt.UtcDateTime,
+                OccurredAt = factEvent.OccurredAt.UtcDateTime,
                 PublishedAt = null,
                 CreatedAt = createdAt,
                 TraceParent = null,

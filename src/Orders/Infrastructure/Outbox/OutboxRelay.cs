@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrderToCash.Orders.Application.Ports;
-using OrderToCash.Orders.Infrastructure.Persistence;
 using OrderToCash.Orders.Infrastructure.Persistence.Entities;
+using WriteModelDbContext = OrderToCash.Orders.Infrastructure.Persistence.OrdersDbContext;
 
 namespace OrderToCash.Orders.Infrastructure.Outbox;
 
@@ -30,7 +30,7 @@ public interface IOutboxRelay
 /// with no host (design.md §2.2).
 /// </summary>
 public sealed class OutboxRelay(
-    OrdersDbContext db,
+    WriteModelDbContext db,
     IFactPublisher publisher,
     IClock clock,
     IOptions<OutboxRelayOptions> options,

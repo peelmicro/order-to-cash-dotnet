@@ -1,10 +1,10 @@
 // COPY OF — src/Orders/Infrastructure/Outbox/OutboxRelayOptions.cs
 namespace OrderToCash.Fulfillment.Infrastructure.Outbox;
 
-/// <summary>The relay's own tunables — #7's numbers kept so the benchmark compares like with like.</summary>
+/// <summary>The relay's own tunables — design.md §8, #7's numbers kept so the benchmark compares like with like.</summary>
 public sealed class OutboxRelayOptions
 {
-    /// <summary>Exists so a scaled-out deployment runs exactly one relay per write model.</summary>
+    /// <summary>Exists so a scaled-out deployment runs exactly one relay per write model (design.md §5.2's ordering caveat).</summary>
     public bool Enabled { get; set; } = true;
 
     public int PollIntervalMs { get; set; } = 250;
@@ -12,6 +12,6 @@ public sealed class OutboxRelayOptions
     /// <summary>Bounds how long the claim transaction stays open and how many locks it holds.</summary>
     public int BatchSize { get; set; } = 100;
 
-    /// <summary>The acknowledgement budget, enforced.</summary>
+    /// <summary>The acknowledgement budget, enforced (OI14).</summary>
     public int PublishTimeoutMs { get; set; } = 5000;
 }

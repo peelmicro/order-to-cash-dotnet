@@ -7,10 +7,16 @@ using Xunit;
 namespace OrderToCash.Fulfillment.UnitTests;
 
 /// <summary>
-/// The <c>SagaCommandPayloadTests</c> instrument (design.md §6.3): every one
-/// of the ten <c>fulfillment.stock.*</c> payload records round-trips through
-/// the ONE shared <see cref="JsonWire.Options"/> (camelCase, nulls omitted)
-/// with exactly the keys <c>specs/shared/asyncapi.yaml</c> declares.
+/// The <c>SagaCommandPayloadTests</c> instrument: every one of the ten
+/// <c>fulfillment.stock.*</c> payload records round-trips through the ONE
+/// shared <see cref="JsonWire.Options"/> (camelCase, nulls omitted) with
+/// exactly the keys this file hand-retypes below — a cheap, readable check
+/// that catches UNILATERAL drift of the code. <see cref="BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi"/>
+/// is the ONE case that actually reads <c>specs/shared/asyncapi.yaml</c> as
+/// text (backlog id 51, `BC23`, design.md §10.2) and closes the gap this
+/// file's hand-retyping alone cannot: a CORRELATED authoring error where
+/// the schema and this file's copy are changed together, wrongly, and stay
+/// green.
 /// </summary>
 public sealed class StockRpcPayloadTests
 {
@@ -137,6 +143,60 @@ public sealed class StockRpcPayloadTests
         var withLinesJson = RoundTrip(withLines);
         AssertKeys(withLinesJson, "orderReference", "despatchReference", "despatchDate", "created", "lines");
         AssertKeys(withLinesJson.RootElement.GetProperty("lines")[0], "productCode", "units");
+    }
+
+    /// <summary>Backlog id 51, `BC23` — this file's hand-retyped key lists agree with the sets parsed from <c>specs/shared/asyncapi.yaml</c> via <see cref="AsyncApiSchema"/>, schema by schema. Existing cases above are kept; they catch a different defect.</summary>
+    [Theory]
+    [InlineData("StockCheckRequestPayload", new[] { "companyCode", "lines" })]
+    [InlineData("StockCheckReplyPayload", new[] { "available", "lines" })]
+    [InlineData("StockReserveRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "lines" })]
+    [InlineData("StockReserveReplyPayload", new[] { "outcome", "orderReference", "reservations", "shortages" })]
+    [InlineData("StockReleaseRequestPayload", new[] { "orderReference", "reason" })]
+    [InlineData("StockReleaseReplyPayload", new[] { "outcome", "orderReference", "released" })]
+    [InlineData("StockListRequestPayload", new[] { "page", "pageSize", "companyCode", "productCode", "belowThreshold" })]
+    [InlineData("StockListReplyPayload", new[] { "items", "page" })]
+    [InlineData("StockReplenishRequestPayload", new[] { "companyCode", "lines" })]
+    [InlineData("StockReplenishReplyPayload", new[] { "items" })]
+    [InlineData("DespatchCreateRequestPayload", new[] { "orderReference" })]
+    [InlineData("DespatchCreateReplyPayload", new[] { "orderReference", "despatchReference", "despatchDate", "created", "lines" })]
+    public void BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi(string schemaName, string[] handRetypedKeys)
+    {
+        var parsed = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
+        var retyped = handRetypedKeys.ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(parsed, retyped);
+    }
+
+    /// <summary>
+    /// `G5` — the arming that proves the guard has teeth. A SCRATCH copy of
+    /// the real spec (never the real, read-only
+    /// <c>specs/shared/asyncapi.yaml</c>) with <c>StockCheckRequestPayload</c>'s
+    /// <c>companyCode</c> renamed: this file's hand-retyped list for that
+    /// schema no longer agrees with the scratch copy.
+    /// </summary>
+    [Fact]
+    public void G5_TheGuardFailsAgainstAScratchCopyWhoseStockCheckRequestPayloadPropertyWasRenamed()
+    {
+        var realSpecPath = RepositoryPaths.Find(Path.Combine("specs", "shared", "asyncapi.yaml"));
+        var scratchPath = Path.Combine(Path.GetTempPath(), $"asyncapi-g5-scratch-fulfillment-{Guid.NewGuid():N}.yaml");
+
+        try
+        {
+            var corrupted = File.ReadAllText(realSpecPath)
+                .Replace("    StockCheckRequestPayload:\n      type: object\n      properties:\n        companyCode:",
+                          "    StockCheckRequestPayload:\n      type: object\n      properties:\n        companyCodeRenamed:", StringComparison.Ordinal);
+            File.WriteAllText(scratchPath, corrupted);
+
+            var scratchText = File.ReadAllText(scratchPath);
+            var parsedFromScratch = AsyncApiSchema.PropertyNamesOf(scratchText, "StockCheckRequestPayload").ToHashSet(StringComparer.Ordinal);
+            var handRetyped = new[] { "companyCode", "lines" }.ToHashSet(StringComparer.Ordinal);
+
+            Assert.NotEqual(handRetyped, parsedFromScratch);
+        }
+        finally
+        {
+            File.Delete(scratchPath);
+        }
     }
 
     private static JsonDocument RoundTrip<T>(T payload)

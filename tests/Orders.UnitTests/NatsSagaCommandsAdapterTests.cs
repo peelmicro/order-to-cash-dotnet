@@ -70,6 +70,36 @@ public sealed class NatsSagaCommandsAdapterTests
         Assert.Equal(requestId.Value.ToString(), observedHeaders["x-request-id"].ToString());
     }
 
+    /// <summary>
+    /// Backlog id 48, `BC31` — a FRESH <see cref="NatsHeaders"/> is passed on
+    /// EVERY outbound request, never one reused or cleared between calls.
+    /// <see cref="NatsHeaders"/> is documented not thread-safe and mutable;
+    /// the class remark on <see cref="NatsSagaCommandsAdapter"/> already
+    /// asserts this property — this is the guard that was missing. Asserts
+    /// REFERENCE distinctness (<c>Assert.NotSame</c>), not value equality:
+    /// value equality would pass against a single instance cleared and
+    /// re-populated between calls, which is exactly the shape this entry
+    /// names.
+    /// </summary>
+    [Fact]
+    public async Task BC31_PassesAFreshlyConstructedHeaderCollectionOnEveryRequest_NeverOneReusedBetweenCalls()
+    {
+        var observedHeaders = new List<NatsHeaders?>();
+        var adapter = BuildAdapter((subject, payload, headers, opts, ct) =>
+        {
+            observedHeaders.Add(headers);
+            return new ValueTask<NatsMsg<byte[]>>(BuildReply(SuccessBodyFor(RpcSubjectUnderTest.StockReserve)));
+        });
+
+        await InvokeAsync(adapter, RpcSubjectUnderTest.StockReserve, new SagaCommandMeta(UniqueId.New(), UniqueId.New()));
+        await InvokeAsync(adapter, RpcSubjectUnderTest.StockReserve, new SagaCommandMeta(UniqueId.New(), UniqueId.New()));
+
+        Assert.Equal(2, observedHeaders.Count);
+        Assert.NotNull(observedHeaders[0]);
+        Assert.NotNull(observedHeaders[1]);
+        Assert.NotSame(observedHeaders[0], observedHeaders[1]);
+    }
+
     [Fact]
     public async Task NatsNoRespondersException_MapsToSagaCommandTransportError()
     {

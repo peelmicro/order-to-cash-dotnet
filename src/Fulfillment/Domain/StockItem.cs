@@ -171,7 +171,7 @@ public sealed class StockItem : AggregateRoot
     }
 
     /// <summary>The only way a fact reaches the aggregate. Refuses (<see cref="FactAggregateMismatchError"/>) unless the fact's <c>AggregateId</c> equals this item's own — the one guard that stops this method being a generic "emit anything" hole.</summary>
-    public void RecordOrderFact(StockDomainEvent fact)
+    public void RecordOrderFact(FactEvent fact)
     {
         if (fact.AggregateId != Id)
         {

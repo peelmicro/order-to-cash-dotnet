@@ -386,7 +386,7 @@ public sealed class Order : AggregateRoot
     /// leave the aggregate momentarily <see cref="OrderStatus.Cancelled"/>
     /// with a <see langword="null"/> reason — a state O6 says cannot exist.
     /// </summary>
-    private void TransitionTo(OrderStatus to, DateTimeOffset occurredAt, Func<OrderDomainEvent>? buildEvent, CancellationReason? cancellationReason = null)
+    private void TransitionTo(OrderStatus to, DateTimeOffset occurredAt, Func<FactEvent>? buildEvent, CancellationReason? cancellationReason = null)
     {
         if (!OrderStateMachine.IsLegal(Status, to))
         {

@@ -30,7 +30,7 @@ public sealed class OutboxRelayTests(KafkaContainerFixture kafka, MsSqlContainer
 
         await using (var db = mssql.CreateDbContext(connectionString))
         {
-            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var unitOfWork = new EfCoreUnitOfWork(db);
             await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
         }

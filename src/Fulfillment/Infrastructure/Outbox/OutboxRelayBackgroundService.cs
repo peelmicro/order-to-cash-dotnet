@@ -7,9 +7,9 @@ using Microsoft.Extensions.Options;
 namespace OrderToCash.Fulfillment.Infrastructure.Outbox;
 
 /// <summary>
-/// The poll loop and graceful drain. Owns the interval, the DI scope per
-/// cycle and shutdown; <see cref="OutboxRelay"/> itself stays a plain class
-/// with no host dependency.
+/// The poll loop and graceful drain — design.md §5.4. Owns the interval, the
+/// DI scope per cycle and shutdown; <see cref="OutboxRelay"/> itself stays a
+/// plain class with no host dependency (design.md §2.2).
 /// </summary>
 public sealed class OutboxRelayBackgroundService(
     IServiceScopeFactory scopeFactory,
@@ -25,8 +25,14 @@ public sealed class OutboxRelayBackgroundService(
 
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(options.Value.PollIntervalMs));
 
+        // PeriodicTimer does not queue missed ticks, so a slow cycle delays
+        // the next one rather than stacking — OI6 is satisfied by
+        // construction: one loop, one await per cycle, no second caller.
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            // One DI scope per cycle, disposed at the end (design.md §2.1's
+            // price, paid here) — the write model's DbContext and its
+            // change tracker are fresh every cycle.
             using var scope = scopeFactory.CreateScope();
             var relay = scope.ServiceProvider.GetRequiredService<IOutboxRelay>();
 
@@ -36,6 +42,8 @@ public sealed class OutboxRelayBackgroundService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                // The failure is already durable — nothing was stamped — so
+                // stopping the relay would only delay recovery.
                 logger.LogError(ex, "Outbox relay poll cycle failed; will retry on the next tick.");
             }
         }

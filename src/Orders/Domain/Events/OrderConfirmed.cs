@@ -19,7 +19,7 @@ public sealed record OrderConfirmed(
     string Currency,
     Money TotalAmount,
     DateTimeOffset ConfirmedAt)
-    : OrderDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+    : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
 {
     public override string EventType => "order.confirmed.v1";
 }

@@ -33,7 +33,7 @@ public sealed record OrderPlaced(
     Money InitialDiscount,
     Money TotalAmount,
     string? Notes)
-    : OrderDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+    : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
 {
     public override string EventType => "order.placed.v1";
 }

@@ -11,20 +11,23 @@ namespace OrderToCash.Fulfillment.Infrastructure.Outbox;
 
 /// <summary>
 /// <see cref="IReadOnlyList{IDomainEvent}"/> -&gt; <see cref="OutboxMessage"/>
-/// rows. Called from inside the write-model transaction
-/// (<c>EfCoreStockItemRepository.SaveChangesAsync</c>), never by the relay,
-/// which only ever reads what this class already wrote (`R14`'s "only the
-/// relay publishes").
+/// rows, column by column exactly as design.md §4.4's table prescribes.
+/// Called from inside the write-model transaction (<c>SaveChangesAsync</c>
+/// on the aggregate repository), never by the relay, which only ever reads
+/// what this class already wrote (R14's "only the relay publishes" — this
+/// class is the OTHER half: only the writer stores).
 /// </summary>
-public sealed class OutboxWriter(IClock clock)
+public sealed class OutboxWriter(IClock clock, IFactPayloadMapper payloadMapper)
 {
     /// <summary>
     /// Builds one row per event, in list (= raise) order, so <c>seq</c>
     /// reflects emission order once the rows are inserted. For each event:
-    /// <see cref="DomainEventEnvelope.Validate"/> runs first (`R11`'s refusal
-    /// clause); then the event type must be a member of
-    /// <see cref="FactCatalog.PayloadTypesByEventType"/>'s keys; only then is
-    /// the row built. Assigns no <c>seq</c>, leaves <c>published_at</c> and
+    /// <see cref="DomainEventEnvelope.Validate"/> runs first (R11's refusal
+    /// clause — an incomplete envelope never reaches storage); then the
+    /// event type must be a member of
+    /// <see cref="FactCatalog.PayloadTypesByEventType"/>'s keys (a
+    /// catalogued fact with a mapped payload type); only then is the row
+    /// built. Assigns no <c>seq</c>, leaves <c>published_at</c> and
     /// <c>trace_parent</c> null, and takes <c>created_at</c> from
     /// <see cref="IClock"/> so tests control time.
     /// </summary>
@@ -35,28 +38,28 @@ public sealed class OutboxWriter(IClock clock)
 
         foreach (var domainEvent in domainEvents)
         {
-            var stockEvent = (StockDomainEvent)domainEvent;
+            var factEvent = (FactEvent)domainEvent;
 
-            DomainEventEnvelope.Validate(stockEvent);
+            DomainEventEnvelope.Validate(factEvent);
 
-            if (!FactCatalog.PayloadTypesByEventType.ContainsKey(stockEvent.EventType))
+            if (!FactCatalog.PayloadTypesByEventType.ContainsKey(factEvent.EventType))
             {
                 throw new InvalidOperationException(
-                    $"Outbox writer refuses to store a fact whose eventType '{stockEvent.EventType}' is not in the declared FactCatalog.");
+                    $"Outbox writer refuses to store a fact whose eventType '{factEvent.EventType}' is not in the declared FactCatalog.");
             }
 
-            var payload = StockFactPayloadMapper.ToPayload(stockEvent);
+            var payload = payloadMapper.ToPayload(factEvent);
 
             rows.Add(new OutboxMessage
             {
                 Id = Guid.NewGuid(),
-                EventId = stockEvent.EventId.Value,
-                EventType = stockEvent.EventType,
-                AggregateId = stockEvent.AggregateId.Value,
-                CorrelationId = stockEvent.CorrelationId.Value,
-                CausationId = stockEvent.CausationId.Value,
+                EventId = factEvent.EventId.Value,
+                EventType = factEvent.EventType,
+                AggregateId = factEvent.AggregateId.Value,
+                CorrelationId = factEvent.CorrelationId.Value,
+                CausationId = factEvent.CausationId.Value,
                 Payload = JsonSerializer.Serialize(payload, JsonWire.Options),
-                OccurredAt = stockEvent.OccurredAt.UtcDateTime,
+                OccurredAt = factEvent.OccurredAt.UtcDateTime,
                 PublishedAt = null,
                 CreatedAt = createdAt,
                 TraceParent = null,

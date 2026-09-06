@@ -21,7 +21,7 @@ public sealed record OrderCancelled(
     CancellationReason CancellationReason,
     DateTimeOffset CancelledAt,
     IReadOnlyList<OrderCompensationStep> CompensationSteps)
-    : OrderDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+    : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
 {
     public override string EventType => "order.cancelled.v1";
 }

@@ -24,7 +24,7 @@ public sealed record StockReserved(
     string CompanyCode,
     string? RetailerCode,
     IReadOnlyList<ReservationRef> Reservations)
-    : StockDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+    : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
 {
     public override string EventType => "stock.reserved.v1";
 }

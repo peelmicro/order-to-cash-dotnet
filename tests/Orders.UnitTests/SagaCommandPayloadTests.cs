@@ -145,6 +145,67 @@ public sealed class SagaCommandPayloadTests
     }
 
     /// <summary>
+    /// Backlog id 51, `BC23` (design.md §10.2) — this file's own hand-retyped
+    /// key lists (every <c>AssertKeys</c> call above) are cheap and readable
+    /// and catch UNILATERAL drift of the code; what they cannot catch is the
+    /// CORRELATED authoring error where the schema and this file's retyped
+    /// copy are changed together, wrongly, and stay green. This one case
+    /// closes exactly that gap, parsing the same key sets from
+    /// <c>specs/shared/asyncapi.yaml</c> via <see cref="AsyncApiSchema"/>
+    /// rather than retyping a third copy.
+    /// </summary>
+    [Theory]
+    [InlineData("StockReserveRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "lines" })]
+    [InlineData("StockReserveReplyPayload", new[] { "outcome", "orderReference", "reservations", "shortages" })]
+    [InlineData("StockReleaseRequestPayload", new[] { "orderReference", "reason" })]
+    [InlineData("StockReleaseReplyPayload", new[] { "outcome", "orderReference", "released" })]
+    [InlineData("DespatchCreateRequestPayload", new[] { "orderReference" })]
+    [InlineData("DespatchCreateReplyPayload", new[] { "orderReference", "despatchReference", "despatchDate", "created", "lines" })]
+    [InlineData("CreditHoldRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "amount" })]
+    [InlineData("CreditHoldReplyPayload", new[] { "outcome", "orderReference", "creditCode", "currency", "heldAmount", "availableCredit", "reason" })]
+    [InlineData("InvoiceIssueRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "currency", "lines", "discount" })]
+    [InlineData("InvoiceIssueReplyPayload", new[] { "orderReference", "invoiceId", "invoiceReference", "invoiceDate", "currency", "totalAmount", "status", "created" })]
+    public void BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi(string schemaName, string[] handRetypedKeys)
+    {
+        var parsed = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
+        var retyped = handRetypedKeys.ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(parsed, retyped);
+    }
+
+    /// <summary>
+    /// `G5` — the arming that proves the guard has teeth. A SCRATCH copy of
+    /// the real spec (never the real, read-only
+    /// <c>specs/shared/asyncapi.yaml</c>) with <c>CreditHoldReplyPayload</c>'s
+    /// <c>orderReference</c> renamed: the hand-retyped list this file uses
+    /// for that schema no longer agrees with the scratch copy.
+    /// </summary>
+    [Fact]
+    public void G5_TheGuardFailsAgainstAScratchCopyWhoseCreditHoldReplyPayloadPropertyWasRenamed()
+    {
+        var realSpecPath = RepositoryPaths.Find(Path.Combine("specs", "shared", "asyncapi.yaml"));
+        var scratchPath = Path.Combine(Path.GetTempPath(), $"asyncapi-g5-scratch-orders-{Guid.NewGuid():N}.yaml");
+
+        try
+        {
+            var corrupted = File.ReadAllText(realSpecPath)
+                .Replace("        orderReference:\n          $ref: '#/components/schemas/OrderReference'\n        creditCode:\n          $ref: '#/components/schemas/CreditCode'\n        currency:\n          $ref: '#/components/schemas/CurrencyCode'\n        heldAmount:",
+                          "        orderReferenceRenamed:\n          $ref: '#/components/schemas/OrderReference'\n        creditCode:\n          $ref: '#/components/schemas/CreditCode'\n        currency:\n          $ref: '#/components/schemas/CurrencyCode'\n        heldAmount:", StringComparison.Ordinal);
+            File.WriteAllText(scratchPath, corrupted);
+
+            var scratchText = File.ReadAllText(scratchPath);
+            var parsedFromScratch = AsyncApiSchema.PropertyNamesOf(scratchText, "CreditHoldReplyPayload").ToHashSet(StringComparer.Ordinal);
+            var handRetyped = new[] { "outcome", "orderReference", "creditCode", "currency", "heldAmount", "availableCredit", "reason" }.ToHashSet(StringComparer.Ordinal);
+
+            Assert.NotEqual(handRetyped, parsedFromScratch);
+        }
+        finally
+        {
+            File.Delete(scratchPath);
+        }
+    }
+
+    /// <summary>
     /// Round-trips through <see cref="RpcJson"/> and asserts the round-tripped
     /// value re-serialises to the SAME bytes — a deep-equality check that
     /// tolerates <c>record</c> equality's own blind spot for

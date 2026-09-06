@@ -186,4 +186,35 @@ public sealed class MoneyTests
         var discount = new Money(-500, "EUR");
         Assert.True(discount.IsNegative);
     }
+
+    /// <summary>
+    /// `BC30` (design.md §3.3, ledger `L25`) — `Add`/`Subtract`/`Multiply`
+    /// raise <see cref="OverflowException"/> rather than silently wrapping
+    /// past <see cref="long.MaxValue"/>/<see cref="long.MinValue"/>.
+    /// `availableCredit = creditLimit − committedExposure` is a
+    /// <see cref="Money.Subtract"/>, so guarding the ledger's own summation
+    /// while leaving this unchecked would guard the sum and not the
+    /// quantity the sum exists to produce.
+    /// </summary>
+    [Theory]
+    [InlineData("add")]
+    [InlineData("subtract")]
+    [InlineData("multiply")]
+    public void BC30_RaisesRatherThanWrapping_WhenAddSubtractOrMultiplyOverflowsMinorUnits(string operation)
+    {
+        switch (operation)
+        {
+            case "add":
+                Assert.Throws<OverflowException>(() => new Money(long.MaxValue, "EUR").Add(new Money(1, "EUR")));
+                break;
+            case "subtract":
+                Assert.Throws<OverflowException>(() => new Money(long.MinValue, "EUR").Subtract(new Money(1, "EUR")));
+                break;
+            case "multiply":
+                Assert.Throws<OverflowException>(() => new Money(long.MaxValue / 2 + 1, "EUR").Multiply(new Quantity(2)));
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(operation), operation, "Unrecognised operation.");
+        }
+    }
 }

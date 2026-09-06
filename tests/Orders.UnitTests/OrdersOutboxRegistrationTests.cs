@@ -22,6 +22,7 @@ public sealed class OrdersOutboxRegistrationTests
     [
         typeof(IClock),
         typeof(IUnitOfWork),
+        typeof(IFactPayloadMapper),
         typeof(OutboxWriter),
         typeof(IOrderRepository),
         typeof(ProcessedEventLedger),

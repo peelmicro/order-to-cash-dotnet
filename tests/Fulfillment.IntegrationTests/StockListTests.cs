@@ -24,6 +24,7 @@ public sealed class StockListTests(MsSqlContainerFixture mssql, NatsContainerFix
 
         // Filter by companyCode.
         var byCompany = await ListAsync(connection, new StockListRequestPayload(null, null, CompanyCode: "ACME"));
+        Assert.NotNull(byCompany.Items);
         Assert.Equal(2, byCompany.Items.Count);
         Assert.All(byCompany.Items, item => Assert.Equal("ACME", item.CompanyCode));
 
@@ -46,6 +47,34 @@ public sealed class StockListTests(MsSqlContainerFixture mssql, NatsContainerFix
         // No mutation, no lock: re-read directly proves the rows are untouched.
         var row = await FulfillmentHostFixture.FindStockAsync(mssql, connectionString, "ACME", "P1");
         Assert.Equal(10, row!.Units);
+
+        await host.StopAsync();
+    }
+
+    /// <summary>
+    /// `K2` (backlog id 53) — <c>byCompany.Items.Count</c> at line 27 above
+    /// touches the collection with no prior check that it is even non-null.
+    /// An <c>RpcError</c> body deserialises into an all-defaults
+    /// <see cref="StockListReplyPayload"/> whose <c>Items</c> is
+    /// <see langword="null"/>, and <c>.Count</c> on a null collection
+    /// throws — masking a real failure as an unrelated-looking exception
+    /// rather than a clean assertion failure. This asserts the reply's own
+    /// discriminating field (<c>Items</c> is non-null) FIRST.
+    /// </summary>
+    [Fact]
+    public async Task BC32_FailsOnItsOwnAssertion_WhenTheResponderAnswersAnRpcError()
+    {
+        var (host, connectionString) = await FulfillmentHostFixture.StartHostAsync(mssql, nats, kafka, "list-bc32");
+        using var _ = host;
+
+        await FulfillmentHostFixture.SeedStockAsync(mssql, connectionString, Guid.NewGuid(), "ACME", "P1", units: 10, reservedUnits: 2, lowStockThreshold: 5);
+
+        await using var connection = new NatsConnection(new NatsOpts { Url = nats.Url });
+
+        var reply = await ListAsync(connection, new StockListRequestPayload(null, null, CompanyCode: "ACME"));
+
+        Assert.NotNull(reply.Items);
+        Assert.Single(reply.Items);
 
         await host.StopAsync();
     }

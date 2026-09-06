@@ -122,7 +122,7 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
             occurredAt: clock.UtcNow,
             causationId: UniqueId.New());
 
-        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
         await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 
@@ -145,7 +145,7 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
         var causationId = UniqueId.New();
         var order = OrderPersistenceTestSupport.Place(new OrderNumber(7), clock.UtcNow, causationId);
 
-        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
         await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 

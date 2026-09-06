@@ -28,7 +28,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
 
         var clock = new FakeClock(FakeClock.UtcNowToTheMillisecond());
         var order = OrderPersistenceTestSupport.Place(new OrderNumber(1), clock.UtcNow, UniqueId.New());
-        var eventId = ((OrderDomainEvent)order.DomainEvents[0]).EventId.Value;
+        var eventId = ((FactEvent)order.DomainEvents[0]).EventId.Value;
 
         // A row that will collide with the one the writer is about to
         // build, so the outbox INSERT (which runs before the aggregate's
@@ -42,7 +42,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
         }
 
         await using var db = fixture.CreateDbContext(connectionString);
-        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
 
         await Assert.ThrowsAsync<SqlException>(() => unitOfWork.ExecuteAsync(
@@ -95,7 +95,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
         await using (var seedOrderDb = fixture.CreateDbContext(connectionString))
         {
             var seedOrder = OrderPersistenceTestSupport.Place(reference, clock.UtcNow, UniqueId.New());
-            var seedRepository = new EfCoreOrderRepository(seedOrderDb, new OutboxWriter(clock));
+            var seedRepository = new EfCoreOrderRepository(seedOrderDb, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var seedUnitOfWork = new EfCoreUnitOfWork(seedOrderDb);
             await seedUnitOfWork.ExecuteAsync(async ct => { await seedRepository.AddAsync(seedOrder, ct); await seedRepository.SaveChangesAsync(ct); }, CancellationToken.None);
         }
@@ -106,7 +106,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
         var colliding = OrderPersistenceTestSupport.Place(reference, clock.UtcNow, UniqueId.New());
 
         await using var db = fixture.CreateDbContext(connectionString);
-        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
 
         await Assert.ThrowsAsync<DbUpdateException>(() => unitOfWork.ExecuteAsync(
@@ -137,7 +137,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
 
         var clock = new FakeClock(FakeClock.UtcNowToTheMillisecond());
         var order = OrderPersistenceTestSupport.Place(new OrderNumber(2), clock.UtcNow, UniqueId.New());
-        var eventId = ((OrderDomainEvent)order.DomainEvents[0]).EventId.Value;
+        var eventId = ((FactEvent)order.DomainEvents[0]).EventId.Value;
         Assert.Single(order.DomainEvents);
 
         // Force the outbox row's own INSERT (EfCoreOrderRepository.
@@ -155,7 +155,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
 
         await using (var failingDb = fixture.CreateDbContext(connectionString))
         {
-            var repository = new EfCoreOrderRepository(failingDb, new OutboxWriter(clock));
+            var repository = new EfCoreOrderRepository(failingDb, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var unitOfWork = new EfCoreUnitOfWork(failingDb);
 
             await Assert.ThrowsAsync<SqlException>(() => unitOfWork.ExecuteAsync(
@@ -184,7 +184,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
 
         await using (var retryDb = fixture.CreateDbContext(connectionString))
         {
-            var repository = new EfCoreOrderRepository(retryDb, new OutboxWriter(clock));
+            var repository = new EfCoreOrderRepository(retryDb, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var unitOfWork = new EfCoreUnitOfWork(retryDb);
 
             await unitOfWork.ExecuteAsync(

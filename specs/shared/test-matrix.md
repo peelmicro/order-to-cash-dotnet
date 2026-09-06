@@ -73,12 +73,12 @@ Counted from the Status column as it actually stands, one row at a time, under t
 | 2. `outbox_and_idempotency` | R11 – R18 | 8 | 7 | 0 | 1 |
 | 3. `order_saga_orchestrator` | R19 – R29 | 11 | 9 | 2 | 0 |
 | 4. `fulfillment_stock` | R30 – R36, R61 | 8 | 7 | 1 | 0 |
-| 5. `billing_credit` | R37 – R44 | 8 | 0 | 0 | 8 |
+| 5. `billing_credit` | R37 – R44 | 8 | 5 | 0 | 3 |
 | 6. `billing_invoicing` | R45 – R49 | 5 | 0 | 0 | 5 |
 | 7. `projector_read_model` | R50 – R55 | 6 | 0 | 0 | 6 |
 | 8. `observability_reliability` | R56 – R60, R62 | 6 | 0 | 0 | 6 |
 | 8.1 gateway edge protection (per-assessment gateway feature) | R63 | 1 | 0 | 0 | 1 |
-| **Total** | **R1 – R63** | **63** | **32** | **4** | **27** |
+| **Total** | **R1 – R63** | **63** | **37** | **4** | **22** |
 
 ---
 
@@ -148,11 +148,11 @@ demo, in the API tests and in the end-to-end tests.
 
 | Id | Requirement (short) | Level | Test file › case | Status |
 |---|---|---|---|---|
-| **R37** | Holds + exposure ≤ limit; ledger is append-only (**B1**, **B2**) | domain unit | `billing/domain/buyer-credit.spec` › *keeps active holds plus open exposure within the credit limit and raises on any update or deletion of a ledger entry* | TODO |
-| **R38** | Approved hold → one `hold` entry + one `credit.approved.v1` | domain unit | `billing/domain/credit-hold.spec` › *appends a hold entry and emits exactly one credit.approved.v1 carrying the held amount and the resulting available credit* | TODO |
-| **R39** | Refused hold → no entry, unchanged credit, `credit.rejected.v1` with a reason (amended — the currency clause moved to `BC4`, a contract violation, per `requirements.md` §3 and the human-gate ruling) | domain unit | `billing/domain/credit-hold.spec` › *appends no ledger entry and emits credit.rejected.v1 with a machine-readable reason when the amount exceeds the available credit or the credit port refuses* | TODO |
-| **R40** | Invoice issue converts the hold into exposure, leaving available credit unchanged | domain unit | `billing/domain/credit-ledger.spec` › *appends a consume entry at invoice issue that leaves available credit numerically unchanged and emits no fact* | TODO |
-| **R41** | Payment and pre-invoice cancellation release credit with the right reason (**B5**) | domain unit | `billing/domain/credit-ledger.spec` › *releases with reason invoice_paid on payment and with reason order_cancelled on cancellation, restoring available credit without going below zero* | TODO |
+| **R37** | Holds + exposure ≤ limit; ledger is append-only (**B1**, **B2**) | domain unit | `billing/domain/buyer-credit.spec` › *keeps active holds plus open exposure within the credit limit and raises on any update or deletion of a ledger entry* | DONE — `tests/Billing.UnitTests/BuyerCreditTests.cs` › `R37_KeepsActiveHoldsPlusOpenExposureWithinTheCreditLimitAndRaisesOnAnyUpdateOrDeletionOfALedgerEntry` |
+| **R38** | Approved hold → one `hold` entry + one `credit.approved.v1` | domain unit | `billing/domain/credit-hold.spec` › *appends a hold entry and emits exactly one credit.approved.v1 carrying the held amount and the resulting available credit* | DONE — `tests/Billing.UnitTests/CreditHoldTests.cs` › `R38_AppendsAHoldEntryAndEmitsExactlyOneCreditApprovedV1CarryingTheHeldAmountAndTheResultingAvailableCredit` |
+| **R39** | Refused hold → no entry, unchanged credit, `credit.rejected.v1` with a reason (amended — the currency clause moved to `BC4`, a contract violation, per `requirements.md` §3 and the human-gate ruling) | domain unit | `billing/domain/credit-hold.spec` › *appends no ledger entry and emits credit.rejected.v1 with a machine-readable reason when the amount exceeds the available credit or the credit port refuses* | DONE — `tests/Billing.UnitTests/CreditHoldTests.cs` › `R39_AppendsNoLedgerEntryAndEmitsCreditRejectedV1WithAMachineReadableReason_WhenTheAmountExceedsTheAvailableCreditOrTheCreditPortRefuses` |
+| **R40** | Invoice issue converts the hold into exposure, leaving available credit unchanged | domain unit | `billing/domain/credit-ledger.spec` › *appends a consume entry at invoice issue that leaves available credit numerically unchanged and emits no fact* | DONE — `tests/Billing.UnitTests/CreditLedgerTests.cs` › `R40_AppendsAConsumeEntryAtInvoiceIssueThatLeavesAvailableCreditNumericallyUnchangedAndEmitsNoFact` |
+| **R41** | Payment and pre-invoice cancellation release credit with the right reason (**B5**) | domain unit | `billing/domain/credit-ledger.spec` › *releases with reason invoice_paid on payment and with reason order_cancelled on cancellation, restoring available credit without going below zero* | DONE — `tests/Billing.UnitTests/CreditLedgerTests.cs` › `R41_ReleasesWithReasonInvoicePaidOnPaymentAndWithReasonOrderCancelledOnCancellation_RestoringAvailableCreditWithoutGoingBelowZero` |
 | **R42** | Simulator: `totalAmount mod 100 = 99` → reject `simulated_cents_rule` regardless of credit | domain unit + integration | `billing/infrastructure/credit-simulator.spec` › *rejects a total whose minor units end in 99 with reason simulated_cents_rule even when the retailer has ample credit* | TODO |
 | **R43** | `CREDIT_FAILURE_RATE` defaults to 0 and an out-of-range value fails startup | domain unit | `billing/infrastructure/credit-simulator.spec` › *defaults the failure rate to zero, rejects a configured proportion when set, and fails to start reporting the offending value when it is outside the closed interval zero to one* | TODO |
 | **R44** | Simulated and genuine rejections are indistinguishable downstream except by `reason` | integration | `billing/integration/credit-rejection-parity.spec` › *produces the same fact type, payload shape and compensation path for a simulated and a genuine over-limit rejection, and keeps the over-limit rejection reachable with the simulator bound and the failure rate at zero* | TODO |

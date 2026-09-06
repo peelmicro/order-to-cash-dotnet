@@ -299,7 +299,7 @@
       "phase": 10,
       "title": "BuyerCredit aggregate + hold/release/consume ledger",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "availableCredit = limit - active holds - open invoices",
         "ledger is append-only",
@@ -651,7 +651,7 @@
       "phase": 10,
       "title": "NatsSagaCommandsAdapter: the \"a fresh NatsHeaders per call\" property is structural and guarded by nothing",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "a named test in tests/Orders.UnitTests/NatsSagaCommandsAdapterTests.cs captures the NatsHeaders instance passed to RawRequester on two consecutive SendAsync calls and asserts they are reference-distinct",
         "armed: hoisting the instance to a field and clearing/re-adding per call makes that test fail while every existing header-value assertion stays green"
@@ -677,7 +677,7 @@
       "phase": 10,
       "title": "StockRpcResponder.StopAsync rethrows out of host shutdown when a drained request's ReplyAsync faults",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "a faulted in-flight task no longer propagates out of StopAsync",
         "the drain still waits for every in-flight request",
@@ -691,7 +691,7 @@
       "phase": 10,
       "title": "StockRpcPayloadTests and SagaCommandPayloadTests compare wire records against hand-retyped key lists while three documents claim they read asyncapi.yaml as text",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "both instruments derive their expected property names by parsing specs/shared/asyncapi.yaml — the pattern RpcSubjectsTests and OrdersFactTopicTests already use — covering every fulfillment.stock.* and saga-command request and reply schema",
         "armed: editing one schema's property name in a scratch copy makes the named test fail",
@@ -722,7 +722,7 @@
       "phase": 10,
       "title": "Three integration tests detect a wrong-shaped RPC reply only by a null dereference, or not at all",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "tests/Orders.IntegrationTests/OrdersCreateAcceptanceTests.cs:159 asserts something: it deserialises an OrdersCreateReplyPayload and asserts NOTHING — the comment \"// the request succeeded\" is the whole claim, and an RpcError body constructs an all-defaults object without throwing",
         "tests/Fulfillment.IntegrationTests/StockReplenishTests.cs:52 and StockListTests.cs:27 assert the reply's own discriminating field before touching a collection that is null for any error body",
@@ -744,6 +744,20 @@
         "the row states the consequence for #9 explicitly: under a transaction-scoped snapshot (PostgreSQL REPEATABLE READ) the same code returns a stale read and turns a correct idempotent repeat into a permanent UNAVAILABLE"
       ],
       "notes": "Found by feature 18's review round 2. Not a defect in #8 — the code is correct here, for two reasons neither of which is written down. It is a ledger GAP, which is the ledger's own failure mode: the row nobody wrote. Text ready in progress/review_fulfillment_despatch.md §5, row \"L1, second face\"."
+    },
+    {
+      "id": 55,
+      "name": "bc32_universal_claim_is_false_at_six_more_sites",
+      "phase": 10,
+      "title": "BC32 claims every integration test that deserialises an RPC reply asserts its discriminating field first; six sites still do not",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the six sites assert the reply's own discriminating field before touching a collection: tests/Billing.IntegrationTests/CreditListTests.cs lines 39, 73 and 77, and tests/Fulfillment.IntegrationTests/StockListTests.cs lines 33, 38 and 44",
+        "OR BC32's wording is narrowed to the scope it actually holds, and the requirement text stops making a universal claim",
+        "whichever is chosen, an enumerating command and its complete output are recorded — the claim is a search result, not a reading"
+      ],
+      "notes": "Found by feature 19's review round 2 (advisory A6) with an enumerating script. These are the OPAQUE-failure tier — a dereference, so the test fails loudly but uninformatively — not the silent-pass tier that earned backlog id 53 its requirement id. Round 1 had fixed the scope at three sites and said nothing else changes, so rejecting again would have been goalpost-shifting; filed instead. A DONE traceability row resting on a false universal claim is the shape this feature already spent a round on. Advisory A7 records a smaller adjacent thing: design.md §10.5 named total/paging as StockList's first assertion and Assert.NotNull(Items) landed instead — unachievable as written for StockReplenishReplyPayload, which has no other field."
     },
     {
       "id": 44,

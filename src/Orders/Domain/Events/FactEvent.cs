@@ -20,7 +20,7 @@ namespace OrderToCash.Orders.Domain.Events;
 /// <see cref="DomainEventEnvelope.Validate"/> against every event before it
 /// builds a row (R11).
 /// </remarks>
-public abstract record OrderDomainEvent(
+public abstract record FactEvent(
     UniqueId EventId,
     UniqueId AggregateId,
     UniqueId CorrelationId,

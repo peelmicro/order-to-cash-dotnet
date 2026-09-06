@@ -1,6 +1,7 @@
 using Confluent.Kafka;
 using Microsoft.Extensions.Options;
 using OrderToCash.Orders.Application.Ports;
+using FactTopic = OrderToCash.Orders.Infrastructure.Outbox.OrdersFactTopic;
 
 namespace OrderToCash.Orders.Infrastructure.Outbox;
 
@@ -67,7 +68,7 @@ public sealed class KafkaFactPublisher : IFactPublisher, IDisposable
             // above) or throws — never a fire-and-forget Produce() with a
             // delivery-report callback, so a failure here propagates
             // synchronously to the relay's own await (R14, OI14).
-            await _producer.ProduceAsync(OrdersFactTopic.Name, message, cancellationToken);
+            await _producer.ProduceAsync(FactTopic.Name, message, cancellationToken);
         }
     }
 

@@ -36,6 +36,7 @@ public static class FulfillmentServiceCollectionExtensions
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
+        services.AddSingleton<IFactPayloadMapper, StockFactPayloadMapper>();
         services.AddScoped<OutboxWriter>();
         services.AddScoped<IStockItemRepository, EfCoreStockItemRepository>();
         services.AddScoped<IStockReadPort, EfCoreStockReadRepository>();

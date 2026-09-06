@@ -21,7 +21,7 @@ public sealed record StockRejected(
     string? RetailerCode,
     IReadOnlyList<Shortage> Shortages,
     string Reason)
-    : StockDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+    : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
 {
     public override string EventType => "stock.rejected.v1";
 }

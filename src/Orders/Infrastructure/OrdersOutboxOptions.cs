@@ -7,7 +7,7 @@ public sealed class OrdersOutboxOptions
 {
     public string ConnectionString { get; set; } = string.Empty;
 
-    public KafkaOptions Kafka { get; } = new();
+    public KafkaOptions Kafka { get; } = new() { ClientId = "otc-orders" };
 
     public OutboxRelayOptions Relay { get; } = new();
 }

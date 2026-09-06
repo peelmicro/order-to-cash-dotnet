@@ -67,11 +67,39 @@ public sealed class StockRpcResponder(
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
 
         // Drain whatever is still in flight rather than tearing down a
-        // half-committed transaction (design.md §6.2).
+        // half-committed transaction (design.md §6.2, §4.7). Every
+        // in-flight task is awaited to completion — the drain is the point
+        // — but each task's outcome is observed INDIVIDUALLY: Task.WhenAll
+        // rethrows only the first fault, which would abort the host's
+        // shutdown sequence over one request whose reply could not be
+        // delivered (backlog id 50, `BC22`).
         var pending = _inFlight.Keys.ToArray();
-        if (pending.Length > 0)
+        if (pending.Length == 0)
         {
-            await Task.WhenAll(pending).ConfigureAwait(false);
+            return;
+        }
+
+        var faults = await Task.WhenAll(pending.Select(WrapAsync)).ConfigureAwait(false);
+
+        foreach (var fault in faults)
+        {
+            if (fault is not null)
+            {
+                logger.LogWarning(fault, "{Responder} shutdown: an in-flight request faulted while draining.", nameof(StockRpcResponder));
+            }
+        }
+    }
+
+    private static async Task<Exception?> WrapAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
         }
     }
 

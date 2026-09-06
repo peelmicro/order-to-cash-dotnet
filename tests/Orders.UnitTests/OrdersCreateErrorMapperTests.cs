@@ -1,6 +1,8 @@
+using System.Reflection;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Domain.Errors;
+using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Presentation.Rpc;
 using OrderToCash.SharedKernel;
 using Xunit;
@@ -104,6 +106,72 @@ public sealed class OrdersCreateErrorMapperTests
         var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
 
         Assert.Contains(payload.Code, _contractRpcErrorCodes);
+    }
+
+    /// <summary>
+    /// Backlog id 51, `BC23` (design.md §10.2) — THREE hand-retyped copies of
+    /// the twelve-value <c>RpcError.code</c> enum now exist:
+    /// <see cref="OrdersCreateErrorMapper"/>'s own <c>_contractRpcErrorCodes</c>
+    /// (production), this test file's <see cref="_contractRpcErrorCodes"/>
+    /// (copy 2, added to prove the mapper's clamp), and
+    /// <see cref="NatsSagaCommandsAdapter"/>'s terminal/transient split
+    /// (copy 3 — a SUBSET of the twelve, added by a later feature). All
+    /// three are asserted here against the set parsed from
+    /// <c>specs/shared/asyncapi.yaml</c> as text, named individually so a
+    /// failure message says WHICH of the three drifted.
+    /// </summary>
+    [Fact]
+    public void BC23_TheThreeRetypedRpcErrorCodeSetsAgreeWithTheEnumParsedFromAsyncApi()
+    {
+        var parsed = AsyncApiSchema.EnumValuesOf("RpcError.code").ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(12, parsed.Count);
+
+        var mapperField = typeof(OrdersCreateErrorMapper).GetField("_contractRpcErrorCodes", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var mapperCodes = (HashSet<string>)mapperField.GetValue(null)!;
+        Assert.True(parsed.SetEquals(mapperCodes), $"OrdersCreateErrorMapper._contractRpcErrorCodes disagrees with the parsed RpcError.code enum. Parsed: [{string.Join(", ", parsed)}]. Mapper: [{string.Join(", ", mapperCodes)}].");
+
+        Assert.True(parsed.SetEquals(_contractRpcErrorCodes), $"OrdersCreateErrorMapperTests._contractRpcErrorCodes (this file's own copy) disagrees with the parsed RpcError.code enum. Parsed: [{string.Join(", ", parsed)}]. Test copy: [{string.Join(", ", _contractRpcErrorCodes)}].");
+
+        // NatsSagaCommandsAdapter's terminal set is a SUBSET, read via its
+        // own IsTerminalRpcErrorCode classification (reflection — same
+        // assembly, no text-parsing needed here) rather than retyped.
+        var isTerminal = typeof(NatsSagaCommandsAdapter).GetMethod("IsTerminalRpcErrorCode", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var terminalCodes = parsed.Where(code => (bool)isTerminal.Invoke(null, [code])!).ToHashSet(StringComparer.Ordinal);
+        Assert.True(terminalCodes.IsSubsetOf(parsed), $"NatsSagaCommandsAdapter.IsTerminalRpcErrorCode names a code outside the parsed RpcError.code enum. Terminal: [{string.Join(", ", terminalCodes)}]. Parsed: [{string.Join(", ", parsed)}].");
+        Assert.NotEmpty(terminalCodes);
+    }
+
+    /// <summary>
+    /// `G5` — the arming that proves the guard has teeth. A SCRATCH copy of
+    /// the real spec (never the real, read-only
+    /// <c>specs/shared/asyncapi.yaml</c>) with one value deleted from
+    /// <c>RpcError.code.enum</c>: the parsed set no longer has twelve
+    /// members and no longer agrees with the retyped copies.
+    /// </summary>
+    [Fact]
+    public void G5_TheGuardFailsAgainstAScratchCopyWithOneRpcErrorCodeEnumValueDeleted()
+    {
+        var realSpecPath = RepositoryPaths.Find(Path.Combine("specs", "shared", "asyncapi.yaml"));
+        var scratchPath = Path.Combine(Path.GetTempPath(), $"asyncapi-g5-scratch-enum-{Guid.NewGuid():N}.yaml");
+
+        try
+        {
+            var corrupted = File.ReadAllText(realSpecPath)
+                .Replace("          enum:\n            - VALIDATION_FAILED\n            - NOT_FOUND\n            - CONFLICT\n",
+                          "          enum:\n            - VALIDATION_FAILED\n            - NOT_FOUND\n", StringComparison.Ordinal);
+            File.WriteAllText(scratchPath, corrupted);
+
+            var scratchText = File.ReadAllText(scratchPath);
+            var parsedFromScratch = AsyncApiSchema.EnumValuesOf(scratchText, "RpcError.code").ToHashSet(StringComparer.Ordinal);
+
+            Assert.NotEqual(12, parsedFromScratch.Count);
+            Assert.DoesNotContain("CONFLICT", parsedFromScratch);
+            Assert.False(parsedFromScratch.SetEquals(_contractRpcErrorCodes));
+        }
+        finally
+        {
+            File.Delete(scratchPath);
+        }
     }
 
     /// <summary>

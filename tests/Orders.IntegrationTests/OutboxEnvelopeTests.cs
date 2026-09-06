@@ -29,7 +29,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
 
         await using (var db = fixture.CreateDbContext(connectionString))
         {
-            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var unitOfWork = new EfCoreUnitOfWork(db);
 
             await unitOfWork.ExecuteAsync(
@@ -47,7 +47,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
         var confirmCausationId = UniqueId.New();
         await using (var db = fixture.CreateDbContext(connectionString))
         {
-            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var unitOfWork = new EfCoreUnitOfWork(db);
 
             await unitOfWork.ExecuteAsync(
@@ -96,7 +96,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
 
         await using (var db = fixture.CreateDbContext(connectionString))
         {
-            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock));
+            var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var unitOfWork = new EfCoreUnitOfWork(db);
 
             await unitOfWork.ExecuteAsync(
@@ -146,7 +146,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
         var clock = new FakeClock(FakeClock.UtcNowToTheMillisecond());
         var order = OrderPersistenceTestSupport.Place(new OrderNumber(5), clock.UtcNow, causationId: default);
 
-        var writer = new OutboxWriter(clock);
+        var writer = new OutboxWriter(clock, new OrderFactPayloadMapper());
 
         Assert.Throws<IncompleteDomainEventEnvelopeError>(() => writer.BuildRows(order.DomainEvents));
     }
@@ -159,7 +159,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
         var uncataloguedEvent = new UncataloguedDomainEvent(
             UniqueId.New(), UniqueId.New(), UniqueId.New(), UniqueId.New(), clock.UtcNow);
 
-        var writer = new OutboxWriter(clock);
+        var writer = new OutboxWriter(clock, new OrderFactPayloadMapper());
 
         var exception = Assert.Throws<InvalidOperationException>(() => writer.BuildRows([uncataloguedEvent]));
         Assert.Contains("order.not_a_real_fact.v1", exception.Message, StringComparison.Ordinal);
@@ -170,7 +170,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
         UniqueId AggregateId,
         UniqueId CorrelationId,
         UniqueId CausationId,
-        DateTimeOffset OccurredAt) : OrderDomainEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
+        DateTimeOffset OccurredAt) : FactEvent(EventId, AggregateId, CorrelationId, CausationId, OccurredAt)
     {
         public override string EventType => "order.not_a_real_fact.v1";
     }

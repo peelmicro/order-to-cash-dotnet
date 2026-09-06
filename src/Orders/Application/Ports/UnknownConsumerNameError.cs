@@ -10,7 +10,7 @@ namespace OrderToCash.Orders.Application.Ports;
 /// concept introduced by this feature, not part of the <c>Order</c>
 /// aggregate's own vocabulary — design.md §1 fixes that
 /// <c>src/Orders/Domain/</c> gains nothing beyond
-/// <c>Events/OrderDomainEvent.cs</c> declaring
+/// <c>Events/FactEvent.cs</c> declaring
 /// <see cref="IDomainEventEnvelope"/>.
 /// </summary>
 public sealed class UnknownConsumerNameError : DomainError

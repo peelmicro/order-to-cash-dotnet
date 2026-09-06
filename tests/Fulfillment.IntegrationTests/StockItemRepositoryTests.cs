@@ -66,7 +66,7 @@ public sealed class StockItemRepositoryTests(MsSqlContainerFixture mssql)
         var orderReference = new OrderNumber(2);
 
         await using var db = mssql.CreateDbContext(connectionString);
-        var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock()), new FixedClock());
+        var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock(), new StockFactPayloadMapper()), new FixedClock());
         var uow = new EfCoreUnitOfWork(db);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => uow.ExecuteAsync(
@@ -129,7 +129,7 @@ public sealed class StockItemRepositoryTests(MsSqlContainerFixture mssql)
         await dbB.Database.OpenConnectionAsync();
         var connectionB = (SqlConnection)dbB.Database.GetDbConnection();
         var transactionB = await dbB.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
-        var repoB = new EfCoreStockItemRepository(dbB, new OutboxWriter(new FixedClock()), new FixedClock());
+        var repoB = new EfCoreStockItemRepository(dbB, new OutboxWriter(new FixedClock(), new StockFactPayloadMapper()), new FixedClock());
         var lockTaskB = repoB.LockForOrderAsync("ACME", ["P1"], orderReference, CancellationToken.None);
 
         await using var monitorConnection = new SqlConnection(connectionString);
@@ -178,7 +178,7 @@ public sealed class StockItemRepositoryTests(MsSqlContainerFixture mssql)
     private async Task RunAsync(string connectionString, Func<EfCoreStockItemRepository, EfCoreUnitOfWork, Task> work)
     {
         await using var db = mssql.CreateDbContext(connectionString);
-        var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock()), new FixedClock());
+        var repo = new EfCoreStockItemRepository(db, new OutboxWriter(new FixedClock(), new StockFactPayloadMapper()), new FixedClock());
         var uow = new EfCoreUnitOfWork(db);
 
         await uow.ExecuteAsync(async ct => await work(repo, uow), CancellationToken.None);

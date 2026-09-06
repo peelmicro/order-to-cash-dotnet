@@ -87,6 +87,8 @@ The evidence is three defects, and what makes them one class is not the mechanis
 
 None of the three was found by the process. One was found by capturing real bytes, one by the human asking a question, one by a reviewer reading SQL for an unrelated feature. That is a 0-for-3 detection record on a class that has cost real rework every time, and phases 9–13 port five more services from the same source.
 
+**A ledger row's Guard column is itself a countable claim, and a countable claim is not done until it has been seen to fail.** Adopted after feature 19, where a row correctly identified a property #7 got from its database driver, the code that supplied it was correct, and the row's named guard **could not fail**: the test re-implemented the conversion instead of reading through the mapper, so the task list's own prescribed mutation left the suite green. The enumeration worked and the guard was decorative — which is the ledger's own version of the failure it exists to catch, one level up. Naming a guard in `tasks.md` creates the obligation to arm it; it does not discharge it.
+
 **Writing the line is most of the value.** The failure in all three cases was not analytical difficulty — it was that nobody asked *"what made this correct over there, and does that thing exist here?"* at the moment of translating. A one-line ledger forces the question at spec time, when the translation is being thought about anyway and the answer is nearly free.
 
 ### Never hand the human an open question you could have closed
