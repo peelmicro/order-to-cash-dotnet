@@ -170,7 +170,7 @@ if [ -f progress/current.md ] && [ -f feature_list.json ] && command -v node >/d
       process.stdout.write(idle ? "" : `claims a feature while none is active: "${line.trim()}"`);
     }
   ' 2>/dev/null)"
-  if [ -z "$LOCKSTEP" ]; then ok "progress/current.md is in lockstep with the backlog"
+  if [ -z "$LOCKSTEP" ]; then ok "progress/current.md's **Feature:** line names the active feature (this check reads that line ONLY — a stale Goal/Decisions/Notes body below it is invisible here; feature 23's review found exactly that)"
   else fail "progress/current.md $LOCKSTEP"; fi
 else
   warn "cannot check progress/current.md lockstep"

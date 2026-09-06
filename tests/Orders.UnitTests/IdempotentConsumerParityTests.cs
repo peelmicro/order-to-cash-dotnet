@@ -153,7 +153,28 @@ public sealed partial class IdempotentConsumerParityTests
 
     private static string ReadFile(string root, string relativePath) => File.ReadAllText(Path.Combine(root, relativePath));
 
-    /// <summary>Strips the banner and the single <c>namespace</c> line — the two regions design.md §6.4 normalises. Everything else is compared verbatim.</summary>
+    /// <summary>
+    /// Strips the banner and the single <c>namespace</c> line — the two
+    /// regions design.md §6.4 normalises — and ALSO neutralises the one
+    /// <c>using</c> line every legitimate copy is forced to spell
+    /// differently: its own <c>.Application.Ports</c> /
+    /// <c>.Infrastructure.Persistence.Entities</c> import. design.md §6.4's
+    /// own words are "matched by suffix rather than by literal text ...
+    /// which is why <c>IUnitOfWork</c>, <c>IClock</c> and
+    /// <c>ConsumerName</c> ... may be referenced here" — that suffix
+    /// matching was implemented for <see cref="AssertAdoptable"/> (which
+    /// judges the canonical file alone) but never carried into this
+    /// comparison, so it stayed unverified until <c>notifications_service</c>
+    /// became the first feature to add a second copy at all (neither
+    /// <c>fulfillment_stock</c> nor <c>billing_credit</c> copy this pattern —
+    /// see their own <c>requirements.md</c>). Added here rather than left
+    /// for that feature to fail against: without it, EVERY future copy of
+    /// this pattern in EVERY future service fails this case by construction,
+    /// since C#'s namespace-qualified <c>using</c> has no equivalent of
+    /// TypeScript's relative import path (identical text regardless of which
+    /// service the file lives in — the property #7 relied on here).
+    /// Everything else is still compared byte for byte.
+    /// </summary>
     private static string NormalizeCanonical(string content)
     {
         var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
@@ -164,9 +185,69 @@ public sealed partial class IdempotentConsumerParityTests
             bodyStart++;
         }
 
-        var body = lines.Skip(bodyStart).Where(line => !NamespaceLineRegex().IsMatch(line));
+        var service = ExtractNamespaceService(lines, bodyStart);
+
+        var body = lines.Skip(bodyStart)
+            .Where(line => !NamespaceLineRegex().IsMatch(line))
+            .Select(line => NormalizeOwnServiceUsingLine(line, service));
         return string.Join('\n', body);
     }
+
+    /// <summary>The single dot-segment right after <c>OrderToCash.</c> in this file's own <c>namespace</c> declaration — e.g. <c>Orders</c> for <c>namespace OrderToCash.Orders.Infrastructure.Messaging;</c>.</summary>
+    private static string ExtractNamespaceService(string[] lines, int bodyStart)
+    {
+        for (var i = bodyStart; i < lines.Length; i++)
+        {
+            var match = OwnNamespaceRegex().Match(lines[i]);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+
+        throw new InvalidOperationException("No 'namespace OrderToCash.<Service>....;' line found — every canonical/copy file must declare one.");
+    }
+
+    /// <summary>
+    /// Rewrites a <c>using OrderToCash.&lt;Service&gt;.Application.Ports;</c>
+    /// (or <c>....Infrastructure.Persistence.Entities;</c>) line — where
+    /// <c>&lt;Service&gt;</c> is EXACTLY this file's OWN namespace service
+    /// segment, no other — to a shared placeholder, so two otherwise-
+    /// identical copies compare equal despite this one line legitimately
+    /// differing. Deliberately narrow: a using line naming a DIFFERENT
+    /// service (a copy wrongly importing another service's ports, or its own
+    /// service under some other suffix) is left untouched and so still fails
+    /// the comparison — this is a strictly NARROWER acceptance than "any
+    /// <c>.Application.Ports</c> suffix", specifically so it cannot be
+    /// satisfied by a copy that imports the wrong service's types.
+    /// </summary>
+    private static string NormalizeOwnServiceUsingLine(string line, string service)
+    {
+        var match = UsingDirectiveRegex().Match(line);
+        if (!match.Success)
+        {
+            return line;
+        }
+
+        var importedNamespace = match.Groups[1].Value;
+        var ownPrefix = $"OrderToCash.{service}";
+
+        if (!importedNamespace.StartsWith(ownPrefix, StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        var suffix = importedNamespace[ownPrefix.Length..];
+        return _serviceScopedUsingSuffixes.Contains(suffix, StringComparer.Ordinal)
+            ? $"using <Service>{suffix};"
+            : line;
+    }
+
+    /// <summary>The two using-whitelist suffixes design.md §6.4 names as legitimately service-specific — the subset of <see cref="_usingWhitelistSuffixes"/> that <see cref="NormalizeOwnServiceUsingLine"/> may neutralise. <c>Microsoft.EntityFrameworkCore</c>, <c>Microsoft.Data.SqlClient</c> and <c>OrderToCash.SharedKernel</c> are already textually identical in every copy and must never be touched here.</summary>
+    private static readonly string[] _serviceScopedUsingSuffixes = [".Application.Ports", ".Infrastructure.Persistence.Entities"];
+
+    [GeneratedRegex(@"^\s*namespace\s+OrderToCash\.([A-Za-z0-9_]+)\.")]
+    private static partial Regex OwnNamespaceRegex();
 
     private static string ExtractBanner(string content)
     {

@@ -352,7 +352,7 @@
       "phase": 11,
       "title": "Notifications Worker Service: MailKit -> Mailpit, console adapter, durable processed_events ledger",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "real email verified in the Mailpit inbox for each notified fact",
         "console adapter used in tests via the same port",
@@ -788,6 +788,34 @@
         "armed: reverting the causal stamp makes a named test fail on the envelope, not on row order"
       ],
       "notes": "Found by feature 22's review (finding N1). NOT blocking: R47-R49 and id 22's acceptance bullets are all met, and #7's own feature 22 shipped without it. But this is exactly what #7's spec amendment A1 exists to prevent, and #8 inherited the amended spec — so #8 is shipping against the letter of an amendment it was given for free. #7 fixed it in this same file eight phases later as rework (bf59af9). Filed against phase 11 because it is one entry away from free here and a cross-service reopen in phase 12, when the projector starts reading causal chains to build the timeline."
+    },
+    {
+      "id": 58,
+      "name": "notification_envelope_copy_is_unguarded",
+      "phase": 12,
+      "title": "NotificationFactsConsumer.ToEnvelope copies envelope fields by hand and corrupting the correlationId copy leaves the whole suite green",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "corrupting the correlationId copy in NotificationFactsConsumer.ToEnvelope makes a named test fail",
+        "the same holds for every field the hand-written copy touches, not only correlationId",
+        "armed: the report names each field, its mutation and the verbatim failure"
+      ],
+      "notes": "Found by feature 23's review round 2 (R2-D5, medium, not blocking). Round 1 had verified the field correct against real Mailpit bytes and prescribed the guard shape that was built, so this is a residual rather than a re-rejection. One assertion inside the existing theory. Filed against phase 12 because the projector reads envelopes and will have these files open."
+    },
+    {
+      "id": 59,
+      "name": "date_typed_payload_sites_survive_mutation",
+      "phase": 12,
+      "title": "14 date-typed payload sites survive mutation — the string-scoped template sweep did not reach them",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "each of the 14 date-typed sites either fails a named test under mutation, or is classified as a field no requirement constrains, with the reason given per site",
+        "the sweep that measures this covers date and money sites as well as string sites",
+        "the sweep is proved with sentinels before its result is believed: a mutation that must be caught, one that must survive, and one that must report not-applied"
+      ],
+      "notes": "Found by feature 23's review round 2 (R2-D6, low) with the reviewer's own independently-written sweep: 89 sites, applied=True verified by SHA-256 on every one, 70/70 string sites caught, 5 money sites caught, 14 DATE sites survived. The implementer's sweep was string-scoped and could not see them. Same class as id 58 and the same files are open in phase 12."
     },
     {
       "id": 44,

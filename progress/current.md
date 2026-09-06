@@ -1,16 +1,16 @@
 # Current session
 
-**Feature:** none active — `billing_remittance_intake` (id 22) was approved and set `done`, which closes Phase 10; awaiting the human's test-and-commit and the Phase 11 briefing
-**Status:** idle — no feature `in_progress` or `in_review`
-**Session started:** 2026-09-06
+**Feature:** none — **Phase 11 complete**, 35 of 58 features done
+**Status:** idle
+**Session started:** —
 
 ## Goal
 
-Phase 10 continues: `billing_credit_simulator` (id 20, `sdd: false`), then invoicing (id 21, `sdd: true` — a spec gate), then remittance intake (id 22).
+**Phase 12 — the Projector and the MongoDB read model** (`projector_read_model`, id 24). Phase 11 had one feature and it is closed.
 
 ## Decisions taken this session
 
-The human **overruled both** of `billing_credit`'s gate recommendations with a standing instruction: **stop leaving issues to the next phase — fix them.** That ruling produced the cross-service outbox unification, checked money arithmetic, and four backlog closures inside one feature. It also produced the build's first observable save from the ported-idiom ledger.
+Phase 10 closed and committed; Phase 11 closed. A `commit-msg` hook now refuses a subject making an unverified quantity claim, and `init.sh` §5c verifies it is installed. `init.sh`'s lockstep check now states what it actually reads, after its success message overstated it for a whole feature.
 
 ## Blockers
 
@@ -18,16 +18,17 @@ None.
 
 ## Notes
 
-**Backlog attachment map for the rest of phase 10** — ids 48, 50, 51, 53 **and now 55** are closed, and feature 20's review finding **N2** is closed. What remains:
+**Rewrite this whole body at every transition, not just the header.** It was stale for a feature and `init.sh` could not see it — the check reads the `**Feature:**` line only, and now says so.
+
+### Backlog attachment map
 
 | Entry | Rides | Why |
 |---|---|---|
-| **52** — retroactive boundary ledger for pre-ledger services | **standalone** | Its own acceptance forbids fixing anything in place; folding it into a feature would put un-specced fixes into that feature's review |
-| **56** — every env read in every `Program.cs` is deletable with the suite green | **phase 13, standalone** | All 34 reads across three composition roots are equally unguarded; three more arrive in phases 11–13. Choose the mechanism once and inherit it, rather than applying it four times |
-
-Feature 21 (`billing_invoicing`) closed both **55** (the six `BC32` sites, three in Billing, three in Fulfillment) and **N2** (the `.99` cents-rule fixture guard, both halves) — see `progress/impl_billing_invoicing.md`.
-
-**The ledger's standing caveat, to repeat in the final benchmark:** you cannot observe a prevented defect. *"It prevents"* is an inference from one instance — the client id the unification destroyed and the ledger row re-created — not a measurement.
+| **52** — retroactive boundary ledger for pre-ledger services | **standalone** | Its own acceptance forbids fixing anything in place |
+| **56** — every env read in every `Program.cs` is deletable with the suite green | **phase 13** | Five composition roots now; choose the mechanism once and inherit it |
+| **57** — the completion pair has no causal edge | **standalone, Billing — and it is now urgent** | Filed to land *before* the projector reads causal chains. Phase 12 is that feature. If it is not closed first, the projector inherits an unordered pair |
+| **58** — the envelope copy is by hand and its `correlationId` is unguarded | **phase 12** | The projector reads envelopes; this is one assertion inside an existing theory |
+| **59** — 14 date-typed payload sites survive mutation | **phase 12** | Same class as 58 and the same files are open |
 
 ---
 
