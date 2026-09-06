@@ -313,7 +313,7 @@
       "phase": 10,
       "title": "Credit-check simulator (.99 rule + CREDIT_FAILURE_RATE)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "rejects totalAmount % 100 === 99 deterministically",
         "CREDIT_FAILURE_RATE defaults to 0",
@@ -326,7 +326,7 @@
       "phase": 10,
       "title": "Invoice aggregate (INVOIC) with issued -> paid state machine",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "issued on OrderDespatched",
         "paidAt set exactly when status becomes paid",
@@ -751,13 +751,28 @@
       "phase": 10,
       "title": "BC32 claims every integration test that deserialises an RPC reply asserts its discriminating field first; six sites still do not",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "the six sites assert the reply's own discriminating field before touching a collection: tests/Billing.IntegrationTests/CreditListTests.cs lines 39, 73 and 77, and tests/Fulfillment.IntegrationTests/StockListTests.cs lines 33, 38 and 44",
         "OR BC32's wording is narrowed to the scope it actually holds, and the requirement text stops making a universal claim",
         "whichever is chosen, an enumerating command and its complete output are recorded — the claim is a search result, not a reading"
       ],
       "notes": "Found by feature 19's review round 2 (advisory A6) with an enumerating script. These are the OPAQUE-failure tier — a dereference, so the test fails loudly but uninformatively — not the silent-pass tier that earned backlog id 53 its requirement id. Round 1 had fixed the scope at three sites and said nothing else changes, so rejecting again would have been goalpost-shifting; filed instead. A DONE traceability row resting on a false universal claim is the shape this feature already spent a round on. Advisory A7 records a smaller adjacent thing: design.md §10.5 named total/paging as StockList's first assertion and Assert.NotNull(Items) landed instead — unachievable as written for StockReplenishReplyPayload, which has no other field."
+    },
+    {
+      "id": 56,
+      "name": "composition_root_env_reads_are_unguarded",
+      "phase": 13,
+      "title": "Every environment-variable read in every Program.cs can be deleted with the whole suite green — no test project compiles a composition root",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "deleting any single environment-variable read from any service's Program.cs makes a named test fail",
+        "the mechanism is chosen once and applied to every composition root — an options-binding test that drives the real Program.cs path, or a startup smoke test per service, not a per-variable assertion",
+        "the guard covers the 34 reads that exist across the three current Program.cs files and is inherited by later services rather than re-invented",
+        "armed: the report names which read was deleted and the verbatim failure"
+      ],
+      "notes": "Found by feature 20's review (advisory A1) with a concrete probe: deleting the CREDIT_FAILURE_RATE read from src/Billing/Program.cs:23 leaves the whole suite green. NOT that feature's defect — all 34 reads across the three composition roots are equally unguarded, because no test project compiles a Program.cs. Filed against phase 13 rather than 10 because three more composition roots arrive in phases 11-13 and the fix should be chosen once and inherited, not applied four times. The shape this repository keeps paying for: a property that is real, correct, and guarded by nothing."
     },
     {
       "id": 44,

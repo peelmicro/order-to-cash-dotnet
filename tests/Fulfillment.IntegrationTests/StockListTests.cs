@@ -30,19 +30,28 @@ public sealed class StockListTests(MsSqlContainerFixture mssql, NatsContainerFix
 
         // Filter by productCode.
         var byProduct = await ListAsync(connection, new StockListRequestPayload(null, null, ProductCode: "P1"));
+        // BI30/backlog id 55 — assert the reply's OWN discriminating field
+        // (Page.Total) before touching the Items collection: an RpcError
+        // body deserialises into an all-defaults reply record without
+        // throwing.
+        Assert.NotNull(byProduct.Page);
+        Assert.Equal(2, byProduct.Page.Total);
         Assert.Equal(2, byProduct.Items.Count);
         Assert.All(byProduct.Items, item => Assert.Equal("P1", item.ProductCode));
 
         // belowThreshold: only the short item.
         var belowThreshold = await ListAsync(connection, new StockListRequestPayload(null, null, CompanyCode: "ACME", BelowThreshold: true));
+        Assert.NotNull(belowThreshold.Page);
+        Assert.Equal(1, belowThreshold.Page.Total);
         var single = Assert.Single(belowThreshold.Items);
         Assert.Equal("P2", single.ProductCode);
         Assert.Equal(2, single.AvailableUnits);
 
         // Paging.
         var page1 = await ListAsync(connection, new StockListRequestPayload(1, 1));
-        Assert.Single(page1.Items);
+        Assert.NotNull(page1.Page);
         Assert.Equal(3, page1.Page.Total);
+        Assert.Single(page1.Items);
 
         // No mutation, no lock: re-read directly proves the rows are untouched.
         var row = await FulfillmentHostFixture.FindStockAsync(mssql, connectionString, "ACME", "P1");

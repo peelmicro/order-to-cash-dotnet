@@ -8,7 +8,7 @@ namespace OrderToCash.Billing.UnitTests;
 /// it only from a real TDS error response. This reflects into the same
 /// internal factory the driver itself uses
 /// (<c>SqlException.CreateException(SqlErrorCollection, string)</c>) so a
-/// UNIT test can exercise <c>CreditErrorMapper</c>'s <see cref="SqlException"/>
+/// UNIT test can exercise <c>BillingErrorMapper</c>'s <see cref="SqlException"/>
 /// branches (deadlock 1205, lock-timeout 1222, and "any other" number)
 /// without a real SQL Server — duplicated from
 /// <c>tests/Fulfillment.UnitTests/SqlExceptionFactory.cs</c>, same shape.

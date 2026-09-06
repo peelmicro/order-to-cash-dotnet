@@ -15,31 +15,40 @@ using OrderToCash.SharedKernel;
 namespace OrderToCash.Billing.Presentation;
 
 /// <summary>
-/// ONE <see cref="BackgroundService"/>, three subjects — <c>billing.credit.hold</c>,
-/// <c>billing.credit.release</c>, <c>billing.credit.list</c> (design.md §4.1,
-/// §4.2). One transport (NATS), three subscription loops running
-/// CONCURRENTLY. Per message: extract <see cref="RpcMeta"/> where required
-/// (`BC1`) -&gt; deserialise with <see cref="RpcJson"/> -&gt; validate (§4.4)
-/// -&gt; resolve <see cref="IDispatcher"/> from a FRESH DI scope -&gt;
-/// dispatch -&gt; reply. Never throws and never leaves a request unanswered
-/// — every path is wrapped, and the catch replies a mapped
-/// <see cref="RpcErrorPayload"/> (§4.5), the rule <c>StockRpcResponder</c>/
-/// <c>OrdersCreateResponder</c> already follow.
+/// ONE <see cref="BackgroundService"/>, FIVE subjects — <c>billing.credit.hold</c>,
+/// <c>billing.credit.release</c>, <c>billing.credit.list</c>,
+/// <c>billing.invoice.issue</c>, <c>billing.invoice.list</c> (design.md
+/// §4.1, §4.2, `BI31`). One transport (NATS), five subscription loops
+/// running CONCURRENTLY. Per message: extract <see cref="RpcMeta"/> where
+/// required (`BC1`, `BI2`) -&gt; deserialise with <see cref="RpcJson"/> -&gt;
+/// validate (§4.4) -&gt; resolve <see cref="IDispatcher"/> from a FRESH DI
+/// scope -&gt; dispatch -&gt; reply. Never throws and never leaves a
+/// request unanswered — every path is wrapped, and the catch replies a
+/// mapped <see cref="RpcErrorPayload"/> (§4.5), the rule
+/// <c>StockRpcResponder</c>/<c>OrdersCreateResponder</c> already follow.
 /// </summary>
 /// <remarks>
-/// `BC21`/§4.1 — deliberately NOT <c>OrdersCreateResponder</c>'s sequential
-/// shape. A <see cref="SemaphoreSlim"/> bound is acquired BEFORE the scope is
-/// created (never inside it) and released once the request's task completes;
-/// every request gets its OWN <see cref="IServiceScope"/>, never one per
-/// responder; in-flight tasks are tracked so <see cref="StopAsync"/> can
-/// await them within the host's shutdown timeout, individually, without one
-/// faulted reply aborting the drain (`BC22`, §4.7, backlog id 50).
+/// Renamed from <c>CreditRpcResponder</c> (`BI31`, design.md §4.1,
+/// gate-approved 2026-09-06): #7 declared a SECOND controller for invoicing
+/// and paid nothing, because NestJS supplied concurrency, per-request DI
+/// scope and graceful shutdown. In #8 all three are hand-built inside this
+/// ONE class and each is separately armed — `BC21` (a distinct scope per
+/// request), `BC22` (the drain, both halves), backlog id 50 (individually
+/// awaited fault isolation). A second responder class would fork four
+/// armed behaviours into an UNGUARDED copy, and `CLAUDE.md`'s non-negotiable
+/// is one <see cref="BackgroundService"/> per transport — Billing's RPC
+/// transport is one. So this class is EXTENDED, not forked: everything
+/// below this remark that predates this feature is otherwise UNCHANGED —
+/// the <see cref="SemaphoreSlim"/> bound acquired before the scope, one
+/// <see cref="IServiceScope"/> per request, the <c>_inFlight</c> set, the
+/// individually-awaited <see cref="StopAsync"/> drain, the never-throws
+/// try/catch.
 /// </remarks>
-public sealed class CreditRpcResponder(
+public sealed class BillingRpcResponder(
     INatsConnection connection,
     IServiceScopeFactory scopeFactory,
-    IOptions<CreditResponderOptions> options,
-    ILogger<CreditRpcResponder> logger) : BackgroundService
+    IOptions<BillingResponderOptions> options,
+    ILogger<BillingRpcResponder> logger) : BackgroundService
 {
     private readonly SemaphoreSlim _semaphore = new(options.Value.MaxConcurrentRequests, options.Value.MaxConcurrentRequests);
     private readonly ConcurrentDictionary<Task, byte> _inFlight = new();
@@ -51,6 +60,8 @@ public sealed class CreditRpcResponder(
             SubscribeLoopAsync(CreditSubjects.CreditHold, stoppingToken),
             SubscribeLoopAsync(CreditSubjects.CreditRelease, stoppingToken),
             SubscribeLoopAsync(CreditSubjects.CreditList, stoppingToken),
+            SubscribeLoopAsync(InvoiceSubjects.InvoiceIssue, stoppingToken),
+            SubscribeLoopAsync(InvoiceSubjects.InvoiceList, stoppingToken),
         };
 
         await Task.WhenAll(loops).ConfigureAwait(false);
@@ -79,7 +90,7 @@ public sealed class CreditRpcResponder(
         {
             if (fault is not null)
             {
-                logger.LogWarning(fault, "{Responder} shutdown: an in-flight request faulted while draining.", nameof(CreditRpcResponder));
+                logger.LogWarning(fault, "{Responder} shutdown: an in-flight request faulted while draining.", nameof(BillingRpcResponder));
             }
         }
     }
@@ -153,7 +164,7 @@ public sealed class CreditRpcResponder(
         {
             logger.LogWarning(ex, "{Subject} failed: {Message}", subject, ex.Message);
 
-            var errorPayload = CreditErrorMapper.Map(ex, DateTimeOffset.UtcNow);
+            var errorPayload = BillingErrorMapper.Map(ex, DateTimeOffset.UtcNow);
             return RpcJson.Serialize(errorPayload);
         }
     }
@@ -161,9 +172,9 @@ public sealed class CreditRpcResponder(
     /// <summary>
     /// The per-subject dispatch logic, factored out from the NATS/DI
     /// plumbing above and made <see langword="internal"/> so
-    /// <c>CreditResponderHeaderTests</c>/<c>CreditWireTests</c>' unit half
-    /// can drive it against a fake <see cref="IDispatcher"/> with no real
-    /// NATS connection and no host.
+    /// <c>CreditResponderHeaderTests</c>/<c>InvoiceResponderValidationTests</c>'
+    /// unit half can drive it against a fake <see cref="IDispatcher"/> with
+    /// no real NATS connection and no host.
     /// </summary>
     internal static async Task<byte[]> DispatchAsync(string subject, NatsMsg<byte[]> message, IDispatcher dispatcher, CancellationToken cancellationToken)
     {
@@ -176,7 +187,9 @@ public sealed class CreditRpcResponder(
         {
             CreditSubjects.CreditHold => await HandleHoldAsync(dispatcher, message, cancellationToken).ConfigureAwait(false),
             CreditSubjects.CreditRelease => await HandleReleaseAsync(dispatcher, message, cancellationToken).ConfigureAwait(false),
-            CreditSubjects.CreditList => await HandleListAsync(dispatcher, message.Data, cancellationToken).ConfigureAwait(false),
+            CreditSubjects.CreditList => await HandleCreditListAsync(dispatcher, message.Data, cancellationToken).ConfigureAwait(false),
+            InvoiceSubjects.InvoiceIssue => await HandleInvoiceIssueAsync(dispatcher, message, cancellationToken).ConfigureAwait(false),
+            InvoiceSubjects.InvoiceList => await HandleInvoiceListAsync(dispatcher, message.Data, cancellationToken).ConfigureAwait(false),
             _ => throw new InvalidOperationException($"Unrecognised subject '{subject}'."),
         };
     }
@@ -209,12 +222,57 @@ public sealed class CreditRpcResponder(
         return RpcJson.Serialize(reply);
     }
 
-    private static async Task<byte[]> HandleListAsync(IDispatcher dispatcher, byte[] data, CancellationToken cancellationToken)
+    private static async Task<byte[]> HandleCreditListAsync(IDispatcher dispatcher, byte[] data, CancellationToken cancellationToken)
     {
         var request = RpcJson.Deserialize<CreditListRequestPayload>(data);
         CreditRequestValidator.ValidateList(request);
 
         var reply = await dispatcher.QueryAsync<ListCreditQuery, CreditListReplyPayload>(new ListCreditQuery(request), cancellationToken).ConfigureAwait(false);
+
+        return RpcJson.Serialize(reply);
+    }
+
+    /// <summary>
+    /// `BI2`'s own wording: headers are extracted and validated BEFORE the
+    /// payload is deserialised — the opposite order from the hold/release
+    /// arms above, whose ordering predates this feature and is not this
+    /// feature's to churn (design.md §4.1). Both throw before dispatch
+    /// either way; this ordering is what `InvoiceResponderValidationTests`'
+    /// entry-observation case exercises.
+    /// </summary>
+    private static async Task<byte[]> HandleInvoiceIssueAsync(IDispatcher dispatcher, NatsMsg<byte[]> message, CancellationToken cancellationToken)
+    {
+        var meta = RequireMeta(message.Headers, InvoiceSubjects.InvoiceIssue);
+
+        if (message.Data is null)
+        {
+            throw new InvalidInvoiceRequestError($"{InvoiceSubjects.InvoiceIssue} request carried no payload.");
+        }
+
+        var request = RpcJson.Deserialize<InvoiceIssueRequestPayload>(message.Data);
+        InvoiceRequestValidator.ValidateIssue(request);
+
+        var command = new IssueInvoiceCommand(
+            request.OrderReference,
+            request.RetailerCode,
+            request.CompanyCode,
+            request.Currency,
+            request.Lines,
+            request.Discount,
+            meta.CorrelationId,
+            meta.RequestId);
+
+        var reply = await dispatcher.SendAsync<IssueInvoiceCommand, InvoiceIssueReplyPayload>(command, cancellationToken).ConfigureAwait(false);
+
+        return RpcJson.Serialize(reply);
+    }
+
+    private static async Task<byte[]> HandleInvoiceListAsync(IDispatcher dispatcher, byte[] data, CancellationToken cancellationToken)
+    {
+        var request = RpcJson.Deserialize<InvoiceListRequestPayload>(data);
+        InvoiceRequestValidator.ValidateList(request);
+
+        var reply = await dispatcher.QueryAsync<ListInvoicesQuery, InvoiceListReplyPayload>(new ListInvoicesQuery(request), cancellationToken).ConfigureAwait(false);
 
         return RpcJson.Serialize(reply);
     }

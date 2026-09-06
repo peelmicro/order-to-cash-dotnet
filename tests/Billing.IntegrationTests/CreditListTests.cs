@@ -36,6 +36,12 @@ public sealed class CreditListTests(MsSqlContainerFixture mssql, NatsContainerFi
         await using var connection = new NatsConnection(new NatsOpts { Url = nats.Url });
 
         var reply = await ListAsync(connection, new CreditListRequestPayload(1, 25, RetailerCode: "RetailerList"));
+        // BI30/backlog id 55 — assert the reply's OWN discriminating field
+        // before touching a collection: an RpcError body deserialises into
+        // an all-defaults reply record without throwing, so a bare
+        // `.Items.Count` assertion would pass silently on a refusal.
+        Assert.NotNull(reply.Page);
+        Assert.Equal(4, reply.Page.Total);
         Assert.Equal(4, reply.Items.Count);
 
         foreach (var item in reply.Items)
@@ -70,12 +76,15 @@ public sealed class CreditListTests(MsSqlContainerFixture mssql, NatsContainerFi
 
         // Filters and paging at SQL level.
         var filteredByCompany = await ListAsync(connection, new CreditListRequestPayload(1, 25, RetailerCode: "RetailerList", CompanyCode: "CompanyHeld"));
+        Assert.NotNull(filteredByCompany.Page);
+        Assert.Equal(1, filteredByCompany.Page.Total);
         var single = Assert.Single(filteredByCompany.Items);
         Assert.Equal("CompanyHeld", single.CompanyCode);
 
         var page1 = await ListAsync(connection, new CreditListRequestPayload(1, 1, RetailerCode: "RetailerList"));
-        Assert.Single(page1.Items);
+        Assert.NotNull(page1.Page);
         Assert.Equal(4, page1.Page.Total);
+        Assert.Single(page1.Items);
 
         await host.StopAsync();
     }

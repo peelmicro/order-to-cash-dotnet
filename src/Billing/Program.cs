@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using OrderToCash.Billing;
 using OrderToCash.Billing.Infrastructure;
+using OrderToCash.Billing.Infrastructure.CreditDecisions;
 
 // The Billing service host — the FIRST runnable Billing host (design.md
 // §14.3). The actual composition (AddBilling, AddDispatcher, the
@@ -17,6 +18,11 @@ var builder = BillingHost.CreateBuilder(
             ?? $"localhost:{Environment.GetEnvironmentVariable("KAFKA_HOST_PORT") ?? "9092"}";
         options.Kafka.ClientId = Environment.GetEnvironmentVariable("BILLING_KAFKA_CLIENT_ID") ?? "otc-billing";
         options.Responder.MaxConcurrentRequests = int.TryParse(Environment.GetEnvironmentVariable("BILLING_MAX_CONCURRENT_REQUESTS"), out var max) ? max : 32;
+
+        // R43 — validated eagerly, HERE, so an out-of-range or non-numeric
+        // CREDIT_FAILURE_RATE throws before BillingHost.CreateBuilder ever
+        // returns and the process never reaches host.RunAsync().
+        options.CreditFailureRate = CreditSimulatorOptionsLoader.Load(Environment.GetEnvironmentVariable("CREDIT_FAILURE_RATE"));
     });
 
 var host = builder.Build();

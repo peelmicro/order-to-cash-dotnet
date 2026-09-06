@@ -74,7 +74,7 @@ public sealed class BuyerCreditRepositoryTests(MsSqlContainerFixture mssql)
         var orderReference = OrderNumber.Parse("ORD-000002");
 
         await using var db = mssql.CreateDbContext(connectionString);
-        var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new CreditFactPayloadMapper()), new FixedClock());
+        var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new BillingFactPayloadMapper()), new FixedClock());
         var uow = new EfCoreUnitOfWork(db);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => uow.ExecuteAsync(
@@ -123,7 +123,7 @@ public sealed class BuyerCreditRepositoryTests(MsSqlContainerFixture mssql)
 
             await using (var db = mssql.CreateDbContext(connectionString))
             {
-                var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(knownInstant), new CreditFactPayloadMapper()), new FixedClock(knownInstant));
+                var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(knownInstant), new BillingFactPayloadMapper()), new FixedClock(knownInstant));
                 var uow = new EfCoreUnitOfWork(db);
 
                 await uow.ExecuteAsync(async ct =>
@@ -207,14 +207,14 @@ public sealed class BuyerCreditRepositoryTests(MsSqlContainerFixture mssql)
     private async Task<BuyerCredit?> LockAsync(string connectionString, string retailerCode, string companyCode, OrderNumber orderReference)
     {
         await using var db = mssql.CreateDbContext(connectionString);
-        var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new CreditFactPayloadMapper()), new FixedClock());
+        var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new BillingFactPayloadMapper()), new FixedClock());
         return await repo.LockForOrderAsync(retailerCode, companyCode, orderReference, CancellationToken.None);
     }
 
     private async Task RunAsync(string connectionString, Func<EfCoreBuyerCreditRepository, EfCoreUnitOfWork, Task> work)
     {
         await using var db = mssql.CreateDbContext(connectionString);
-        var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new CreditFactPayloadMapper()), new FixedClock());
+        var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new BillingFactPayloadMapper()), new FixedClock());
         var uow = new EfCoreUnitOfWork(db);
 
         await uow.ExecuteAsync(async ct => await work(repo, uow), CancellationToken.None);

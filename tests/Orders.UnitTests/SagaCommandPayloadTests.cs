@@ -145,6 +145,34 @@ public sealed class SagaCommandPayloadTests
     }
 
     /// <summary>
+    /// `BI21` (design.md §10.4) — `SagaCommandRequestFactory.BuildInvoiceIssue`
+    /// already passes <c>order.InitialDiscount.MinorUnits</c>; what was
+    /// missing was the guard. Driven from ONE real <see cref="OrderToCash.Orders.Domain.Order"/>
+    /// with a genuinely non-zero discount, building BOTH the `invoice.issue`
+    /// and `credit.hold` payloads from that SAME order — the shared source
+    /// is what makes the three-way comparison mean something.
+    /// </summary>
+    [Fact]
+    public void BI21_CarriesTheOrdersInitialDiscountOnTheInvoiceIssueRequest_SoTheInvoiceTotalEqualsTheCreditHoldAmountAndTheOrderTotal()
+    {
+        var order = OrderTestData.PlacedOrder();
+        Assert.NotEqual(0, order.InitialDiscount.MinorUnits); // the comparison below means nothing against a zero discount.
+
+        var invoiceJson = OrderToCash.Orders.Application.Sagas.SagaCommandRequestFactory.BuildJson(OrderToCash.Orders.Application.Sagas.SagaCommandKind.InvoiceIssue, order);
+        var creditHoldJson = OrderToCash.Orders.Application.Sagas.SagaCommandRequestFactory.BuildJson(OrderToCash.Orders.Application.Sagas.SagaCommandKind.CreditHold, order);
+
+        var invoiceRequest = JsonSerializer.Deserialize<InvoiceIssueRequestPayload>(invoiceJson, JsonWire.Options)!;
+        var creditHoldRequest = JsonSerializer.Deserialize<CreditHoldRequestPayload>(creditHoldJson, JsonWire.Options)!;
+
+        var invoiceLineSum = invoiceRequest.Lines.Sum(l => l.UnitPrice * (long)l.Units);
+        var invoiceTotal = invoiceLineSum - (invoiceRequest.Discount ?? 0);
+
+        Assert.Equal(invoiceTotal, creditHoldRequest.Amount.Amount);
+        Assert.Equal(order.TotalAmount.MinorUnits, creditHoldRequest.Amount.Amount);
+        Assert.Equal(order.TotalAmount.MinorUnits, invoiceTotal);
+    }
+
+    /// <summary>
     /// Backlog id 51, `BC23` (design.md §10.2) — this file's own hand-retyped
     /// key lists (every <c>AssertKeys</c> call above) are cheap and readable
     /// and catch UNILATERAL drift of the code; what they cannot catch is the

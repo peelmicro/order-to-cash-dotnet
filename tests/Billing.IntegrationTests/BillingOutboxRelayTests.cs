@@ -31,7 +31,7 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
 
         await using (var db = mssql.CreateDbContext(connectionString))
         {
-            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new CreditFactPayloadMapper()), new FixedClock());
+            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new BillingFactPayloadMapper()), new FixedClock());
             var uow = new EfCoreUnitOfWork(db);
 
             await uow.ExecuteAsync(async ct =>
@@ -107,7 +107,7 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
 
         await using (var db = mssql.CreateDbContext(connectionString))
         {
-            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new CreditFactPayloadMapper()), new FixedClock());
+            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new BillingFactPayloadMapper()), new FixedClock());
             var uow = new EfCoreUnitOfWork(db);
 
             firstEventId = await uow.ExecuteAsync(async ct =>
@@ -126,7 +126,7 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
 
         await using (var db = mssql.CreateDbContext(connectionString))
         {
-            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new CreditFactPayloadMapper()), new FixedClock());
+            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new BillingFactPayloadMapper()), new FixedClock());
             var uow = new EfCoreUnitOfWork(db);
 
             secondEventId = await uow.ExecuteAsync(async ct =>
@@ -176,7 +176,7 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
 
         await using (var db = mssql.CreateDbContext(connectionString))
         {
-            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new CreditFactPayloadMapper()), new FixedClock());
+            var repo = new EfCoreBuyerCreditRepository(db, new OutboxWriter(new FixedClock(), new BillingFactPayloadMapper()), new FixedClock());
             var uow = new EfCoreUnitOfWork(db);
 
             (firstEventId, secondEventId) = await uow.ExecuteAsync(async ct =>

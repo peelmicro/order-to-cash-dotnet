@@ -1,6 +1,7 @@
 using OrderToCash.Billing.Application.Ports;
 using OrderToCash.Billing.Domain;
 using OrderToCash.Billing.Domain.Events;
+using ContractsInvoiceLine = OrderToCash.Contracts.Facts.InvoiceLine;
 using ContractsPayloads = OrderToCash.Contracts.Facts.Payloads;
 
 namespace OrderToCash.Billing.Infrastructure.Outbox;
@@ -16,7 +17,16 @@ namespace OrderToCash.Billing.Infrastructure.Outbox;
 /// <c>Infrastructure/Outbox/</c> and is where <c>Money.MinorUnits</c>
 /// becomes <c>long</c>. No <c>decimal</c> appears anywhere on this path.
 /// </summary>
-public sealed class CreditFactPayloadMapper : IFactPayloadMapper
+/// <remarks>
+/// Renamed from <c>CreditFactPayloadMapper</c> (`BI31`, design.md §4.1):
+/// this mapper is no longer credit-specific — feature 21 adds the two
+/// invoicing arms below. This is also the ONE place the nominal type
+/// system's own hazard lives (design.md §16 ledger `L23`): a new
+/// <c>FactEvent</c> subtype with no arm here compiles fine and throws at
+/// RUN TIME, in a transaction, on a path with a live caller — #7's
+/// structurally-typed mapper could not have this failure mode at all.
+/// </remarks>
+public sealed class BillingFactPayloadMapper : IFactPayloadMapper
 {
     public object ToPayload(FactEvent domainEvent) => domainEvent switch
     {
@@ -49,6 +59,27 @@ public sealed class CreditFactPayloadMapper : IFactPayloadMapper
             Reason: CreditReleaseReasons.ToToken(released.Reason),
             CreditCode: released.CreditCode),
 
-        _ => throw new InvalidOperationException($"CreditFactPayloadMapper has no mapping for event type '{domainEvent.GetType().FullName}' (eventType '{domainEvent.EventType}')."),
+        InvoiceIssued issued => new ContractsPayloads.InvoiceIssuedPayload(
+            OrderReference: issued.OrderReference.Value,
+            InvoiceReference: issued.InvoiceReference,
+            InvoiceDate: issued.InvoiceDate,
+            RetailerCode: issued.RetailerCode,
+            CompanyCode: issued.CompanyCode,
+            Currency: issued.Currency,
+            Lines: [.. issued.Lines.Select(l => new ContractsInvoiceLine(l.ProductCode, l.Units.Value, l.UnitPrice.MinorUnits))],
+            Amount: issued.Amount.MinorUnits,
+            Discount: issued.Discount.MinorUnits,
+            TotalAmount: issued.TotalAmount.MinorUnits),
+
+        PaymentReceived received => new ContractsPayloads.PaymentReceivedPayload(
+            OrderReference: received.OrderReference.Value,
+            InvoiceReference: received.InvoiceReference,
+            PaymentReference: received.PaymentReference,
+            Currency: received.Amount.Currency,
+            Amount: received.Amount.MinorUnits,
+            ValueDate: received.ValueDate,
+            Source: received.Source),
+
+        _ => throw new InvalidOperationException($"BillingFactPayloadMapper has no mapping for event type '{domainEvent.GetType().FullName}' (eventType '{domainEvent.EventType}')."),
     };
 }

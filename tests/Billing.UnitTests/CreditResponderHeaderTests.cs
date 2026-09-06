@@ -28,7 +28,7 @@ public sealed class CreditResponderHeaderTests
         var message = BuildMessage(subject, payload, headers);
 
         var error = await Assert.ThrowsAsync<InvalidCreditRequestError>(
-            () => CreditRpcResponder.DispatchAsync(subject, message, dispatcher, CancellationToken.None));
+            () => BillingRpcResponder.DispatchAsync(subject, message, dispatcher, CancellationToken.None));
 
         Assert.False(dispatcher.WasCalled, "the dispatcher must never be called when the header check fails.");
 
@@ -50,7 +50,7 @@ public sealed class CreditResponderHeaderTests
         var payload = RpcJson.Serialize(new CreditListRequestPayload(null, null));
         var message = BuildMessage(CreditSubjects.CreditList, payload, headers: null);
 
-        var reply = await CreditRpcResponder.DispatchAsync(CreditSubjects.CreditList, message, dispatcher, CancellationToken.None);
+        var reply = await BillingRpcResponder.DispatchAsync(CreditSubjects.CreditList, message, dispatcher, CancellationToken.None);
 
         Assert.True(dispatcher.WasCalled);
         Assert.NotEmpty(reply);

@@ -18,7 +18,14 @@ namespace OrderToCash.Billing.Presentation.Rpc;
 /// <c>rejected</c> — permanently ending the order's saga over a failure
 /// that was only ever transient.
 /// </summary>
-public static class CreditErrorMapper
+/// <remarks>
+/// Renamed from <c>CreditErrorMapper</c> (`BI31`, design.md §4.1): this
+/// mapper is no longer credit-specific — feature 21 (invoicing) adds its own
+/// cases ahead of the generic <see cref="DomainError"/> fallback, and
+/// <c>NoActiveHoldError</c>/<c>CreditLineNotFoundError</c> are REUSED
+/// UNCHANGED (already mapped correctly, not touched here).
+/// </remarks>
+public static class BillingErrorMapper
 {
     // SQL Server error numbers — 1205: deadlock victim; 1222: lock request
     // timeout period exceeded.
@@ -28,6 +35,8 @@ public static class CreditErrorMapper
     public static RpcErrorPayload Map(Exception error, DateTimeOffset occurredAt) => error switch
     {
         InvalidCreditRequestError e => new RpcErrorPayload("VALIDATION_FAILED", e.Message, OccurredAt: occurredAt),
+
+        InvalidInvoiceRequestError e => new RpcErrorPayload("VALIDATION_FAILED", e.Message, OccurredAt: occurredAt),
 
         CreditLineNotFoundError e => new RpcErrorPayload(
             "NOT_FOUND",
@@ -39,6 +48,60 @@ public static class CreditErrorMapper
             "VALIDATION_FAILED",
             e.Message,
             new Dictionary<string, object?> { ["expected"] = e.Expected, ["received"] = e.Received },
+            OccurredAt: occurredAt),
+
+        InvoiceCurrencyMismatchError e => new RpcErrorPayload(
+            "VALIDATION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["expected"] = e.Expected, ["received"] = e.Received },
+            OccurredAt: occurredAt),
+
+        // BI11: statements about the REQUEST's lines, not about an
+        // invoice's state — VALIDATION_FAILED, not a domain-state refusal.
+        NegativeInvoiceTotalError e => new RpcErrorPayload(
+            "VALIDATION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["code"] = e.Code },
+            OccurredAt: occurredAt),
+
+        EmptyInvoiceLinesError e => new RpcErrorPayload(
+            "VALIDATION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["code"] = e.Code },
+            OccurredAt: occurredAt),
+
+        InvoiceLineCurrencyMismatchError e => new RpcErrorPayload(
+            "VALIDATION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["code"] = e.Code },
+            OccurredAt: occurredAt),
+
+        // BI25: TERMINAL on purpose — a permanently-overflowing payload
+        // retried on every sweep is the failure this mapping prevents.
+        InvoiceTotalOverflowError e => new RpcErrorPayload(
+            "DOMAIN_ERROR",
+            e.Message,
+            new Dictionary<string, object?> { ["code"] = e.Code },
+            OccurredAt: occurredAt),
+
+        // Feature 22's own subject maps these; declared here so the
+        // vocabulary is complete on delivery (design.md §4.5).
+        InvoiceAlreadyPaidError e => new RpcErrorPayload(
+            "PRECONDITION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["code"] = e.Code },
+            OccurredAt: occurredAt),
+
+        InvoicePaymentAmountMismatchError e => new RpcErrorPayload(
+            "PRECONDITION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["code"] = e.Code },
+            OccurredAt: occurredAt),
+
+        InvoicePaymentCurrencyMismatchError e => new RpcErrorPayload(
+            "PRECONDITION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["code"] = e.Code },
             OccurredAt: occurredAt),
 
         // BC30: a ledger whose sums overflow will overflow again on every
@@ -63,7 +126,9 @@ public static class CreditErrorMapper
             new Dictionary<string, object?> { ["code"] = e.Code },
             OccurredAt: occurredAt),
 
-        // Any other aggregate refusal — DOMAIN_ERROR, terminal.
+        // Any other aggregate refusal — DOMAIN_ERROR, terminal. Includes
+        // InvalidInvoiceSnapshotError — a programming-error guard rather
+        // than client input (design.md §4.5).
         DomainError e => new RpcErrorPayload(
             "DOMAIN_ERROR",
             e.Message,

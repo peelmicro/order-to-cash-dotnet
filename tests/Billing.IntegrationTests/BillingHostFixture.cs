@@ -112,6 +112,12 @@ internal static class BillingHostFixture
 
     public static async Task<Guid> SeedCreditLineAsync(MsSqlContainerFixture mssql, string connectionString, string code, string retailerCode, string companyCode, long creditLimit, string currencyCode = "EUR")
     {
+        // BI17/A5 — deliberately broader than the hazard: the credit LIMIT
+        // does not itself reach the credit-decision port, but a guard whose
+        // scope a reader must reason about is a guard that gets bypassed
+        // (design.md §10.1).
+        CentsRuleFixtureGuard.AssertNotCentsRuleAmount(creditLimit, $"{nameof(SeedCreditLineAsync)}(code='{code}')");
+
         await using var db = mssql.CreateDbContext(connectionString);
         var now = DateTime.UtcNow;
         var id = Guid.NewGuid();
@@ -132,6 +138,8 @@ internal static class BillingHostFixture
 
     public static async Task<Guid> SeedLedgerEntryAsync(MsSqlContainerFixture mssql, string connectionString, Guid creditId, string orderReference, long amount, string type)
     {
+        CentsRuleFixtureGuard.AssertNotCentsRuleAmount(amount, $"{nameof(SeedLedgerEntryAsync)}(orderReference='{orderReference}', type='{type}')");
+
         await using var db = mssql.CreateDbContext(connectionString);
         var now = DateTime.UtcNow;
         var id = Guid.NewGuid();
@@ -179,6 +187,107 @@ internal static class BillingHostFixture
     {
         await using var db = mssql.CreateDbContext(connectionString);
         return await db.OutboxMessages.AsNoTracking().Where(m => m.CorrelationId == correlationId && m.EventType == eventType).ToListAsync();
+    }
+
+    /// <summary>
+    /// Hand-seeds an `invoices` row plus one `invoice_items` line directly
+    /// in SQL — used by `BI9`'s `paid` repeat variant (feature 22 has no
+    /// `billing.payment.register` responder yet, so this is the only way to
+    /// seed a `paid` invoice) and by `BI24`'s round-trip. Deliberately
+    /// bypasses <c>Invoice.Issue</c> so a caller can seed a row the domain
+    /// would itself refuse (`BI10`'s store-side half).
+    /// </summary>
+    public static async Task<Guid> SeedInvoiceAsync(
+        MsSqlContainerFixture mssql,
+        string connectionString,
+        string invoiceReference,
+        string orderReference,
+        string retailerCode,
+        string companyCode,
+        long amount,
+        long discount,
+        long totalAmount,
+        string status,
+        DateTime? paidAt,
+        string currencyCode = "EUR",
+        DateTime? invoiceDate = null)
+    {
+        CentsRuleFixtureGuard.AssertNotCentsRuleAmount(totalAmount, $"{nameof(SeedInvoiceAsync)}(orderReference='{orderReference}')");
+
+        await using var db = mssql.CreateDbContext(connectionString);
+        var now = DateTime.UtcNow;
+        var id = Guid.NewGuid();
+
+        db.Invoices.Add(new Invoice
+        {
+            Id = id,
+            InvoiceReference = invoiceReference,
+            InvoiceDate = invoiceDate ?? now,
+            CompanyCode = companyCode,
+            RetailerCode = retailerCode,
+            OrderReference = orderReference,
+            Amount = amount,
+            Discount = discount,
+            TotalAmount = totalAmount,
+            CurrencyCode = currencyCode,
+            Status = status,
+            PaidAt = paidAt,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+
+        db.InvoiceItems.Add(new InvoiceItem
+        {
+            Id = Guid.NewGuid(),
+            InvoiceId = id,
+            ProductCode = "SKU-SEED",
+            Units = 1,
+            Price = amount,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+
+        await db.SaveChangesAsync();
+        return id;
+    }
+
+    public static async Task<List<Invoice>> InvoicesOfAsync(MsSqlContainerFixture mssql, string connectionString, string orderReference)
+    {
+        await using var db = mssql.CreateDbContext(connectionString);
+        return await db.Invoices.AsNoTracking().Where(i => i.OrderReference == orderReference).ToListAsync();
+    }
+
+    public static async Task<List<InvoiceItem>> InvoiceItemsOfAsync(MsSqlContainerFixture mssql, string connectionString, Guid invoiceId)
+    {
+        await using var db = mssql.CreateDbContext(connectionString);
+        return await db.InvoiceItems.AsNoTracking().Where(i => i.InvoiceId == invoiceId).ToListAsync();
+    }
+
+    /// <summary>
+    /// Builds a `billing.invoice.issue` request from simple line specs,
+    /// guarding the COMPUTED total via <see cref="CentsRuleFixtureGuard"/>
+    /// (`A3`/`A5`) — the hazard a scan of literals cannot see, since a
+    /// three-line invoicing fixture's total is derived arithmetic, not a
+    /// literal anywhere in this file.
+    /// </summary>
+    public static InvoiceIssueRequestPayload IssueRequest(
+        string orderReference,
+        string retailerCode,
+        string companyCode,
+        IReadOnlyList<(string ProductCode, int Units, long UnitPrice)> lines,
+        long discount = 0,
+        string currency = "EUR")
+    {
+        var computedTotal = lines.Sum(l => l.UnitPrice * (long)l.Units) - discount;
+        CentsRuleFixtureGuard.AssertNotCentsRuleAmount(computedTotal, $"{nameof(IssueRequest)}(orderReference='{orderReference}')");
+
+        return new InvoiceIssueRequestPayload(
+            orderReference,
+            retailerCode,
+            companyCode,
+            currency,
+            [.. lines.Select(l => new Contracts.Facts.InvoiceLine(l.ProductCode, l.Units, l.UnitPrice))],
+            discount == 0 ? null : discount);
     }
 
     /// <summary>Waits for a terminal/monotonic condition — never polls a mid-flight counter or `availableCredit` (the reviewer's binding synchronisation rule since feature 16, design.md §13).</summary>

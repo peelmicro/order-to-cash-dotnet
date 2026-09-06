@@ -42,6 +42,41 @@ public sealed class BillingDispatcherRegistrationTests
         Assert.Contains(nameof(IBuyerCreditRepository), negativeException!.ToString());
     }
 
+    /// <summary>
+    /// `E7`/ledger `L20` — everything that must share the ambient
+    /// transaction must share the SCOPE: <see cref="IInvoiceRepository"/>,
+    /// <see cref="IInvoiceReadPort"/>, <see cref="IInvoiceNumberAllocator"/>
+    /// and <see cref="OrderToCash.Billing.Application.InvoiceIssueService"/>
+    /// each resolve and each have <see cref="ServiceLifetime.Scoped"/>.
+    /// </summary>
+    [Fact]
+    public void InvoicingPorts_EachResolve_AndAreEachRegisteredScoped()
+    {
+        var builder = BuildRealHostBuilder();
+        var scopedTypes = new[]
+        {
+            typeof(IInvoiceRepository),
+            typeof(IInvoiceReadPort),
+            typeof(IInvoiceNumberAllocator),
+            typeof(OrderToCash.Billing.Application.InvoiceIssueService),
+        };
+
+        foreach (var serviceType in scopedTypes)
+        {
+            var descriptor = builder.Services.Single(d => d.ServiceType == serviceType);
+            Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+        }
+
+        using var host = builder.Build();
+        using var scope = host.Services.CreateScope();
+
+        foreach (var serviceType in scopedTypes)
+        {
+            var resolved = scope.ServiceProvider.GetService(serviceType);
+            Assert.NotNull(resolved);
+        }
+    }
+
     private static HostApplicationBuilder BuildRealHostBuilder() =>
         BillingHost.CreateBuilder(
             args: [],

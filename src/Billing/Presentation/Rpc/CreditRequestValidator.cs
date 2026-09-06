@@ -7,7 +7,7 @@ namespace OrderToCash.Billing.Presentation.Rpc;
 /// A wire-shape refusal — mirrors <c>InvalidStockRequestError</c>/
 /// <c>InvalidOrdersCreateRequestError</c>: the request does not even
 /// satisfy <c>asyncapi.yaml</c>'s schema. Mapped to <c>VALIDATION_FAILED</c>
-/// by <see cref="CreditErrorMapper"/>.
+/// by <see cref="BillingErrorMapper"/>.
 /// </summary>
 public sealed class InvalidCreditRequestError(string message) : Exception(message);
 

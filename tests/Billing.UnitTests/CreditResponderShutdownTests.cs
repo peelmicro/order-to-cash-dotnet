@@ -25,11 +25,11 @@ public sealed class CreditResponderShutdownTests
         var services = new ServiceCollection();
         await using var provider = services.BuildServiceProvider();
 
-        var responder = new CreditRpcResponder(
+        var responder = new BillingRpcResponder(
             connection: null!,
             provider.GetRequiredService<IServiceScopeFactory>(),
-            Options.Create(new CreditResponderOptions()),
-            NullLogger<CreditRpcResponder>.Instance);
+            Options.Create(new BillingResponderOptions()),
+            NullLogger<BillingRpcResponder>.Instance);
 
         var healthyRan = false;
         var healthySignal = new TaskCompletionSource();
@@ -41,7 +41,7 @@ public sealed class CreditResponderShutdownTests
         });
         var faultingTask = Task.Run(() => throw new InvalidOperationException("simulated reply failure"));
 
-        var inFlightField = typeof(CreditRpcResponder).GetField("_inFlight", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var inFlightField = typeof(BillingRpcResponder).GetField("_inFlight", BindingFlags.NonPublic | BindingFlags.Instance)!;
         var inFlight = (ConcurrentDictionary<Task, byte>)inFlightField.GetValue(responder)!;
         inFlight.TryAdd(healthyTask, 0);
         inFlight.TryAdd(faultingTask, 0);

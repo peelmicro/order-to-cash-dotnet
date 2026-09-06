@@ -29,11 +29,11 @@ public sealed class CreditResponderConcurrencyTests
         services.AddScoped<IClock, FakeClock>();
         await using var provider = services.BuildServiceProvider();
 
-        var responder = new CreditRpcResponder(
+        var responder = new BillingRpcResponder(
             connection: null!,
             provider.GetRequiredService<IServiceScopeFactory>(),
-            Options.Create(new CreditResponderOptions()),
-            NullLogger<CreditRpcResponder>.Instance);
+            Options.Create(new BillingResponderOptions()),
+            NullLogger<BillingRpcResponder>.Instance);
 
         var payload = RpcJson.Serialize(new CreditListRequestPayload(null, null));
 
