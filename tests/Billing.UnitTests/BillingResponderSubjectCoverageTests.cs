@@ -8,17 +8,19 @@ using Xunit;
 namespace OrderToCash.Billing.UnitTests;
 
 /// <summary>
-/// `BI31` — all five `billing.*` RPC subjects are answered from ONE
-/// <see cref="BackgroundService"/>, so the service's concurrency bound, its
-/// one-scope-per-request rule and its individually-awaited drain exist in
-/// exactly one implementation. A second responder class would fork those
-/// four separately-armed behaviours into an unguarded copy (design.md §4.1,
-/// gate-approved 2026-09-06).
+/// `BI31` — all six `billing.*` RPC subjects (feature 22 adds
+/// `billing.payment.register`, to the SAME class, per its own design
+/// choice) are answered from ONE <see cref="BackgroundService"/>, so the
+/// service's concurrency bound, its one-scope-per-request rule and its
+/// individually-awaited drain exist in exactly one implementation. A
+/// second responder class would fork those four separately-armed
+/// behaviours into an unguarded copy (design.md §4.1, gate-approved
+/// 2026-09-06).
 /// </summary>
 public sealed class BillingResponderSubjectCoverageTests
 {
     [Fact]
-    public void BI31_OneBackgroundServiceSubscribesAllFiveBillingSubjects_AndTheHostRegistersNoSecondRpcResponder()
+    public void BI31_OneBackgroundServiceSubscribesAllSixBillingSubjects_AndTheHostRegistersNoSecondRpcResponder()
     {
         var builder = BillingHost.CreateBuilder(
             args: [],
@@ -46,6 +48,7 @@ public sealed class BillingResponderSubjectCoverageTests
             "CreditSubjects.CreditList",
             "InvoiceSubjects.InvoiceIssue",
             "InvoiceSubjects.InvoiceList",
+            "InvoiceSubjects.PaymentRegister",
         })
         {
             Assert.Contains(subject, executeAsyncBody, StringComparison.Ordinal);

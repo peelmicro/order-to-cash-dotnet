@@ -23,6 +23,9 @@ public sealed class InvoiceRpcPayloadTests
         { "InvoiceView", typeof(InvoiceViewPayload) },
         { "PageInfo", typeof(InvoicePageInfo) },
         { "InvoiceLine", typeof(InvoiceLine) },
+        // Feature 22.
+        { "PaymentRegisterRequestPayload", typeof(PaymentRegisterRequestPayload) },
+        { "PaymentRegisterReplyPayload", typeof(PaymentRegisterReplyPayload) },
     };
 
     [Theory]

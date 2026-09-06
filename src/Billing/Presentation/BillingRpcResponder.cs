@@ -62,6 +62,7 @@ public sealed class BillingRpcResponder(
             SubscribeLoopAsync(CreditSubjects.CreditList, stoppingToken),
             SubscribeLoopAsync(InvoiceSubjects.InvoiceIssue, stoppingToken),
             SubscribeLoopAsync(InvoiceSubjects.InvoiceList, stoppingToken),
+            SubscribeLoopAsync(InvoiceSubjects.PaymentRegister, stoppingToken),
         };
 
         await Task.WhenAll(loops).ConfigureAwait(false);
@@ -190,6 +191,7 @@ public sealed class BillingRpcResponder(
             CreditSubjects.CreditList => await HandleCreditListAsync(dispatcher, message.Data, cancellationToken).ConfigureAwait(false),
             InvoiceSubjects.InvoiceIssue => await HandleInvoiceIssueAsync(dispatcher, message, cancellationToken).ConfigureAwait(false),
             InvoiceSubjects.InvoiceList => await HandleInvoiceListAsync(dispatcher, message.Data, cancellationToken).ConfigureAwait(false),
+            InvoiceSubjects.PaymentRegister => await HandlePaymentRegisterAsync(dispatcher, message, cancellationToken).ConfigureAwait(false),
             _ => throw new InvalidOperationException($"Unrecognised subject '{subject}'."),
         };
     }
@@ -273,6 +275,35 @@ public sealed class BillingRpcResponder(
         InvoiceRequestValidator.ValidateList(request);
 
         var reply = await dispatcher.QueryAsync<ListInvoicesQuery, InvoiceListReplyPayload>(new ListInvoicesQuery(request), cancellationToken).ConfigureAwait(false);
+
+        return RpcJson.Serialize(reply);
+    }
+
+    /// <summary>Feature 22 — headers extracted and validated BEFORE the payload is deserialised, the SAME ordering <see cref="HandleInvoiceIssueAsync"/> already uses.</summary>
+    private static async Task<byte[]> HandlePaymentRegisterAsync(IDispatcher dispatcher, NatsMsg<byte[]> message, CancellationToken cancellationToken)
+    {
+        var meta = RequireMeta(message.Headers, InvoiceSubjects.PaymentRegister);
+
+        if (message.Data is null)
+        {
+            throw new InvalidInvoiceRequestError($"{InvoiceSubjects.PaymentRegister} request carried no payload.");
+        }
+
+        var request = RpcJson.Deserialize<PaymentRegisterRequestPayload>(message.Data);
+        PaymentRegisterRequestValidator.ValidateRegister(request);
+
+        var command = new RegisterPaymentCommand(
+            request.InvoiceId,
+            request.InvoiceReference,
+            request.PaymentReference,
+            request.Amount.Amount,
+            request.Amount.Currency,
+            request.ValueDate,
+            request.Source,
+            meta.CorrelationId,
+            meta.RequestId);
+
+        var reply = await dispatcher.SendAsync<RegisterPaymentCommand, PaymentRegisterReplyPayload>(command, cancellationToken).ConfigureAwait(false);
 
         return RpcJson.Serialize(reply);
     }

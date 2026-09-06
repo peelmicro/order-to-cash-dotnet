@@ -167,6 +167,29 @@ public sealed class InvoiceIssueServiceTests
             SaveCallCount++;
             return Task.CompletedTask;
         }
+
+        // Feature 22 additions — unused by this file's own tests (they
+        // exercise `billing.invoice.issue`, not `billing.payment.register`),
+        // present only to keep this fake compiling against the extended
+        // port, the SAME mechanical reason `InvoiceIssueHandlerSpec`'s
+        // fake gained throwing stubs in #7's counterpart.
+        public Task<InvoiceSnapshot?> FindByIdAsync(UniqueId invoiceId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Not exercised by InvoiceIssueServiceTests.");
+
+        public Task<InvoiceSnapshot?> FindByInvoiceReferenceAsync(string invoiceReference, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Not exercised by InvoiceIssueServiceTests.");
+
+        public Task<PaymentSnapshot?> FindPaymentByReferenceAsync(string paymentReference, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Not exercised by InvoiceIssueServiceTests.");
+
+        public Task<PaymentSnapshot?> FindPaymentByInvoiceIdAsync(UniqueId invoiceId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Not exercised by InvoiceIssueServiceTests.");
+
+        public Task<InvoiceSnapshot?> LockByIdAsync(UniqueId invoiceId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Not exercised by InvoiceIssueServiceTests.");
+
+        public Task MarkPaidAsync(Invoice invoice, MarkPaidInput payment, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Not exercised by InvoiceIssueServiceTests.");
     }
 
     private sealed class RecordingInvoiceNumberAllocator : IInvoiceNumberAllocator

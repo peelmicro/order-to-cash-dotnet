@@ -339,7 +339,7 @@
       "phase": 10,
       "title": "Remittance intake: PaymentReceived + credit release + invoice paid",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "idempotent by paymentReference",
         "no internal payment timer anywhere",
@@ -737,13 +737,13 @@
       "phase": 10,
       "title": "The ported-idiom ledger has no row for the un-hinted in-transaction re-read in DespatchCreationService, whose correctness depends on two unstated properties",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "specs/fulfillment_stock/design.md §15 gains a row for the un-hinted re-read at src/Fulfillment/Application/DespatchCreationService.cs:67 (the F8 in-flight-race decision)",
         "the row names both properties its correctness rests on: that the read is issued only after LockForOrderAsync is granted, and that EfCoreUnitOfWork opens IsolationLevel.ReadCommitted under RCSI, which makes the snapshot statement-scoped rather than transaction-scoped",
         "the row states the consequence for #9 explicitly: under a transaction-scoped snapshot (PostgreSQL REPEATABLE READ) the same code returns a stale read and turns a correct idempotent repeat into a permanent UNAVAILABLE"
       ],
-      "notes": "Found by feature 18's review round 2. Not a defect in #8 — the code is correct here, for two reasons neither of which is written down. It is a ledger GAP, which is the ledger's own failure mode: the row nobody wrote. Text ready in progress/review_fulfillment_despatch.md §5, row \"L1, second face\"."
+      "notes": "Found by feature 18's review round 2. Not a defect in #8 — the code is correct here, for two reasons neither of which is written down. It is a ledger GAP, which is the ledger's own failure mode: the row nobody wrote. Text ready in progress/review_fulfillment_despatch.md §5, row \"L1, second face\". CLOSED: the row landed as L13 in specs/fulfillment_stock/design.md, added by feature 18 fulfillment_despatch (not 19 as the attachment map guessed). It names both properties its correctness rests on, states the #9 consequence explicitly, and — correctly — records itself as a claim to verify rather than a tested property, since no #8 guard exists for the statement-scoped argument. Certified by feature 22's review; the coordinator verified the artefact before flipping the status."
     },
     {
       "id": 55,
@@ -773,6 +773,21 @@
         "armed: the report names which read was deleted and the verbatim failure"
       ],
       "notes": "Found by feature 20's review (advisory A1) with a concrete probe: deleting the CREDIT_FAILURE_RATE read from src/Billing/Program.cs:23 leaves the whole suite green. NOT that feature's defect — all 34 reads across the three composition roots are equally unguarded, because no test project compiles a Program.cs. Filed against phase 13 rather than 10 because three more composition roots arrive in phases 11-13 and the fix should be chosen once and inherited, not applied four times. The shape this repository keeps paying for: a property that is real, correct, and guarded by nothing."
+    },
+    {
+      "id": 57,
+      "name": "completion_pair_has_no_causal_edge",
+      "phase": 11,
+      "title": "credit.released.v1 carries the same causationId and an identical occurredAt as payment.received.v1, so the completion pair is a tie group with no recorded causal edge",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "credit.released.v1's causationId is the eventId of payment.received.v1, not the request id both currently share",
+        "the two facts no longer carry an identical occurredAt, or the ordering is otherwise recoverable from the envelope alone",
+        "a consumer reading only the two envelopes can determine which caused which, without relying on outbox sequence or arrival order",
+        "armed: reverting the causal stamp makes a named test fail on the envelope, not on row order"
+      ],
+      "notes": "Found by feature 22's review (finding N1). NOT blocking: R47-R49 and id 22's acceptance bullets are all met, and #7's own feature 22 shipped without it. But this is exactly what #7's spec amendment A1 exists to prevent, and #8 inherited the amended spec — so #8 is shipping against the letter of an amendment it was given for free. #7 fixed it in this same file eight phases later as rework (bf59af9). Filed against phase 11 because it is one entry away from free here and a cross-service reopen in phase 12, when the projector starts reading causal chains to build the timeline."
     },
     {
       "id": 44,

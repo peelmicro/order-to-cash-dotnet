@@ -44,6 +44,8 @@ public sealed partial class BillingErrorMapperTests
             BuildDeadlockException(),
             new DbUpdateConcurrencyException("optimistic concurrency conflict"),
             new InvalidOperationException("anything else"),
+            new InvoiceNotFoundError(Guid.NewGuid(), "INV-000001"),
+            new PaymentReferenceConflictError("PAY-000001"),
         };
 
         Assert.All(candidates, exception => Assert.NotEqual("CONFLICT", BillingErrorMapper.Map(exception, DateTimeOffset.UtcNow).Code));
@@ -136,6 +138,35 @@ public sealed partial class BillingErrorMapperTests
 
         Assert.Equal("PRECONDITION_FAILED", reply.Code);
         Assert.Equal(error.Code, reply.Details?["code"]);
+    }
+
+    // -- Feature 22 (billing_remittance_intake) additions --------------------
+
+    [Fact]
+    public void InvoiceNotFoundError_MapsToNotFound_CarryingTheRequestedIdentifiers()
+    {
+        var invoiceId = Guid.NewGuid();
+        var error = new InvoiceNotFoundError(invoiceId, "INV-999999");
+        var reply = BillingErrorMapper.Map(error, DateTimeOffset.UtcNow);
+
+        Assert.Equal("NOT_FOUND", reply.Code);
+        Assert.Equal(invoiceId, reply.Details?["invoiceId"]);
+        Assert.Equal("INV-999999", reply.Details?["invoiceReference"]);
+    }
+
+    /// <summary>`BC27` extended to feature 22's own conflict: PRECONDITION_FAILED, DELIBERATELY never CONFLICT — the same reason `CreditLineNotFoundError` et al. are banned from that code (this mapper's class summary).</summary>
+    [Fact]
+    public void PaymentReferenceConflictError_MapsToPreconditionFailed_NeverConflict_CarryingThePaymentReference()
+    {
+        var error = new PaymentReferenceConflictError("PAY-000001");
+        var reply = BillingErrorMapper.Map(error, DateTimeOffset.UtcNow);
+
+        Assert.Equal("PRECONDITION_FAILED", reply.Code);
+        Assert.NotEqual("CONFLICT", reply.Code);
+        Assert.Equal("PAY-000001", reply.Details?["paymentReference"]);
+
+        var terminalSet = ReadTerminalCodeSet();
+        Assert.Contains(reply.Code, terminalSet);
     }
 
     /// <summary>`BI25` — TERMINAL on purpose: an overflow retried on every sweep is the failure this mapping prevents (design.md §4.5). ARM: map <c>InvoiceTotalOverflowError</c> to <c>INTERNAL_ERROR</c> and confirm this fails.</summary>

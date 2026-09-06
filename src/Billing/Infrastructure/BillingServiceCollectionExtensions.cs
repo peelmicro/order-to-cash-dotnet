@@ -51,6 +51,11 @@ public static class BillingServiceCollectionExtensions
         services.AddScoped<IInvoiceNumberAllocator, EfCoreInvoiceNumberAllocator>();
         services.AddScoped<InvoiceIssueService>();
 
+        // Feature 22 — billing.payment.register. Scoped, the SAME reason
+        // InvoiceIssueService is: it holds IInvoiceRepository/IBuyerCreditRepository,
+        // both scoped, and must share the ambient transaction.
+        services.AddScoped<PaymentRegisterService>();
+
         // The credit-decision port — feature 20's ONE-line replacement of
         // the previously-bound always-approving adapter (design.md §6.3,
         // `BC15`). `AlwaysApproveCreditDecision` stays in the tree as the

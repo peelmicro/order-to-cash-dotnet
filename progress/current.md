@@ -1,7 +1,7 @@
 # Current session
 
-**Feature:** none — awaiting the next feature (phase 10 continues with `billing_remittance_intake`, id 22)
-**Status:** idle — `billing_invoicing` (id 21) APPROVED on review round 2 and set `done`; backlog id 55 closed in the same verdict. See `progress/review_billing_invoicing.md`. **Two record corrections are owed before the human commits:** `specs/billing_invoicing/tasks.md` `H1`–`H4` still tick over *"NOT PERFORMED this session"* for work the coordinator did perform, and `specs/billing_invoicing/requirements.md`'s `BI22` row still reads `TODO`
+**Feature:** none active — `billing_remittance_intake` (id 22) was approved and set `done`, which closes Phase 10; awaiting the human's test-and-commit and the Phase 11 briefing
+**Status:** idle — no feature `in_progress` or `in_review`
 **Session started:** 2026-09-06
 
 ## Goal

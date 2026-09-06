@@ -71,3 +71,38 @@ public sealed record InvoiceViewPayload(
 
 /// <summary><c>asyncapi.yaml</c> <c>InvoiceListReplyPayload</c>.</summary>
 public sealed record InvoiceListReplyPayload(IReadOnlyList<InvoiceViewPayload> Items, InvoicePageInfo Page);
+
+// -- billing.payment.register ------------------------------------------------
+
+/// <summary>
+/// <c>asyncapi.yaml</c> <c>PaymentRegisterRequestPayload</c>. Exactly ONE of
+/// <see cref="InvoiceId"/>/<see cref="InvoiceReference"/> is REQUIRED —
+/// neither is in the schema's own `required:` list, so the cross-field
+/// "at least one identifier" rule lives in <c>PaymentRegisterRequestValidator</c>,
+/// not here (the placement <see cref="InvoiceRequestValidator"/>'s own
+/// `discount` cross-field check already established).
+/// </summary>
+public sealed record PaymentRegisterRequestPayload(
+    string PaymentReference,
+    CreditMoney Amount,
+    DateTimeOffset ValueDate,
+    string Source,
+    Guid? InvoiceId = null,
+    string? InvoiceReference = null);
+
+/// <summary>
+/// <c>asyncapi.yaml</c> <c>PaymentRegisterReplyPayload</c>. <c>Outcome</c>
+/// is <c>accepted</c> | <c>duplicate</c> — a mismatched amount/currency is
+/// NOT a duplicate, it is an error reply (`R49`). The schema marks
+/// <c>orderReference</c>/<c>paidAt</c> optional, but this responder always
+/// knows both (a payment is only ever registered against an invoice this
+/// service already holds), so both are always populated — never omitted in
+/// practice, unlike <see cref="InvoiceIssueReplyPayload.InvoiceId"/>.
+/// </summary>
+public sealed record PaymentRegisterReplyPayload(
+    string Outcome,
+    string PaymentReference,
+    string InvoiceReference,
+    string OrderReference,
+    string InvoiceStatus,
+    DateTimeOffset? PaidAt = null);

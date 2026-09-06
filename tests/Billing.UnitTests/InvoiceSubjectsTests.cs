@@ -14,6 +14,7 @@ public sealed partial class InvoiceSubjectsTests
     [Theory]
     [InlineData("invoiceIssue", InvoiceSubjects.InvoiceIssue)]
     [InlineData("invoiceList", InvoiceSubjects.InvoiceList)]
+    [InlineData("paymentRegister", InvoiceSubjects.PaymentRegister)]
     public void InvoiceSubjects_EqualTheAsyncApiChannelAddress(string channelKey, string expectedSubject)
     {
         var address = ReadChannelAddress(channelKey);

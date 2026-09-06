@@ -290,6 +290,35 @@ internal static class BillingHostFixture
             discount == 0 ? null : discount);
     }
 
+    // -- feature 22 (billing_remittance_intake) additions -------------------
+
+    public static async Task<List<Payment>> PaymentsOfAsync(MsSqlContainerFixture mssql, string connectionString, Guid invoiceId)
+    {
+        await using var db = mssql.CreateDbContext(connectionString);
+        return await db.Payments.AsNoTracking().Where(p => p.InvoiceId == invoiceId).ToListAsync();
+    }
+
+    public static async Task<Payment?> FindPaymentByReferenceAsync(MsSqlContainerFixture mssql, string connectionString, string paymentReference)
+    {
+        await using var db = mssql.CreateDbContext(connectionString);
+        return await db.Payments.AsNoTracking().SingleOrDefaultAsync(p => p.PaymentReference == paymentReference);
+    }
+
+    /// <summary>Builds a `billing.payment.register` request — the amount is guarded via <see cref="CentsRuleFixtureGuard"/> the SAME way <see cref="IssueRequest"/> already guards its own computed total.</summary>
+    public static PaymentRegisterRequestPayload PaymentRequest(
+        string paymentReference,
+        long amount,
+        DateTimeOffset valueDate,
+        string? invoiceReference = null,
+        Guid? invoiceId = null,
+        string currency = "EUR",
+        string source = "test")
+    {
+        CentsRuleFixtureGuard.AssertNotCentsRuleAmount(amount, $"{nameof(PaymentRequest)}(paymentReference='{paymentReference}')");
+
+        return new PaymentRegisterRequestPayload(paymentReference, new CreditMoney(amount, currency), valueDate, source, invoiceId, invoiceReference);
+    }
+
     /// <summary>Waits for a terminal/monotonic condition — never polls a mid-flight counter or `availableCredit` (the reviewer's binding synchronisation rule since feature 16, design.md §13).</summary>
     public static async Task<T> WaitForAsync<T>(Func<Task<T>> probe, Func<T, bool> isDone, TimeSpan timeout)
     {

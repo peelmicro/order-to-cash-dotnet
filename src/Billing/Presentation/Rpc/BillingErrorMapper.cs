@@ -126,6 +126,28 @@ public static class BillingErrorMapper
             new Dictionary<string, object?> { ["code"] = e.Code },
             OccurredAt: occurredAt),
 
+        // Feature 22 (billing_remittance_intake) — identity resolution miss
+        // for the request's invoiceId/invoiceReference.
+        InvoiceNotFoundError e => new RpcErrorPayload(
+            "NOT_FOUND",
+            e.Message,
+            new Dictionary<string, object?> { ["invoiceId"] = e.InvoiceId, ["invoiceReference"] = e.InvoiceReference },
+            OccurredAt: occurredAt),
+
+        // Feature 22 — the SAME paymentReference already recorded against a
+        // DIFFERENT invoice than the one this request names (N11's fix, the
+        // fast-path identity check AND the payments.payment_reference
+        // UNIQUE-constraint backstop both throw this). PRECONDITION_FAILED,
+        // DELIBERATELY never CONFLICT — see this mapper's own class summary
+        // (`BC27`): CONFLICT is classified TERMINAL by
+        // NatsSagaCommandsAdapter for a different, transient reason (a
+        // deadlock victim), and this service's mapper must never emit it.
+        PaymentReferenceConflictError e => new RpcErrorPayload(
+            "PRECONDITION_FAILED",
+            e.Message,
+            new Dictionary<string, object?> { ["paymentReference"] = e.PaymentReference },
+            OccurredAt: occurredAt),
+
         // Any other aggregate refusal — DOMAIN_ERROR, terminal. Includes
         // InvalidInvoiceSnapshotError — a programming-error guard rather
         // than client input (design.md §4.5).
