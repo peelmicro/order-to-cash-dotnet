@@ -70,7 +70,7 @@ SDD inverts the usual order: write the specification first, in a notation precis
 
 ### The honesty clause
 
-SDD costs real ceremony, and for a 50-line feature the ceremony is decorative paperwork. That is why only 8 of this project's 54 features carry `"sdd": true` — the aggregates and state machines, the saga and its compensation, the outbox and idempotency, the read-model projection, and the observability wiring. Everything else skips the triple-doc but still travels the backlog state machine. The spec-becomes-infrastructure moments (Kafka topics derived from the AsyncAPI file, TypeScript types generated from both API documents) are where the spec pays for itself even on small features.
+SDD costs real ceremony, and for a 50-line feature the ceremony is decorative paperwork. That is why only 8 of this project's 55 features carry `"sdd": true` — the aggregates and state machines, the saga and its compensation, the outbox and idempotency, the read-model projection, and the observability wiring. Everything else skips the triple-doc but still travels the backlog state machine. The spec-becomes-infrastructure moments (Kafka topics derived from the AsyncAPI file, TypeScript types generated from both API documents) are where the spec pays for itself even on small features.
 
 ---
 
@@ -213,7 +213,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 |---|---|---|---|---|---|
 | `AGENTS.md` | "Where does an agent start?" — the entry map | Read order, hard rules, the SDD flow, session-close procedure | Copied from #7, re-pointed (4 edits) | Phase 2 | Phase 2 |
 | `CLAUDE.md` | "How do we do things here?" — binding conventions | Leader role, architecture non-negotiables, coding/testing conventions, commit discipline. **Amended at human gates as the build goes**, which is why nothing may quote the copy injected into its context | Copied from #7, **substantially adapted** — three rules translated, one added; six amendments since, each recorded with its superseded phrasing | Phase 2 | Phase 8 |
-| `feature_list.json` | "What is happening right now?" — the backlog state machine | 54 features, 8 `sdd: true`. Max one `in_progress`, enforced by `init.sh`. Only the reviewer sets `done` | #7's ids, names and phases **reset to `pending`**; one new feature (`cqrs_dispatcher`) | Phase 2 | every feature transition |
+| `feature_list.json` | "What is happening right now?" — the backlog state machine | 55 features, 8 `sdd: true`. Max one `in_progress`, enforced by `init.sh`. Only the reviewer sets `done` | #7's ids, names and phases **reset to `pending`**; one new feature (`cqrs_dispatcher`) | Phase 2 | every feature transition |
 | `init.sh` | "Is the world sane?" — the session circuit breaker | Exit ≠ 0 ⇒ do not advance. Checks env, harness files, agent model declarations, backlog and SDD coherence, **plus three checks written here**: no superseded rule phrasing survives anywhere, the session file names the active feature, and a **backlog tripwire** that fails if a feature id disappears or a `done` reverts — the corruption every other check is blind to, since a backlog missing a feature is still perfectly shaped | Copied from #7; environment section rewritten for the .NET SDK, backlog validator kept as-is; three sections added in Phase 8 | Phase 2 | Phase 8 |
 | `CHECKPOINTS.md` | "Am I actually done?" — objective close criteria | C1–C7; the reviewer walks them | Copied from #7; **C7 inverted** — from "is this reusable?" to "did it actually reuse it, and is the benchmark honest?" | Phase 2 | Phase 2 |
 | `.superseded-rules` | "Did the amendment actually finish?" — one line per amended rule, carrying the phrasing it replaced | `init.sh` fails if any of them still appears outside the history files. Written because the sweep had been a habit, and a habit failed twice in two rounds | **Written here** | Phase 8 | per amendment |
@@ -240,7 +240,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 10 in progress — 29 of 54 features done.** Three services run. An order can be placed, reserved against stock, despatched, and held against a buyer's credit limit, and the credit ledger enforces its exposure invariant under concurrency.
+**Position: Phase 10 in progress — 32 of 55 features done, one feature left in the phase.** Three services run. An order can be placed, reserved against stock, despatched, and held against a buyer's credit limit, and the credit ledger enforces its exposure invariant under concurrency.
 
 **One feature closed five, and the reason is a ruling rather than a technique.** The specification for the credit service arrived at the human gate with two recommendations, both to defer: narrow a consistency rule so that two files need not be made identical, and accept an unguarded money sum on the argument that it could not overflow. **Both were overruled, with a standing instruction — stop leaving issues to the next phase, fix them.** The feature that resulted carried eighty-seven tasks and closed four accumulated backlog entries alongside its own work.
 
@@ -261,7 +261,7 @@ Had the recommendation been accepted, the property would have gone quietly. **No
 | 7 | Deterministic seed job — identifiers reproduced byte for byte from the previous assessment's own derivation scheme, and 413 master-data rows diffed row for row against its live database | ✅ |
 | 8 | Orders service — aggregate, hand-rolled dispatcher, outbox/idempotency, acceptance, saga orchestrator, terminal-rejection classification | ✅ |
 | 9 | Fulfillment — stock reservations and DESADV creation | ✅ |
-| 10 | Billing — buyer credit, the `.99` simulator, invoicing, remittance intake | 🚧 the credit service is done, and with it the outbox family unified byte-identically across three services |
+| 10 | Billing — buyer credit, the `.99` simulator, invoicing, remittance intake | 🚧 credit, the `.99` simulator and invoicing done — the outbox family unified byte-identically across three services, and an order now runs from placement to invoice across all three |
 | 11 | Notifications — MailKit into Mailpit, durable idempotency ledger | ⬜ |
 | 12 | Projector — the MongoDB read model | ⬜ |
 | 13 | Gateway / BFF — REST, JWT, login rate limiting, SSE | ⬜ |
@@ -345,6 +345,18 @@ The ruling, which is the part worth keeping: **a gate-approved specification out
 The interesting part is not the race — races are ordinary — but that **the project's own state-coherence check passed throughout**. A status reverted from *specification ready* back to *pending* is still a valid status, still leaves at most one feature in progress, and still satisfies the rule that a specified feature has its documents on disk. Every invariant held. The state was simply wrong.
 
 This is the third distinct disguise of the same failure in this build: a check that fires on nothing, a check run against the wrong artefact, and now a check whose invariants are all satisfied by an incorrect state. The generalisable form: **a coherence check validates shape, not history.** It can tell you the state is *legal*; it cannot tell you the state is the one you left. Where a transition matters, the defence is to avoid the race rather than to detect it afterwards.
+
+**Phase 10 — the arming protocol had a hole in its own restore step.** A fix round offered `git diff --stat` on the two files it had mutated as proof that its restore was clean. Both files were untracked, as most files are while a feature is in flight — **so that check could not fail.** The restore was in fact correct, verified independently by comparing against backups; the evidence offered for it was worthless.
+
+What makes this worth recording is where it sits. This project already had a rule that the version-control checkout command fails silently on an untracked path, learned when a restore left a file mutated and the error scrolled past. **The same untrackedness makes a diff print nothing** — the identical property, one command over, and the conventions documented only half of it. So the guard-that-does-not-guard turned up inside the restore step of the protocol built to catch guards that do not guard.
+
+The clause added is small: do not offer a diff as proof of a restore; compare against your backup, or read the line. The observation behind it is not: **a rule that names one command has not covered a property.** The untracked-file hazard is a property of the files, and it defeats every command that reports differences against a tracked baseline.
+
+**Phase 10 — the coordinator wrote a false count into a commit subject, for the second time.** One commit says a change *"closes all four"* features of a phase; it closed three, and the fourth was one query away in a file the coordinator had read twice that hour. An earlier commit carried a test total that was arithmetic on remembered figures rather than a reading of a run.
+
+Both were about **scale rather than behaviour** — the code was correct on both occasions, which is exactly why neither was caught before the push. And both went into the artefact this repository explicitly treats as process evidence.
+
+The existing rule covered it and was applied too narrowly: *do not write a figure into a commit message you have not read off a run in the same session.* **"All four" is a figure.** The widening: **a claim of completeness is a count, and a count is a reading** — "all", "every", "the last" and "complete" do not belong in a commit subject unless the thing counted was enumerated first. It is the same discipline this project already demands of a claimed absence, applied to a claimed totality.
 
 **Phase 10 — a deferral and its blind spot are the same act.** A specification arrived at the human gate recommending that two files be excluded from a consistency rule, because making them identical would mean redesigning two finished services. The reasoning was sound, the cost was real, and the recommendation was to record the divergence and move on. **The gate overruled it.**
 

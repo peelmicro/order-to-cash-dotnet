@@ -94,7 +94,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 7 | Deterministic seed job | ✅ identifiers provably byte-identical to #7's, derived by the same SHA-256 scheme; 3 currencies, 12 products, 7 retailers, 22 companies, 215 stock rows, 6 sample orders and their read-model documents |
 | 8 | Orders service + saga orchestrator | ✅ aggregate, hand-rolled dispatcher, transactional outbox, `orders.create` acceptance, the saga with both compensation paths, and terminal-vs-retryable command classification — 7 features, 3 of them defects found in already-closed work; 16 armed architecture rules |
 | 9 | Fulfillment service | ✅ `StockItem` aggregate, reservation lifecycle, the `fulfillment.stock.*` responder and DESADV creation — starting it resumed four saga commands parked since Phase 8, unattended |
-| 10 | Billing service | 🚧 `BuyerCredit` aggregate, the hold/release/consume ledger and the `billing.credit.*` responder done — and the outbox family is now byte-identical across all three services |
+| 10 | Billing service | 🚧 `BuyerCredit` and its ledger, the `.99` simulator and the `Invoice` aggregate done — an order now runs from placement to invoice across three services; remittance intake remains |
 | 11 | Notifications service | ⬜ |
 | 12 | Projector service + MongoDB read model | ⬜ |
 | 13 | Gateway / BFF | ⬜ |
