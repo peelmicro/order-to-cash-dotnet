@@ -201,6 +201,10 @@ Dependencies point **inwards**: presentation → application → domain. Infrast
 
 **Rule for the stack-comparison document:** only what a **committed file** proves gets marked confirmed. Anything learned from a probe, a spike or a deleted scratch directory goes in as pre-resolved, naming the phase that will promote it. A tick that stops anyone re-checking is the guard-that-does-not-guard pattern, which is the exact failure class this harness exists to catch.
 
+**A claim of completeness is a count, and a count is a reading.** Neither *"all"*, *"every"*, *"both"*, *"the last"* nor *"complete"* belongs in a commit subject unless the thing counted was enumerated first — and a bare number belongs there only if it was read off a run in the same session. **This is now enforced by `scripts/git-hooks/commit-msg`**, installed by `init.sh` and checked by it on every run, because the coordinator wrote a false count into a subject **twice** and the rule that came out of the first occurrence did not prevent the second. Both were written at the same point in the workflow — a session-closing summary — about the same kind of quantity, with the true figure one command away. **A rule whose only enforcement is the author's memory fires exactly when attention is elsewhere.**
+
+To satisfy the hook, put the enumeration in the body: the command and its output, or a `counted: …` line. **The hook checks the subject only** — the first of the two errors was a figure in the body, whose failure was provenance rather than presence, and no pattern can see that. Half the problem is mechanical now; the other half is still discipline, and a green hook does not mean the numbers in the message are true.
+
 One commit per phase/feature, never batched. Message format:
 
 ```

@@ -250,6 +250,26 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
+section "5c. Commit-message hook"
+
+# Git hooks are NOT tracked, so a fresh clone — or a .git/hooks wiped by any
+# tool — silently loses this one. The hook refuses a commit subject that makes
+# an unverified quantity claim, after the coordinator wrote a false count into a
+# subject twice. A guard that can vanish without anyone noticing is the shape
+# this repository exists to catch, so its presence is checked here and it is
+# reinstalled from the tracked copy when missing.
+HOOK_SRC="scripts/git-hooks/commit-msg"
+HOOK_DST=".git/hooks/commit-msg"
+if [ ! -f "$HOOK_SRC" ]; then
+  fail "scripts/git-hooks/commit-msg is missing — the tracked copy of the commit-message guard"
+elif [ ! -x "$HOOK_DST" ] || ! cmp -s "$HOOK_SRC" "$HOOK_DST"; then
+  cp "$HOOK_SRC" "$HOOK_DST" && chmod +x "$HOOK_DST"
+  warn "commit-msg hook was missing or stale — reinstalled from $HOOK_SRC"
+else
+  ok "commit-msg hook installed and matches the tracked copy"
+fi
+
+# ─────────────────────────────────────────────────────────────
 section "6. Repository state"
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
