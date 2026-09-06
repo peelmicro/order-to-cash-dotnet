@@ -70,7 +70,7 @@ SDD inverts the usual order: write the specification first, in a notation precis
 
 ### The honesty clause
 
-SDD costs real ceremony, and for a 50-line feature the ceremony is decorative paperwork. That is why only 8 of this project's 56 features carry `"sdd": true` — the aggregates and state machines, the saga and its compensation, the outbox and idempotency, the read-model projection, and the observability wiring. Everything else skips the triple-doc but still travels the backlog state machine. The spec-becomes-infrastructure moments (Kafka topics derived from the AsyncAPI file, TypeScript types generated from both API documents) are where the spec pays for itself even on small features.
+SDD costs real ceremony, and for a 50-line feature the ceremony is decorative paperwork. That is why only 8 of this project's 58 features carry `"sdd": true` — the aggregates and state machines, the saga and its compensation, the outbox and idempotency, the read-model projection, and the observability wiring. Everything else skips the triple-doc but still travels the backlog state machine. The spec-becomes-infrastructure moments (Kafka topics derived from the AsyncAPI file, TypeScript types generated from both API documents) are where the spec pays for itself even on small features.
 
 ---
 
@@ -213,7 +213,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 |---|---|---|---|---|---|
 | `AGENTS.md` | "Where does an agent start?" — the entry map | Read order, hard rules, the SDD flow, session-close procedure | Copied from #7, re-pointed (4 edits) | Phase 2 | Phase 2 |
 | `CLAUDE.md` | "How do we do things here?" — binding conventions | Leader role, architecture non-negotiables, coding/testing conventions, commit discipline. **Amended at human gates as the build goes**, which is why nothing may quote the copy injected into its context | Copied from #7, **substantially adapted** — three rules translated, one added; six amendments since, each recorded with its superseded phrasing | Phase 2 | Phase 8 |
-| `feature_list.json` | "What is happening right now?" — the backlog state machine | 56 features, 8 `sdd: true`. Max one `in_progress`, enforced by `init.sh`. Only the reviewer sets `done` | #7's ids, names and phases **reset to `pending`**; one new feature (`cqrs_dispatcher`) | Phase 2 | every feature transition |
+| `feature_list.json` | "What is happening right now?" — the backlog state machine | 58 features, 8 `sdd: true`. Max one `in_progress`, enforced by `init.sh`. Only the reviewer sets `done` | #7's ids, names and phases **reset to `pending`**; one new feature (`cqrs_dispatcher`) | Phase 2 | every feature transition |
 | `init.sh` | "Is the world sane?" — the session circuit breaker | Exit ≠ 0 ⇒ do not advance. Checks env, harness files, agent model declarations, backlog and SDD coherence, **plus four checks written here**: no superseded rule phrasing survives anywhere, the session file names the active feature, a **backlog tripwire** that fails if a feature id disappears or a `done` reverts, and the **commit-message hook's presence**, reinstalled when missing because hooks are untracked | Copied from #7; environment section rewritten for the .NET SDK, backlog validator kept as-is; three sections added in Phase 8, a fourth in Phase 10 | Phase 2 | Phase 10 |
 | `CHECKPOINTS.md` | "Am I actually done?" — objective close criteria | C1–C7; the reviewer walks them | Copied from #7; **C7 inverted** — from "is this reusable?" to "did it actually reuse it, and is the benchmark honest?" | Phase 2 | Phase 2 |
 | `.superseded-rules` | "Did the amendment actually finish?" — one line per amended rule, carrying the phrasing it replaced | `init.sh` fails if any of them still appears outside the history files. Written because the sweep had been a habit, and a habit failed twice in two rounds | **Written here** | Phase 8 | per amendment |
@@ -241,13 +241,13 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 10 complete — 34 of 56 features done.** The order-to-cash cycle runs end to end. An order is placed, reserved against stock, held against a buyer's credit limit, despatched, invoiced, and — when a payment arrives from outside the system — marked paid, its credit released, and the order completed. Verified live on real infrastructure, from the databases rather than from a report.
+**Position: Phase 11 complete — 35 of 58 features done.** Four services run. The order-to-cash cycle closes end to end, and every business event along it now sends a real email, verified in a real inbox rather than in a mock.
 
-**The last feature needed no change to the orchestrator at all.** The saga's step table already knew what to do with a payment fact, so a third service joined the choreography without the coordinating service being touched. That is the first evidence in this build that the saga's shape is right rather than merely working.
+**This phase produced the clearest measurement yet of what the raised review bar is worth, and it points both ways.** The previous assessment was rejected on this same feature for a dedup ledger it kept in memory, which a probe against a real broker turned into three emails for one fact. That correction arrived here **for free** — the acceptance criterion already said *durable*, and the table already existed from the schema phase — so roughly one implementation round and one review round of the predecessor's cost simply did not happen, and four of its five original blockers were structurally impossible.
 
-**And no internal timer anywhere.** That was one of the phase's acceptance conditions and it is an *absence* claim, so it was answered as a search rather than as a sentence: an enumerating command over the whole repository, its complete output, one classification line per hit — reaching past the source into the demo automation, because a timer hidden in a workflow would satisfy a code-only search while breaking the claim.
+And then this run was rejected once anyway, on two defects **neither of which the predecessor's standard would have caught**: a filter list whose five deleted entries stopped five business events being emailed while the suite stayed green, and a mutation sweep across the email templates that left forty-five survivors — including two templates with no assertion on the recipient at all, so cancellation notices could have gone to the wrong address with everything passing. Both are visible only through a mutation family this project added *after* the predecessor finished.
 
-**The phase cost about 1.5× the previous assessment on comparable work, and the reasons are now individually itemisable rather than a single ratio.** Part is a deliberately raised review bar — of the phase's defects, nine exist because this build's harness asks questions the previous one did not. Part is work the previous assessment never did at all: a human gate overruled two proposals to defer, which produced a cross-service refactor and a change to the shared kernel. Recording those separately is the difference between measuring a language and measuring a policy.
+So the honest reading is not that the bar costs rounds or that it saves them. **It moved the defects it finds into a class the earlier run could not see, while the earlier run's own defects were inherited as prevention.** Those are different accounts and both belong in the final comparison.
 
 | Phase | What | State |
 |---|---|---|
@@ -261,7 +261,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 | 8 | Orders service — aggregate, hand-rolled dispatcher, outbox/idempotency, acceptance, saga orchestrator, terminal-rejection classification | ✅ |
 | 9 | Fulfillment — stock reservations and DESADV creation | ✅ |
 | 10 | Billing — buyer credit, the `.99` simulator, invoicing, remittance intake | ✅ |
-| 11 | Notifications — MailKit into Mailpit, durable idempotency ledger | ⬜ |
+| 11 | Notifications — MailKit into Mailpit, durable idempotency ledger | ✅ |
 | 12 | Projector — the MongoDB read model | ⬜ |
 | 13 | Gateway / BFF — REST, JWT, login rate limiting, SSE | ⬜ |
 | 14 | Reliability + observability — retry, DLQ, OTel propagation, health checks | ⬜ |
@@ -344,6 +344,20 @@ The ruling, which is the part worth keeping: **a gate-approved specification out
 The interesting part is not the race — races are ordinary — but that **the project's own state-coherence check passed throughout**. A status reverted from *specification ready* back to *pending* is still a valid status, still leaves at most one feature in progress, and still satisfies the rule that a specified feature has its documents on disk. Every invariant held. The state was simply wrong.
 
 This is the third distinct disguise of the same failure in this build: a check that fires on nothing, a check run against the wrong artefact, and now a check whose invariants are all satisfied by an incorrect state. The generalisable form: **a coherence check validates shape, not history.** It can tell you the state is *legal*; it cannot tell you the state is the one you left. Where a transition matters, the defence is to avoid the race rather than to detect it afterwards.
+
+**Phase 11 — a guard that had only ever run against a set of one.** A rule requires every service that consumes facts to carry a byte-identical copy of the shared idempotency machinery, and a test enforces it. Two services were built without ever triggering it, because neither consumes facts. The fourth service was the first to add a genuine second copy — and the guard failed on it immediately.
+
+Which means that for three phases it had been comparing a set with **one member** against itself. It could not distinguish *agreement* from *having nothing to compare*, and it reported the same green either way.
+
+This is a new face of the pattern, and worth separating from the others: the check was correctly written, ran on every build, and would have caught a real divergence the moment one existed. **Its emptiness was a property of the population, not of the assertion** — so no amount of reading the test would have revealed it, and arming it would have required inventing the very second copy whose absence was the problem. The only thing that surfaces this class is the population growing.
+
+The generalisable form: **a comparison guard is unproven until it has had at least two things to compare.** Where a guard's subject is a set that starts at one, the guard's first real exercise is a milestone worth marking rather than a routine pass — and until then its green is a statement about arithmetic, not about the code.
+
+**Phase 11 — the sweep that proved its own machinery before believing its own result.** A mutation sweep across seven email templates reported every mutation caught. The reviewer did not audit that script; it wrote its own, enumerated the sites independently, and — the part worth keeping — **proved the machinery with three sentinels before trusting any number**: a mutation whose target does not exist must report *not applied*, a change to a documentation comment must report **survived**, and a known-caught mutation must report **caught**.
+
+The sentinels were not ceremony. **Its own first probe hit a documentation comment instead of the assignment it meant to corrupt, and reported green.** Without a sentinel that must survive, that would have been recorded as evidence the property was guarded.
+
+The generalisable form, and it is the same lesson this project keeps meeting one level further out: **a tool that reports "everything is caught" is exactly as trustworthy as a test that reports green.** If its mutation step silently fails to apply, or it rebuilds nothing, every result looks like success. So a sweep needs a case it must *fail* to detect, or its clean sheet is unfalsifiable — which is the arming protocol applied to the instrument rather than to the code.
 
 **Phase 10 — the fourth disguise, and the first time a discipline was replaced by a mechanism rather than restated.** The coordinator wrote a false quantity into a commit message twice: a test total that was arithmetic on remembered figures, and a subject claiming to close *all four* of a phase's features when it closed three. The first produced a rule — *do not write a figure you have not read off a run in the same session*. **The rule did not prevent the second.**
 

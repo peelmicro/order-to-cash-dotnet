@@ -95,7 +95,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 8 | Orders service + saga orchestrator | ✅ aggregate, hand-rolled dispatcher, transactional outbox, `orders.create` acceptance, the saga with both compensation paths, and terminal-vs-retryable command classification — 7 features, 3 of them defects found in already-closed work; 16 armed architecture rules |
 | 9 | Fulfillment service | ✅ `StockItem` aggregate, reservation lifecycle, the `fulfillment.stock.*` responder and DESADV creation — starting it resumed four saga commands parked since Phase 8, unattended |
 | 10 | Billing service | ✅ `BuyerCredit` and its ledger, the `.99` simulator, the `Invoice` aggregate and remittance intake — **the order-to-cash cycle now runs end to end**, verified live: an order reaches `completed` unattended on a payment arriving from outside the system, with no internal timer anywhere |
-| 11 | Notifications service | ⬜ |
+| 11 | Notifications service | ✅ MailKit into Mailpit with a console adapter behind the same port, seven templated emails, and idempotency by `eventId` against a durable ledger — every notified fact verified in the real inbox |
 | 12 | Projector service + MongoDB read model | ⬜ |
 | 13 | Gateway / BFF | ⬜ |
 | 14 | Health checks, OTel propagation, retry + DLQ | ⬜ |
