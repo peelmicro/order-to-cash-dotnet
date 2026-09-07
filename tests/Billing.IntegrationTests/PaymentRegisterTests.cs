@@ -39,7 +39,8 @@ public sealed class PaymentRegisterTests(MsSqlContainerFixture mssql, NatsContai
 
         await using var connection = new NatsConnection(new NatsOpts { Url = nats.Url });
         var correlationId = UniqueId.New();
-        var headers = BuildHeaders(correlationId, UniqueId.New());
+        var requestId = UniqueId.New();
+        var headers = BuildHeaders(correlationId, requestId);
         var valueDate = DateTimeOffset.UtcNow;
         var request = BillingHostFixture.PaymentRequest("PAY-000301", total, valueDate, invoiceReference: "INV-900301");
 
@@ -91,6 +92,21 @@ public sealed class PaymentRegisterTests(MsSqlContainerFixture mssql, NatsContai
         Assert.Equal("payment.received.v1", orderedFacts[0].EventType);
         Assert.Equal("credit.released.v1", orderedFacts[1].EventType);
         Assert.True(orderedFacts[0].Seq < orderedFacts[1].Seq);
+
+        // Backlog id 57 (ported from #7's `bf59af9`) — the causal EDGE, on
+        // the envelope itself, not merely the outbox's `seq` ordering
+        // asserted above. `credit.released.v1`'s `causationId` must be
+        // `payment.received.v1`'s OWN `eventId` — before this fix both
+        // rows carried `causationId = requestId.value` and were siblings a
+        // consumer reading only the two envelopes could not causally
+        // order. Reads the REAL `eventId` the live path assigned; never
+        // merely asserts the two ids differ (provenance, not
+        // non-collision).
+        Assert.Equal(orderedFacts[0].EventId, orderedFacts[1].CausationId);
+        Assert.NotEqual(requestId.Value, orderedFacts[1].CausationId);
+        // payment.received.v1 itself is unaffected — it still carries the
+        // request's own id (only the SIBLING relationship changes).
+        Assert.Equal(requestId.Value, orderedFacts[0].CausationId);
 
         // The background relay (100ms poll, per StartHostAsync) publishes
         // asynchronously — wait for BOTH rows to be stamped rather than

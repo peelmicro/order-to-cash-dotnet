@@ -126,6 +126,55 @@ public sealed class PaymentRegisterServiceTests
         Assert.IsType<CreditReleased>(creditReleased);
     }
 
+    /// <summary>
+    /// Backlog id 57 (ported from #7's `bf59af9`) — `credit.released.v1`'s
+    /// `causationId` must be `payment.received.v1`'s OWN `eventId`, not
+    /// `command.RequestId` (which both facts shared before this fix, making
+    /// them siblings a consumer reading only the two envelopes could not
+    /// causally order). This reads the ACTUAL `eventId` the domain assigned
+    /// to `PaymentReceived` and asserts `CreditReleased.CausationId` equals
+    /// THAT value — never merely that the two ids differ from each other
+    /// (`Assert.NotEqual` proves non-collision, never provenance — the
+    /// distinct assertion below is corroborating, not the guard itself).
+    /// </summary>
+    [Fact]
+    public async Task Backlog57_CreditReleasedCausationIdIsPaymentReceivedsOwnEventId_NotTheRequestIdBothFactsUsedToShare()
+    {
+        const string orderReference = "ORD-000401";
+        const long total = 9_900;
+        var invoiceId = UniqueId.New();
+        var invoiceSnapshot = IssuedSnapshot(invoiceId, "INV-000401", orderReference, total);
+
+        var invoices = new RecordingInvoiceRepository
+        {
+            FindByInvoiceReferenceResult = invoiceSnapshot,
+            LockByIdResult = invoiceSnapshot,
+        };
+        var credits = new RecordingBuyerCreditRepository { LockResult = CreditWithHold(50_000, orderReference, total) };
+        var service = new PaymentRegisterService(new FakeUnitOfWork(), credits, invoices, new FakeClock());
+
+        var command = Command(amount: total);
+        var reply = await service.RegisterAsync(command, CancellationToken.None);
+
+        Assert.Equal("accepted", reply.Outcome);
+
+        var paymentReceived = Assert.IsType<PaymentReceived>(Assert.Single(invoices.MarkPaidInvoice!.DomainEvents));
+        var creditReleased = Assert.IsType<CreditReleased>(Assert.Single(credits.Saved!.DomainEvents));
+
+        // The provenance assertion — proves the WHICH, not merely a
+        // difference.
+        Assert.Equal(paymentReceived.EventId, creditReleased.CausationId);
+
+        // Corroborating: the OLD (defective) behaviour reused the
+        // request's own id for both facts — this must no longer hold.
+        Assert.NotEqual(command.RequestId, creditReleased.CausationId);
+
+        // payment.received.v1 itself is unaffected — it still carries the
+        // request's id, per R47/BI13 (only the SIBLING relationship
+        // between the two facts changes).
+        Assert.Equal(command.RequestId, paymentReceived.CausationId);
+    }
+
     [Fact]
     public async Task R47_ResolvesTheInvoiceByInvoiceIdWhenBothIdentifiersAreOmittedButInvoiceIdIsSupplied()
     {

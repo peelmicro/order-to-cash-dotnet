@@ -1,20 +1,26 @@
 # Current session
 
-**Feature:** none — **Phase 11 complete**, 35 of 58 features done
-**Status:** idle
+**Feature:** none active — `projector_read_model` (id 24, phase 12) is **`spec_ready` and WAITING AT THE HUMAN GATE**; it stays there until the gate is answered
+**Status:** idle, blocked on one gate decision
 **Session started:** —
 
 ## Goal
 
-**Phase 12 — the Projector and the MongoDB read model** (`projector_read_model`, id 24). Phase 11 had one feature and it is closed.
+**Phase 12 — the Projector.** The spec is written and waiting. Backlog id 57 closed first so the projector inherits a completion pair with a real causal edge.
 
 ## Decisions taken this session
 
-Phase 10 closed and committed; Phase 11 closed. A `commit-msg` hook now refuses a subject making an unverified quantity claim, and `init.sh` §5c verifies it is installed. `init.sh`'s lockstep check now states what it actually reads, after its success message overstated it for a whole feature.
+Id 57 closed and approved. The projector spec pass was interrupted by an API rate limit after writing `requirements.md`, then resumed and completed `design.md`, `tasks.md` and the gate record without redoing the first file.
 
 ## Blockers
 
-None.
+**ONE OPEN GATE DECISION — feature 24 cannot start until the human answers it.** Recorded in `progress/spec_projector_read_model.md`, open-point row 1, with a recommendation and its evidence:
+
+> `NatsConnection` connects **lazily**. #7's `main.ts` awaited `connect()` at boot, so a wrong `NATS_URL` failed the boot loudly. #8's other three NATS services never noticed, because they are **responders** — `SubscribeAsync` materialises the connection at startup. **The projector only publishes**, and `PR19` requires publication failures to be logged and swallowed (correctly, for a *transient* failure). Composed, a misconfigured broker gives a projector that projects perfectly and **signals nothing, forever**, with every test on a good URL passing.
+>
+> **Recommendation: connect eagerly** — `await connection.ConnectAsync()` as the third step of `ReadModelBootstrap.StartAsync`. Cost: one `await` and one test. If approved, `requirements.md` gains `PR45` (verbatim text in the gate row) and task `H8`'s guard. If declined, `H8` is skipped and the implementer records the consequence — and it must **not** be worked around by making `PR19` rethrow, which would block the partition forever.
+
+**Also awaiting the same signature: open-point row 2, a RATIFY rather than a question.** Matrix rule 3(b) requires `R54`/`R55`'s scoped rows to be ratified by somebody other than their author before they may close. Approving the spec supplies that; no shared file changes.
 
 ## Notes
 

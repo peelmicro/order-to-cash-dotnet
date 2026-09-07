@@ -106,7 +106,6 @@ public sealed class PaymentRegisterService(
                 // and the release ledger entry's date agree exactly
                 // (mirrors `BI13`).
                 var ctx = new InvoiceContext(clock.UtcNow, command.RequestId);
-                var creditCtx = new CreditContext(ctx.OccurredAt, command.RequestId);
 
                 var markPaidInput = new MarkPaidInput(
                     command.PaymentReference,
@@ -119,7 +118,18 @@ public sealed class PaymentRegisterService(
                 // B10 (amount/currency mismatch) itself — R49's three
                 // cases, all inside the domain, all before either
                 // repository is touched.
-                invoice.MarkPaid(markPaidInput, ctx, UniqueId.New);
+                //
+                // Backlog id 57 (ported from #7's bf59af9): the return
+                // value is payment.received.v1's OWN eventId, not
+                // command.RequestId. Before this change both facts of this
+                // one transaction shared command.RequestId as their
+                // causationId and were siblings, not a chain — a consumer
+                // reading only the two envelopes could not tell which
+                // caused which. The release below is caused by the
+                // payment (`reason: invoice_paid`), so its causationId
+                // names the payment fact that produced it.
+                var paymentEventId = invoice.MarkPaid(markPaidInput, ctx, UniqueId.New);
+                var creditCtx = new CreditContext(ctx.OccurredAt, paymentEventId);
 
                 // Raises credit.released.v1 for the order's outstanding
                 // exposure, or returns null (no fact, no write) if none

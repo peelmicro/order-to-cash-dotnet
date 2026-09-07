@@ -365,7 +365,7 @@
       "phase": 12,
       "title": "Projector Worker Service: every fact into order_timeline, idempotent, statusRank, placeholders",
       "sdd": true,
-      "status": "pending",
+      "status": "spec_ready",
       "acceptance": [
         "out-of-order delivery still yields the correct final status",
         "replaying a topic reproduces an identical document",
@@ -780,7 +780,7 @@
       "phase": 11,
       "title": "credit.released.v1 carries the same causationId and an identical occurredAt as payment.received.v1, so the completion pair is a tie group with no recorded causal edge",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "credit.released.v1's causationId is the eventId of payment.received.v1, not the request id both currently share",
         "the two facts no longer carry an identical occurredAt, or the ordering is otherwise recoverable from the envelope alone",

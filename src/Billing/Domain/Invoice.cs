@@ -300,7 +300,17 @@ public sealed class Invoice : AggregateRoot
     /// every refusal leaves <see cref="_state"/> and the event list
     /// untouched.
     /// </summary>
-    public void MarkPaid(MarkPaidInput input, InvoiceContext ctx, Func<UniqueId> newId)
+    /// <returns>
+    /// The <c>eventId</c> of the <see cref="PaymentReceived"/> fact just
+    /// appended — backlog id 57 (ported from #7's commit <c>bf59af9</c>):
+    /// <c>PaymentRegisterService</c> uses this value as the
+    /// <c>causationId</c> of the <c>credit.released.v1</c> fact it triggers
+    /// next, so the release's cause is recorded as the payment that
+    /// produced it (`R47`'s own "in that order" wording) rather than the
+    /// two facts sharing the REQUEST's id as siblings with no causal edge
+    /// between them.
+    /// </returns>
+    public UniqueId MarkPaid(MarkPaidInput input, InvoiceContext ctx, Func<UniqueId> newId)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(newId);
@@ -322,7 +332,7 @@ public sealed class Invoice : AggregateRoot
 
         _state = new InvoiceState.Paid(ctx.OccurredAt);
 
-        Raise(new PaymentReceived(
+        var fact = new PaymentReceived(
             EventId: newId(),
             AggregateId: Id,
             CorrelationId: input.CorrelationId,
@@ -333,7 +343,11 @@ public sealed class Invoice : AggregateRoot
             PaymentReference: input.PaymentReference,
             Amount: input.Amount,
             ValueDate: input.ValueDate,
-            Source: input.Source));
+            Source: input.Source);
+
+        Raise(fact);
+
+        return fact.EventId;
     }
 
     public InvoiceSnapshot ToSnapshot() => new(
