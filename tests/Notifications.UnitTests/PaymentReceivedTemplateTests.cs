@@ -16,6 +16,9 @@ public sealed class PaymentReceivedTemplateTests
 {
     private static readonly Guid _correlationId = Guid.Parse("22222222-2222-2222-2222-222222222226");
 
+    /// <summary>R2-D6 / id 59 — bracketed away from envelope.OccurredAt (2026-09-01T13:00:00Z in <see cref="BuildEnvelope"/>).</summary>
+    private static readonly DateTimeOffset _valueDate = DateTimeOffset.Parse("2026-08-29T17:40:15Z");
+
     [Fact]
     public void Build_ProducesASubjectCarryingTheInvoiceReferenceAndDerivesTheRecipientFromTheOrderReference()
     {
@@ -28,9 +31,11 @@ public sealed class PaymentReceivedTemplateTests
         Assert.Equal("ord-000001@retailer.order-to-cash.example", message.To);
         Assert.Contains("for invoice INV-000001 (order ORD-000001)", message.Text, StringComparison.Ordinal);
         Assert.Contains("Source: bank_transfer", message.Text, StringComparison.Ordinal);
+        Assert.Contains($"Value date: {_valueDate:O}", message.Text, StringComparison.Ordinal);
         Assert.Contains("for invoice INV-000001 (order ORD-000001)", message.Html, StringComparison.Ordinal);
         Assert.Contains("Source: bank_transfer", message.Html, StringComparison.Ordinal);
         Assert.Contains("124.25 USD", message.Html, StringComparison.Ordinal);
+        Assert.Contains($"Value date: {_valueDate:O}", message.Html, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -53,5 +58,5 @@ public sealed class PaymentReceivedTemplateTests
         _correlationId,
         Guid.NewGuid(),
         DateTimeOffset.Parse("2026-09-01T13:00:00Z"),
-        new PaymentReceivedPayload("ORD-000001", "INV-000001", paymentReference, "USD", 12425, DateTimeOffset.Parse("2026-09-01T13:00:00Z"), "bank_transfer"));
+        new PaymentReceivedPayload("ORD-000001", "INV-000001", paymentReference, "USD", 12425, _valueDate, "bank_transfer"));
 }

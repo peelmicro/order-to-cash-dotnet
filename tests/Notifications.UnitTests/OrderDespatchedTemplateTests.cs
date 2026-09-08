@@ -11,6 +11,9 @@ public sealed class OrderDespatchedTemplateTests
 {
     private static readonly Guid _correlationId = Guid.Parse("22222222-2222-2222-2222-222222222224");
 
+    /// <summary>R2-D6 / id 59 — bracketed away from envelope.OccurredAt (2026-09-01T11:00:00Z below).</summary>
+    private static readonly DateTimeOffset _despatchDate = DateTimeOffset.Parse("2026-08-27T13:25:50Z");
+
     [Fact]
     public void Build_ProducesASubjectCarryingTheDespatchReferenceAndTheCorrelationId()
     {
@@ -21,7 +24,7 @@ public sealed class OrderDespatchedTemplateTests
             _correlationId,
             Guid.NewGuid(),
             DateTimeOffset.Parse("2026-09-01T11:00:00Z"),
-            new OrderDespatchedPayload("ORD-000001", "DES-000001", DateTimeOffset.Parse("2026-09-01T11:00:00Z"), "COMP01", "CarrefourEs", [new DespatchLine("SKU-1", 10)]));
+            new OrderDespatchedPayload("ORD-000001", "DES-000001", _despatchDate, "COMP01", "CarrefourEs", [new DespatchLine("SKU-1", 10)]));
 
         var message = OrderDespatchedTemplate.Build(envelope);
 
@@ -32,10 +35,12 @@ public sealed class OrderDespatchedTemplateTests
         Assert.Contains("Retailer: CarrefourEs", message.Text, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Text, StringComparison.Ordinal);
         Assert.Contains("Lines: SKU-1 x10", message.Text, StringComparison.Ordinal);
+        Assert.Contains($"Despatch date: {_despatchDate:O}", message.Text, StringComparison.Ordinal);
         Assert.Contains("Order <strong>ORD-000001</strong> has been despatched", message.Html, StringComparison.Ordinal);
         Assert.Contains("Despatch reference: DES-000001", message.Html, StringComparison.Ordinal);
         Assert.Contains("Retailer: CarrefourEs", message.Html, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Html, StringComparison.Ordinal);
         Assert.Contains("Lines: SKU-1 x10", message.Html, StringComparison.Ordinal);
+        Assert.Contains($"Despatch date: {_despatchDate:O}", message.Html, StringComparison.Ordinal);
     }
 }

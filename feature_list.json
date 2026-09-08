@@ -795,7 +795,7 @@
       "phase": 12,
       "title": "NotificationFactsConsumer.ToEnvelope copies envelope fields by hand and corrupting the correlationId copy leaves the whole suite green",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "corrupting the correlationId copy in NotificationFactsConsumer.ToEnvelope makes a named test fail",
         "the same holds for every field the hand-written copy touches, not only correlationId",
@@ -809,13 +809,29 @@
       "phase": 12,
       "title": "14 date-typed payload sites survive mutation — the string-scoped template sweep did not reach them",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "each of the 14 date-typed sites either fails a named test under mutation, or is classified as a field no requirement constrains, with the reason given per site",
         "the sweep that measures this covers date and money sites as well as string sites",
         "the sweep is proved with sentinels before its result is believed: a mutation that must be caught, one that must survive, and one that must report not-applied"
       ],
       "notes": "Found by feature 23's review round 2 (R2-D6, low) with the reviewer's own independently-written sweep: 89 sites, applied=True verified by SHA-256 on every one, 70/70 string sites caught, 5 money sites caught, 14 DATE sites survived. The implementer's sweep was string-scoped and could not see them. Same class as id 58 and the same files are open in phase 12."
+    },
+    {
+      "id": 60,
+      "name": "envelope_fixture_collisions_defeat_provenance_assertions",
+      "phase": 13,
+      "title": "Test fixtures that give two envelope fields the same value make a transposition undetectable, and two more consumers carry the same latent collision",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "every fixture building an Envelope for a consumer test gives each of eventId, aggregateId, correlationId and causationId a DISTINCT value, so a positional transposition cannot pass",
+        "the two known sites are fixed: tests/Orders.UnitTests/SagaFactsConsumerTests.cs:106 and tests/Projector.UnitTests/ProjectorFactsConsumerTests.cs:130",
+        "the set of such fixtures is ENUMERATED with a path-excluding command whose complete output and per-hit classification are in the report — not swept in prose",
+        "armed: for each site, two same-typed fields are transposed at the point the fixture feeds, and the report names the test that fails and its verbatim message",
+        "a collision that is deliberate is allowed to stay, provided the report says which field pair and why no requirement distinguishes them"
+      ],
+      "notes": "Found by the review of ids 58/59. Latent rather than live: grep finds exactly ONE hand-written envelope copy in the solution (Notifications' ToEnvelope), so no transposition is currently undetected — but these two fixtures would not catch one if it were written, and the Envelope constructor takes four Guid arguments in a row. This is the feature-18 lesson one level down: Assert.NotEqual proves non-collision and never provenance, and a fixture whose values collide defeats an assertion that was written correctly. Filed against phase 13 because the Gateway adds the next envelope-reading surface."
     },
     {
       "id": 44,

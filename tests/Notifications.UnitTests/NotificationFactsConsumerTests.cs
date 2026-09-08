@@ -46,6 +46,56 @@ public sealed class NotificationFactsConsumerTests
         Assert.Equal(expectedCommandType, sent.GetType());
     }
 
+    /// <summary>
+    /// R2-D5 (feature 23 review round 2) / backlog id 58 — <c>ToEnvelope</c>
+    /// copies the six envelope metadata fields (everything but
+    /// <c>Payload</c>) BY HAND into the typed envelope every template reads.
+    /// The source envelope here gives all SIX their own distinct, known
+    /// value (<see cref="BuildMessage"/>'s previous default made
+    /// <c>AggregateId</c> and <c>CorrelationId</c> the SAME guid, which
+    /// would have let those two fields be silently transposed and still
+    /// pass) — so this asserts PROVENANCE, not mere non-collision
+    /// (CLAUDE.md's "Assert.NotEqual can never prove provenance" rule):
+    /// each field is checked against the specific source value it was
+    /// supposed to carry, and a transposition of any two of the four Guid
+    /// fields, or a hand-written substitution of any one, fails on the
+    /// wrong value rather than passing by accident.
+    /// </summary>
+    [Theory]
+    [InlineData("order.placed.v1", typeof(NotifyOrderPlacedCommand))]
+    [InlineData("order.confirmed.v1", typeof(NotifyOrderConfirmedCommand))]
+    [InlineData("order.despatched.v1", typeof(NotifyOrderDespatchedCommand))]
+    [InlineData("invoice.issued.v1", typeof(NotifyInvoiceIssuedCommand))]
+    [InlineData("payment.received.v1", typeof(NotifyPaymentReceivedCommand))]
+    [InlineData("order.completed.v1", typeof(NotifyOrderCompletedCommand))]
+    [InlineData("order.cancelled.v1", typeof(NotifyOrderCancelledCommand))]
+    public async Task EachOfTheSevenNotifiedFacts_DispatchedEnvelopeCopiesEveryFieldFromTheSource(string eventType, Type expectedCommandType)
+    {
+        var eventId = Guid.NewGuid();
+        var aggregateId = Guid.NewGuid();
+        var correlationId = Guid.NewGuid();
+        var causationId = Guid.NewGuid();
+        var occurredAt = new DateTimeOffset(2026, 1, 2, 3, 4, 5, 678, TimeSpan.Zero);
+
+        var message = BuildMessage(eventType, BuildNotifiedPayload(eventType), eventId, aggregateId, correlationId, causationId, occurredAt);
+        var dispatcher = new RecordingDispatcher();
+
+        await RunOneMessageAsync(message, dispatcher);
+
+        var sent = Assert.Single(dispatcher.SentCommands);
+        Assert.Equal(expectedCommandType, sent.GetType());
+
+        var envelope = sent.GetType().GetProperty("Envelope")!.GetValue(sent)!;
+        var envelopeType = envelope.GetType();
+
+        Assert.Equal(eventId, envelopeType.GetProperty("EventId")!.GetValue(envelope));
+        Assert.Equal(eventType, envelopeType.GetProperty("EventType")!.GetValue(envelope));
+        Assert.Equal(aggregateId, envelopeType.GetProperty("AggregateId")!.GetValue(envelope));
+        Assert.Equal(correlationId, envelopeType.GetProperty("CorrelationId")!.GetValue(envelope));
+        Assert.Equal(causationId, envelopeType.GetProperty("CausationId")!.GetValue(envelope));
+        Assert.Equal(occurredAt, envelopeType.GetProperty("OccurredAt")!.GetValue(envelope));
+    }
+
     /// <summary>domain-model.md §7.3 — every OTHER fact on the three topics is acknowledged with no dispatch and no scope opened.</summary>
     [Theory]
     [InlineData("stock.reserved.v1")]
@@ -102,10 +152,27 @@ public sealed class NotificationFactsConsumerTests
         await consumer.StopAsync(CancellationToken.None);
     }
 
-    private static FactStreamMessage BuildMessage(string eventType, object payload)
+    private static FactStreamMessage BuildMessage(
+        string eventType,
+        object payload,
+        Guid? eventId = null,
+        Guid? aggregateId = null,
+        Guid? correlationId = null,
+        Guid? causationId = null,
+        DateTimeOffset? occurredAt = null)
     {
-        var correlationId = Guid.NewGuid();
-        var envelope = new Envelope<object>(Guid.NewGuid(), eventType, correlationId, correlationId, Guid.NewGuid(), DateTimeOffset.UtcNow, payload);
+        // Each field defaults to its OWN distinct Guid.NewGuid()/UtcNow — never
+        // shared across two positional slots — so a test that asserts one
+        // field's value cannot pass merely because two source fields happened
+        // to collide (see EachOfTheSevenNotifiedFacts_DispatchedEnvelopeCopiesEveryFieldFromTheSource).
+        var envelope = new Envelope<object>(
+            eventId ?? Guid.NewGuid(),
+            eventType,
+            aggregateId ?? Guid.NewGuid(),
+            correlationId ?? Guid.NewGuid(),
+            causationId ?? Guid.NewGuid(),
+            occurredAt ?? DateTimeOffset.UtcNow,
+            payload);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonWire.Options);
         return new FactStreamMessage("otc.orders.facts.v1", 0, 0, bytes);
     }

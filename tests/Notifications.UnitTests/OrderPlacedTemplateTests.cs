@@ -11,6 +11,14 @@ public sealed class OrderPlacedTemplateTests
 {
     private static readonly Guid _correlationId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
+    /// <summary>
+    /// R2-D6 (feature 23 review round 2) / id 59 — payload.OrderDate is
+    /// bracketed away from envelope.OccurredAt so a template that rendered
+    /// the wrong DateTimeOffset (or the wrong field entirely) fails on
+    /// VALUE, not merely on presence: <see cref="_orderDate"/> below.
+    /// </summary>
+    private static readonly DateTimeOffset _orderDate = DateTimeOffset.Parse("2026-08-25T09:15:30Z");
+
     [Fact]
     public void Build_ProducesASubjectCarryingTheOrderReferenceAndTheCorrelationId()
     {
@@ -24,10 +32,12 @@ public sealed class OrderPlacedTemplateTests
         Assert.Contains("Retailer: CarrefourEs", message.Text, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Text, StringComparison.Ordinal);
         Assert.Contains("Total: 1242.50 USD", message.Text, StringComparison.Ordinal);
+        Assert.Contains($"Order date: {_orderDate:O}", message.Text, StringComparison.Ordinal);
         Assert.Contains("1242.50 USD", message.Html, StringComparison.Ordinal);
         Assert.Contains("Order <strong>ORD-000001</strong> has been placed", message.Html, StringComparison.Ordinal);
         Assert.Contains("Retailer: CarrefourEs", message.Html, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Html, StringComparison.Ordinal);
+        Assert.Contains($"Order date: {_orderDate:O}", message.Html, StringComparison.Ordinal);
     }
 
     private static Envelope<OrderPlacedPayload> BuildEnvelope() => new(
@@ -44,7 +54,7 @@ public sealed class OrderPlacedTemplateTests
             "1234567890123",
             "9876543210987",
             "USD",
-            DateTimeOffset.Parse("2026-09-01T10:00:00Z"),
+            _orderDate,
             [new OrderLine("SKU-1", "Widget", 10, 12425, 0)],
             124250,
             0,
