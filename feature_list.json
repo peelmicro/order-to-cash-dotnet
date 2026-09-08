@@ -365,7 +365,7 @@
       "phase": 12,
       "title": "Projector Worker Service: every fact into order_timeline, idempotent, statusRank, placeholders",
       "sdd": true,
-      "status": "spec_ready",
+      "status": "done",
       "acceptance": [
         "out-of-order delivery still yields the correct final status",
         "replaying a topic reproduces an identical document",

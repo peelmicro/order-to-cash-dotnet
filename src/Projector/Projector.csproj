@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <RootNamespace>OrderToCash.Projector</RootNamespace>
     <AssemblyName>OrderToCash.Projector</AssemblyName>
   </PropertyGroup>
@@ -8,6 +9,33 @@
   <ItemGroup>
     <ProjectReference Include="../SharedKernel/SharedKernel.csproj" />
     <ProjectReference Include="../Contracts/Contracts.csproj" />
+    <!-- Application/Commands only — the hand-rolled dispatcher (CLAUDE.md's
+         binding dispatcher ruling, Phase 8 gate). No Domain/ namespace may
+         reference OrderToCash.Cqrs: CqrsDomainPurityTests fails the build if
+         one ever does. -->
+    <ProjectReference Include="../Cqrs/Cqrs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Persistence only — the only runtime writer of
+         otc_read_model.order_timeline (R54). No Domain/ namespace may
+         reference MongoDB.Driver: DomainPurityTests fails the build if one
+         ever does. -->
+    <PackageReference Include="MongoDB.Driver" />
+    <!-- Infrastructure/Messaging/Consumers only — the fact-stream consumer.
+         tests/Architecture.Tests/FactConsumerConfinementTests.cs fails the
+         build if any type outside *.Infrastructure.Messaging.Consumers
+         depends on Confluent.Kafka's consumer types. -->
+    <PackageReference Include="Confluent.Kafka" />
+    <!-- Infrastructure/Signal + the DI extension only — the update signal
+         (R55), a publish-only NATS client, never a request. -->
+    <PackageReference Include="NATS.Net" />
+    <!-- Program.cs, ProjectorHost and every BackgroundService/IHostedService. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <!-- Every IOptions<T> site. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- Every ILogger<T> site. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
 </Project>

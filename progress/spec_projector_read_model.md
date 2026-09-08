@@ -70,3 +70,31 @@
 - **Rows 22, 23 and 25 are the three most likely to bite in implementation**, and they are one class: a property that is present and correct on the path a deletion probe takes, and wrong only under a condition the happy path never creates. `ReturnDocument` defaulting to `Before` keeps every signal *count* right and every signal *content* stale. Two `$type` renderings both work in isolation and mean neither service can start after the other. A placeholder missing one key produces a correct document with the wrong element order, which only `PR44` and `PR15`'s full-document comparison can see. None of the three is visible to `R<n>` traceability and none is visible to emission-deletion arming — which is exactly why design §10 exists and why its Guard column names a test for each.
 - **Row 30 is the one #7 called the hazard nobody briefed.** In #8 it appears to be closed twice over by inheritance, and the spec says so — but "appears to be" is a reading, so task **M2** turns it into an enumeration run against the live topics *before* the boot, with the instruction to stop and report if the enumeration disagrees.
 - **Row 9 matters to the harness, not only to this feature.** `IdempotentConsumerParityTests` case 4 has been dormant since it was written; this is its first subject. Task D5 requires the subversion probe to be re-run and recorded. If the behavioural suite does not fail under it, the guard is still text-only and that is a finding about the harness.
+
+## Gate ruling (2026-09-07)
+
+**Row 1 — APPROVED as recommended. Row 2 — RATIFIED.**
+
+**Row 1: connect eagerly.** `await connection.ConnectAsync()` becomes the third step of `ReadModelBootstrap.StartAsync`, so a misconfigured broker is a boot failure exactly as it was in #7, and `PR19` is left doing the job it was argued for. The consequence of declining — a projector that projects perfectly and signals nothing forever, with every test on a good URL passing — was the deciding evidence.
+
+Per the row's own terms, `requirements.md` now carries **`PR45`** in §2.9 (*"New to #8 — each names why #7 could not have faced it"*, which is exactly what it is) with the gate row's **verbatim** text, plus its traceability row in §3 naming `ProjectorBootTests.cs › PR45_AnUnreachableNatsUrl_FailsTheHostStart_RatherThanRunningWithEverySignalSwallowed`. **Task `H8`'s guard is in scope.** The prohibition stands and is restated in the requirement itself: this must **not** be satisfied by making `PR19` rethrow, which would block the partition forever.
+
+The insertion was made by the **coordinator**, not the spec author, because the text was pre-authored verbatim in the gate row and the change is the bookkeeping of a decision already taken rather than new spec authoring. Recorded here so the provenance is visible rather than assumed.
+
+**Row 2: ratified.** Matrix rule 3(b) requires `R54`/`R55`'s scoped rows to be ratified by somebody other than their author before they may close. This approval is that signature, as `requirements.md` §4 already anticipates. No `specs/shared/` edit.
+
+**On the form of the approval, stated for the record.** The human answered *"go"* rather than *"approved"*. The recommendation put to them was unambiguous — *"Approve it"*, with the failure mode and the one-`await` cost stated — and this is recorded as an approval of that recommendation as written. It is noted here rather than left implicit so that anyone reading the trail can see exactly what was ruled on and reverse it cheaply if the reading was wrong.
+
+**Status:** `spec_ready` → `in_progress`.
+
+---
+
+## Superseded note (2026-09-08, review defects D1/D4/D5)
+
+Row 23 (line 43) and the "Notes for the gate" paragraph on rows 22/23/25 (line 70) are left **exactly as written above** — this file is a historical record of what was believed at spec-authoring time, not a place to retcon the belief once implementation measured otherwise. They are recorded here as **superseded**, not corrected in place.
+
+Row 23's hazard — *"if the two stored expressions differ, `createIndex` raises `IndexOptionsConflict` (85) and neither service can start after the other"* — **does not hold on a real `mongo:8.3.8`, in either creation order.** The server compares a hand-built `{ $type: "string" }` filter and the seed's `Builders<…>.Filter.Type`-rendered one as the **same** partial filter when it decides whether an existing index conflicts with a requested one; it does not raise a conflict either way. What the server does **not** do is normalise the alias when **storing** the index — `getIndexes()` returns whichever rendering actually created it. This was disproved in the implementation's first fix round (review defect **D1**), the disproof's own first explanation was itself wrong (review defect **D4**, corrected in the second fix round), and the hazard sentence survived unedited in two more places — this file, `src/Projector/Infrastructure/Persistence/ReadModelIndexes.cs`'s class summary, and `ReadModelIndexesTests.cs`'s class summary — until a third review round (defect **D5**) found them by enumeration rather than by the mechanism-word search that had twice missed them.
+
+Also superseded: row 23's `IndexOptionsConflict` (code 85) is not what a real `mongo:8.3.8` raises for `PR22`'s own scenario (an existing plain unique index of the same name, versus this one's partial filter) — it raises code 86 (`IndexKeySpecsConflict`), corrected as ledger row L11.
+
+A reader of #9, or of this feature's future ports, should treat `design.md` §10 row L12 and §10.6, `requirements.md`'s `PR22`/`PR39` row, and `progress/impl_projector_read_model.md` §2/§14 as the current record, not this file's rows 22/23/70.

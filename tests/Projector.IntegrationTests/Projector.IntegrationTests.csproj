@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Projector.IntegrationTests</RootNamespace>
+    <AssemblyName>OrderToCash.Projector.IntegrationTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Real mongo:8.3.8, apache/kafka:4.3.1 (via the generic
+         ContainerBuilder — Testcontainers.Kafka cannot drive this image),
+         nats:2.14.5-alpine — never a mocked broker or driver. -->
+    <PackageReference Include="Testcontainers.MongoDb" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Confluent.Kafka" />
+    <PackageReference Include="NATS.Net" />
+    <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Projector/Projector.csproj" />
+    <ProjectReference Include="../../src/Contracts/Contracts.csproj" />
+    <ProjectReference Include="../../src/Cqrs/Cqrs.csproj" />
+    <!-- Read-only oracle for PR40/PR44 (MongoSeedWriter, SagaFixtures,
+         OrderTimelineDocument's real BSON class map). src/Projector must
+         NEVER reference Seed; this test project's reference is scoped by
+         requirements.md §5. -->
+    <ProjectReference Include="../../src/Seed/Seed.csproj" />
+  </ItemGroup>
+
+</Project>
