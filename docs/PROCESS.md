@@ -70,7 +70,7 @@ SDD inverts the usual order: write the specification first, in a notation precis
 
 ### The honesty clause
 
-SDD costs real ceremony, and for a 50-line feature the ceremony is decorative paperwork. That is why only 8 of this project's 58 features carry `"sdd": true` — the aggregates and state machines, the saga and its compensation, the outbox and idempotency, the read-model projection, and the observability wiring. Everything else skips the triple-doc but still travels the backlog state machine. The spec-becomes-infrastructure moments (Kafka topics derived from the AsyncAPI file, TypeScript types generated from both API documents) are where the spec pays for itself even on small features.
+SDD costs real ceremony, and for a 50-line feature the ceremony is decorative paperwork. That is why only 8 of this project's 59 features carry `"sdd": true` — the aggregates and state machines, the saga and its compensation, the outbox and idempotency, the read-model projection, and the observability wiring. Everything else skips the triple-doc but still travels the backlog state machine. The spec-becomes-infrastructure moments (Kafka topics derived from the AsyncAPI file, TypeScript types generated from both API documents) are where the spec pays for itself even on small features.
 
 ---
 
@@ -213,7 +213,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 |---|---|---|---|---|---|
 | `AGENTS.md` | "Where does an agent start?" — the entry map | Read order, hard rules, the SDD flow, session-close procedure | Copied from #7, re-pointed (4 edits) | Phase 2 | Phase 2 |
 | `CLAUDE.md` | "How do we do things here?" — binding conventions | Leader role, architecture non-negotiables, coding/testing conventions, commit discipline. **Amended at human gates as the build goes**, which is why nothing may quote the copy injected into its context | Copied from #7, **substantially adapted** — three rules translated, one added; amended repeatedly since. An amendment that *retires* an earlier phrasing also adds a line to `.superseded-rules` (4 lines there); one that only adds a convention retires nothing and adds none, so that file is a floor on the amendment count, not the count itself | Phase 2 | Phase 12 |
-| `feature_list.json` | "What is happening right now?" — the backlog state machine | 58 features, 8 `sdd: true`. Max one `in_progress`, enforced by `init.sh`. Only the reviewer sets `done` | #7's ids, names and phases **reset to `pending`**; one new feature (`cqrs_dispatcher`) | Phase 2 | every feature transition |
+| `feature_list.json` | "What is happening right now?" — the backlog state machine | 59 features, 8 `sdd: true`. Max one `in_progress`, enforced by `init.sh`. Only the reviewer sets `done` | #7's ids, names and phases **reset to `pending`**; one new feature (`cqrs_dispatcher`) | Phase 2 | every feature transition |
 | `init.sh` | "Is the world sane?" — the session circuit breaker | Exit ≠ 0 ⇒ do not advance. Checks env, harness files, agent model declarations, backlog and SDD coherence, **plus four checks written here**: no superseded rule phrasing survives anywhere, the session file names the active feature, a **backlog tripwire** that fails if a feature id disappears or a `done` reverts, and the **commit-message hook's presence**, reinstalled when missing because hooks are untracked | Copied from #7; environment section rewritten for the .NET SDK, backlog validator kept as-is; three sections added in Phase 8, a fourth in Phase 10 | Phase 2 | Phase 10 |
 | `CHECKPOINTS.md` | "Am I actually done?" — objective close criteria | C1–C7; the reviewer walks them | Copied from #7; **C7 inverted** — from "is this reusable?" to "did it actually reuse it, and is the benchmark honest?" | Phase 2 | Phase 2 |
 | `.superseded-rules` | "Did the amendment actually finish?" — one line per amended rule, carrying the phrasing it replaced | `init.sh` fails if any of them still appears outside the history files. Written because the sweep had been a habit, and a habit failed twice in two rounds | **Written here** | Phase 8 | per amendment |
@@ -241,7 +241,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 12 in progress — 37 of 58 features done.** Five services run. The projector is delivered: every fact reaching Kafka is folded into a MongoDB `order_timeline` document, idempotent by `eventId`, ordered by a **recorded causal edge** rather than by clock, with placeholder documents for facts that arrive before the order they belong to. Two backlog features (ids 58 and 59) remain filed against this phase, so **the phase is not closed and no closing assessment is due yet**.
+**Position: Phase 12 complete — 39 of 59 features done.** Five services run. The projector folds every fact into a MongoDB `order_timeline` document, idempotent by `eventId`, ordered by a **recorded causal edge** rather than by clock, with placeholder documents for facts that arrive before the order they belong to.
 
 **Phase 11's measurement of the raised review bar is recorded in `progress/history.md`; Phase 12 produced a different and sharper one, about where this project's cost has actually moved.**
 
@@ -251,7 +251,15 @@ Two things make that worth recording rather than apologising for. First, **every
 
 Second, **the phase also shows the largest single dividend the reuse run has produced.** The predecessor re-specified this feature's central invariant *eight phases later* — replacing clock ordering with causal ordering across 32 files and 1,446 insertions, at a human gate with five open points, rejected twice before it stuck. This run folded that into its first draft, because the underlying causal defect had been closed as its own backlog item the day before at a cost of about forty minutes. That dividend is **work that did not happen**, so it appears in no session count and in no ratio — and it is the clearest instance so far of a predecessor's experience transferring as *avoided rework* rather than as faster typing.
 
-The honest ratio for the feature is ≈1.4× the predecessor's wall-clock, of which review and rework together cost ≈1.3× the original implementation — the highest such ratio in this build. Both figures and the offsetting dividend are in `progress/history.md`; neither is meaningful without the other.
+The honest ratio for the feature is ≈1.4× the predecessor's wall-clock, of which review and rework together cost ≈1.3× the original implementation. Both figures and the offsetting dividend are in `progress/history.md`; neither is meaningful without the other.
+
+**At phase level the arithmetic is starker, and it is the cleanest reading this benchmark has produced.** The phase ran **≈8 h 00 min against the predecessor's ≈3 h 41 min** — ≈2.2× as filed. The whole ≈4 h 19 min gap decomposes into three items and **not one of them is the language**: 53% is two backlog features the predecessor never filed and never built, 32% is the projector's three extra ledger rounds under a convention this run adopted at its own Phase-8 gate, and 15% is a causal-edge fix paid early here and later-and-dearer there — a dividend booked as a cost.
+
+That deserves its caveat rather than a victory lap: *attributable to process* is not *wasted*, and the benefit is mostly work that did not happen, so **the ratio will always read worse than the truth**. Phase 11 made that point on one feature. Phase 12 makes it on three, which promotes it from a caveat about the benchmark to the dominant fact about it.
+
+**And the pattern that names the phase: across all five review rounds, executable production code changed exactly once** — one exception message. Every other defect was a false, unguarded or unfalsifiable *claim*: a ledger row answered backwards, two tests that could not fail, a record stating the opposite of what was done, a corrected mechanism that was also wrong, a fix's own enumeration with a hole in it, a live survivor hidden behind a prefix collision, and an instrument with no falsifying case. The behaviour was right on first submission every time.
+
+It cuts both ways, and both halves belong in the final comparison. It is evidence the implementation tier works — three services' worth of production code arrived correct. It is also evidence that **the review bar has migrated almost entirely off code and onto the artefacts that make claims about code** — and those artefacts are precisely what the third assessment inherits. A wrong ledger row costs this run a review round; it costs the next one a false premise it has no reason to re-derive.
 
 | Phase | What | State |
 |---|---|---|
@@ -266,7 +274,7 @@ The honest ratio for the feature is ≈1.4× the predecessor's wall-clock, of wh
 | 9 | Fulfillment — stock reservations and DESADV creation | ✅ |
 | 10 | Billing — buyer credit, the `.99` simulator, invoicing, remittance intake | ✅ |
 | 11 | Notifications — MailKit into Mailpit, durable idempotency ledger | ✅ |
-| 12 | Projector — the MongoDB read model. The service is done; backlog ids 58 and 59 remain in the phase | 🟨 |
+| 12 | Projector — the MongoDB read model, the Billing causal edge it depends on, and the notifications mutation gaps | ✅ |
 | 13 | Gateway / BFF — REST, JWT, login rate limiting, SSE | ⬜ |
 | 14 | Reliability + observability — retry, DLQ, OTel propagation, health checks | ⬜ |
 | 15 | End-to-end saga verification | ⬜ |
@@ -544,3 +552,19 @@ The generalisable form: **enumerate on the wording of the claim being retired, n
 It was found by creating the index in the other order, and nothing else could have found it. The generalisable form: **where a claim involves two parties — two writers, two orderings, two creation sequences — probe both ways, or state which way you probed.** A row that carries a property across stacks is inherited rather than re-derived, so a confidently wrong one is worse than an absent one.
 
 **And the counterweight, because it is the cheapest process win in this build.** That feature's fourth review round cost about seventeen minutes against roughly forty for each of the first three, for one reason: the third round closed with **two** things rather than one — the fix it required, *and* a standing evidentiary record of the probes it had already run, with an explicit instruction not to repeat them. **A rejection that says what the next round must not re-prove is what turns a fourth round from expensive into cheap.**
+
+**Phase 12 — the collision that `Assert.Contains` cannot see.** A guard can be written correctly, assert the right field, and still be unable to fail — if the *fixture* gives two fields values that a substring match cannot tell apart. A cancellation email rendered a compensation step's `step` field; substituting the wrong field, `eventType`, left the whole suite green, because the fixture's `"credit.release"` is a **prefix** of its `"credit.released.v1"` and the assertion was a containment check.
+
+This project already knew the equality version of that trap — two fields holding the same value defeat an equality assertion, and the rule that came out of it says to inject or bracket the source rather than assert non-collision. **The containment version is its quiet half, and it survived a feature whose entire purpose was removing collisions**, because everyone was looking for the equality shape. It was found by a reviewer widening the population by hand, a day after two other parties had each declared that population closed.
+
+The generalisable form: **whatever relation your assertion uses, the fixture must not satisfy it accidentally.** Equality assertions need distinct values; containment assertions need values where neither contains the other. And the check is population-wide rather than site-by-site — enumerate every fixture's constructor-argument literals and test them pairwise. Seven files, under a second, zero hits once fixed.
+
+**Phase 12 — an instrument with no case it must fail to detect.** The same feature produced this project's first committed mutation instrument: a script that enumerates every interpolation site in a set of templates, mutates one, rebuilds, runs the suite, restores, and reports caught or survived. Its own sentinel discipline was what found a shell bug inside it before any of its verdicts were believed, which is exactly what sentinels are for.
+
+But its **must-survive** sentinel — the control that proves the tool can report a survivor rather than only ever reporting success — used a field that lies *outside* the population the tool enumerates. So the tool shipped with a clean sheet and **no case it had ever been seen to fail**. The falsifying case had to be supplied at review, by re-creating the defect the tool exists to catch, probing it in-population to get a genuine `SURVIVED`, then fixing it and re-probing to get `CAUGHT`.
+
+The generalisable form: **a control outside the instrument's own population is not a control for that instrument.** Pick a real site and break its guard. This is the arming protocol's own lesson one level up, and it now has three instances here — a guard that could not fail, a ledger row whose named guard could not fail, and an instrument with no falsifying case.
+
+**Phase 12 — and the counterweight about when to build such a thing.** The instrument was required over an implementer's objection that was itself sound: all-red implies all-applied, and ninety-five hand-armed sites beat a tool nobody has validated. It was required anyway, because that population had been counted three times by three parties and produced **14, 89 and 95** — each count made in good faith by someone who believed the set closed, and each scoped by the question that party happened to be asking rather than by the code.
+
+The ruling was vindicated, but **not by the tool finding anything**: it found nothing the hand enumeration had not. What it bought is that the population stops being re-counted, and that the next assessment inherits an instrument instead of a number. So the honest advice is narrower than "build the tool": **build it at the moment a population is first counted, not after it has been counted three times and disagreed with itself.**
