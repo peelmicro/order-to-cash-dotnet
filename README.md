@@ -97,7 +97,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 10 | Billing service | ✅ `BuyerCredit` and its ledger, the `.99` simulator, the `Invoice` aggregate and remittance intake — **the order-to-cash cycle now runs end to end**, verified live: an order reaches `completed` unattended on a payment arriving from outside the system, with no internal timer anywhere |
 | 11 | Notifications service | ✅ MailKit into Mailpit with a console adapter behind the same port, seven templated emails, and idempotency by `eventId` against a durable ledger — every notified fact verified in the real inbox |
 | 12 | Projector service + MongoDB read model | ✅ every fact into `order_timeline`, idempotent by `eventId`, ordered by a **recorded causal edge** rather than by clock (#7's own amendment, folded in at first draft instead of eight phases late), with placeholders for facts that arrive before their order — plus the repository's first committed **mutation instrument**. Across the phase's five review rounds, executable production code changed exactly once |
-| 13 | Gateway / BFF | ⬜ |
+| 13 | Gateway / BFF | 🟨 **all four features done — the sixth and last service exists.** REST per the copied `openapi.yaml` (14 paths), hand-rolled JWT, login rate limiting, NATS RPC clients, MongoDB-only reads, and SSE with heartbeat and `Last-Event-ID` replay — **and not one new NuGet package**. Two Orders responders were built first so the Gateway had real responders to talk to, which is where its predecessor's seam defect lived. Six backlog entries remain filed against the phase |
 | 14 | Health checks, OTel propagation, retry + DLQ | ⬜ |
 | 15 | End-to-end saga verification | ⬜ |
 | 16 | Next.js web app | ⬜ |

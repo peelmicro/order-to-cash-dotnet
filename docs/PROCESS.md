@@ -241,7 +241,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 12 complete — 39 of 59 features done.** Five services run. The projector folds every fact into a MongoDB `order_timeline` document, idempotent by `eventId`, ordered by a **recorded causal edge** rather than by clock, with placeholder documents for facts that arrive before the order they belong to.
+**Position: Phase 13's four features complete — 43 of 64 features done.** **All six services now exist.** The Gateway serves REST per the copied contract, hand-rolled JWT, login rate limiting, MongoDB-only reads and a server-sent-event stream with heartbeat and replay — adding **no new package** to the dependency graph. Six backlog entries remain filed against the phase, so it is not closed.
 
 **Phase 11's measurement of the raised review bar is recorded in `progress/history.md`; Phase 12 produced a different and sharper one, about where this project's cost has actually moved.**
 
@@ -275,7 +275,7 @@ It cuts both ways, and both halves belong in the final comparison. It is evidenc
 | 10 | Billing — buyer credit, the `.99` simulator, invoicing, remittance intake | ✅ |
 | 11 | Notifications — MailKit into Mailpit, durable idempotency ledger | ✅ |
 | 12 | Projector — the MongoDB read model, the Billing causal edge it depends on, and the notifications mutation gaps | ✅ |
-| 13 | Gateway / BFF — REST, JWT, login rate limiting, SSE | ⬜ |
+| 13 | Gateway / BFF — REST, JWT, login rate limiting, SSE, plus the two Orders responders it calls | 🟨 four features done, six backlog entries open |
 | 14 | Reliability + observability — retry, DLQ, OTel propagation, health checks | ⬜ |
 | 15 | End-to-end saga verification | ⬜ |
 | 16 | Web app (Next.js App Router) | ⬜ |
@@ -568,3 +568,17 @@ The generalisable form: **a control outside the instrument's own population is n
 **Phase 12 — and the counterweight about when to build such a thing.** The instrument was required over an implementer's objection that was itself sound: all-red implies all-applied, and ninety-five hand-armed sites beat a tool nobody has validated. It was required anyway, because that population had been counted three times by three parties and produced **14, 89 and 95** — each count made in good faith by someone who believed the set closed, and each scoped by the question that party happened to be asking rather than by the code.
 
 The ruling was vindicated, but **not by the tool finding anything**: it found nothing the hand enumeration had not. What it bought is that the population stops being re-counted, and that the next assessment inherits an instrument instead of a number. So the honest advice is narrower than "build the tool": **build it at the moment a population is first counted, not after it has been counted three times and disagreed with itself.**
+
+**Phase 13 — a sweep that filters by the property it is testing, in four disguises.** A route sweep asserted *"every endpoint except the public ones requires authentication"* — and selected its candidate set **by the very metadata under test**. Marking one protected endpoint anonymous therefore did not fail the sweep; it **removed that endpoint from the sweep**, and 141 tests stayed green.
+
+The same shape appeared three more times in one phase. A disclosure of six unpaced retry loops enumerated only four, because two hits were excluded on a *readiness* ground while the claim being made was about *pacing*. An enumeration of a predecessor's guards filtered **by filename** when the property was which *assertions* mention the mechanism — and a per-file classification then swallowed a second guard inside a file it had listed. And the recurring shell idiom `grep -rn <pattern> | grep -v '/bin/'` excludes by matching the output line's **content**, which contains the matched text, not only its path.
+
+Every instance has one structure: **the predicate that decides membership is derived from the thing under test**, so a violation removes itself from the population instead of appearing in it. That is the guard-that-does-not-guard in its most convincing dress, because the filter reads as *scoping* rather than as an assumption.
+
+The generalisable form is a single question to ask of any sweep: **what would a violation do to the candidate list? If the answer is "leave it", the sweep cannot fail.** And the fix is equally consistent — make the expected set a **literal** and derive the rest by subtraction, which is what the predecessor's version of that same route sweep does, and precisely why its version would have caught what this one could not.
+
+**Phase 13 — and the same disease in the ledger: "no guard is needed here" is a claim like any other.** A ledger row correctly concluded that a teardown property was supplied by the framework rather than hand-built, and therefore owed no test. The conclusion was right and was independently verified. Its **stated evidence could not fire**: breaking the plumbing — giving one consume loop a cancellation token that never cancels — changed a 1 m 35.5 s run into a 1 m 35.4 s run. Nothing hung, nothing slowed, nothing turned red.
+
+The honest justification for *not* writing a guard is never *"the framework handles it"*. It is **"here is what I did to make it fail, and here is why nothing could."** A row carrying the first and not the second is indistinguishable — to a later reader, and to the third assessment that inherits it — from a row where nobody tried. The unobservability *is* the reason, and it has to be measured rather than assumed.
+
+This closes a small family this project has now met three times: a guard that could not fail, a ledger row whose named guard could not fail, and now a ledger row whose argument for having **no** guard could not fail.
