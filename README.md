@@ -33,6 +33,7 @@ Where the .NET implementation proves the shared specification wrong or incomplet
 | Id | Raised | Touches | What was wrong |
 |---|---|---|---|
 | `SA-1` | #8, Phase 3 | `specs/shared/test-matrix.md` — the reset-recipe paragraph only | The recipe told a new assessment which prose to delete by listing the specific paragraphs *in that copy*. Correct when read, false once followed — the next assessment would inherit an inventory of content already gone. Reworded from an inventory of the copy into a description of the class, so the instruction stays true in every copy. Applied to #7 and #8 identically. |
+| `SA-2` | #8, Phase 13 | `specs/shared/asyncapi.yaml` — one optional property on `OrderCancelledPayload` | The two halves of the shared spec contradicted each other. `openapi.yaml` promised `CancelOrderRequest.note` would be *"recorded on the timeline entry"*; `asyncapi.yaml`'s `OrderCancelledPayload` — the only fact the projector builds an `order.cancelled` timeline entry from — had no field able to carry it, so feature 41's acceptance bullet 4 was never satisfiable in either stack. An optional `note: string` added, typed as the REST side already types it. **#7 disclosed this and shipped; #8 disclosed it again and was about to** — a defect both runs found and neither fixed. Applied to #7 and #8 identically. |
 
 ## Tech stack
 

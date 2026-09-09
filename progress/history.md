@@ -1788,3 +1788,155 @@ The `Projector` service (62-file-equivalent, MongoDB `order_timeline` read model
 **Also carried, unchanged:** the `n8n/workflows/*.json` still have never been fired against the .NET Gateway and the black-box API script has not been run (ids 31 and 33, phases 18 and 20); `GatewayTestHost.StartAsync` still leaves a partially built `WebApplication` undisposed when `StartAsync` throws anything other than `TaskCanceledException`; and R55's **web half** remains genuinely unproven, owed to `apps/web` (ids 29/30, both `pending`).
 
 **Verdict:** APPROVED — see `progress/review_gateway_sse_push.md` (two rounds). **This does not close phase 13**: ids 56, 60, 61, 63, 64 and 65 remain `pending`.
+
+---
+
+## Shared amendment SA-2 (raised here, applied to #7 in the same session) — 2026-09-09
+
+**Effort:** n/a — an amendment, not a feature. No code, no tests; the code that consumes the new field is a separate feature.
+**Raised by:** assessment #8 (this repository), Phase 13, after feature 41 (`orders_cancel_responder`) disclosed acceptance bullet 4 as unsatisfiable for the second time in the trilogy.
+**Touches:** `specs/shared/asyncapi.yaml` only — three lines, one optional property on `OrderCancelledPayload`. No requirement, no channel, no operation, no `required` list, no other schema.
+
+**What was wrong:**
+
+`specs/shared/` contradicted itself, and had done so in both assessments since the spec was written.
+
+`openapi.yaml:1344-1347` types `CancelOrderRequest.note` as *"Free-text operator note **recorded on the timeline entry**"* — a promise about where the value ends up, not merely about what the caller may send. `asyncapi.yaml`'s `OrderCancelledPayload` (at `:2602-2627` as the file stood before this amendment) had **no field able to carry it**, and that payload is the only thing the projector ever builds an `order.cancelled` timeline entry from. The note therefore reached the Orders aggregate over `orders.cancel` (the RPC request payload has always declared `note`) and stopped there, because the fact that leaves Orders had nowhere to put it.
+
+So the REST half of the shared specification promised a behaviour the event half could not deliver. Feature 41's acceptance bullet 4 — *"the operator note from `CancelOrderRequest` lands on the read-model timeline"* — was **never satisfiable as written**, in either stack, by any implementer, however careful.
+
+**The fix:**
+
+An **optional** `note` property added to `OrderCancelledPayload`: `type: string`, matching how `CancelOrderRequest.note` and `OrdersCancelRequestPayload.note` are already typed (a bare string in both — no named schema, no `maxLength`, nothing to reuse), with a description in the file's own style and a cross-reference of the form `PartyView` already uses (*"Named identically in `openapi.yaml`"*).
+
+**Optional, deliberately.** Every existing producer and every stored envelope predates the field, and the field is meaningless for the two cancellations the saga decides — `stock_rejected` and `credit_rejected` have no operator to have written a note. Adding it to the `required` list would have made a spec amendment into a breaking wire change and invalidated every envelope already on the retained topics of both assessments.
+
+**Neither assessment's process found it — both disclosed it and shipped:**
+
+#7 hit this wall first. Its implementer disclosed it in full (`progress/impl_orders_cancel_responder.md:99`), its reviewer confirmed the disclosure honest by reading the wire schema, recorded it as *"F3 (informational)"*, and ruled that *"the **next** feature that touches `OrderCancelledPayload` must close it"* (`progress/review_orders_catalog_and_cancel_responders.md:54`). No further feature of #7 touched `OrderCancelledPayload`; #7 closed with the gap open.
+
+The next feature to touch `OrderCancelledPayload` was, one assessment later, **#8's id 41** — which read the same two files, reached the same conclusion independently, and disclosed it again with the same honesty and the same disposition: not a rejection basis, out of scope, `specs/shared/` is read-only.
+
+**And the stated reason for not fixing it does not survive contact with #7's own commit.** Both reports gave the same justification: the fix touches `specs/shared/`, which is out of a feature's scope. But `32da6e9` — the commit that closed #7's features 40 and 41, and whose own message discloses the note gap — **adds 111 lines to `specs/shared/asyncapi.yaml`**, minting the entire `billing.credit.release` channel because the cancel path needed it:
+
+```
+$ git show 32da6e9 --stat -- specs/shared/asyncapi.yaml
+ specs/shared/asyncapi.yaml | 111 +++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 111 insertions(+)
+```
+
+So in the one session where the gap was found, the file was open, the author was already editing that exact document for that exact feature, and 111 lines went in — none of them the three that would have closed it. The scope objection was not, at that moment, a real constraint. What made the difference was that `billing.credit.release` **blocked the feature** and the note **only failed an acceptance bullet**, and an acceptance bullet can be disclosed.
+
+That the deferral then went nowhere is enumerable rather than inferred:
+
+```
+$ git log --oneline -- specs/shared/asyncapi.yaml
+32da6e9 feat(orders): catalog and cancel NATS responders, closing two contract gaps
+8635b66 checkpoint(observability): requestId dedup, dead-letter, trace propagation
+cf795db docs(spec): stack-agnostic shared specification, written before the code
+$ git log --oneline 32da6e9..HEAD | wc -l
+39
+```
+
+Feature 41 is the **last** commit in #7 to touch `asyncapi.yaml`. Thirty-nine commits followed it, including the whole of #7's Phase 25 audit and its final checkpoint, and not one reopened the file. "The next feature that touches `OrderCancelledPayload` must close it" turned out to be a condition that never fired.
+
+Every individual judgement in that chain was defensible in isolation. The #8 implementer genuinely could not fix it — this repository's read-only rule on `specs/shared/` is stricter than #7's was, and correctly so. The reviewers could not reject for it — nothing built was wrong. And the outcome of two defensible chains of judgement was that a known, twice-documented, three-line defect in the shared contract survived an entire completed assessment and most of a second one.
+
+**A defect that both runs disclose and neither fixes is a defect the process routes around, and that is the transferable finding.** The escalation happened only because a coordinator asked *why* bullet 4 was unsatisfiable instead of accepting the disclosure — the same shape as the three ported-idiom defects: found by someone asking a question, not by any instrument. The concrete correction it argues for is narrow: **a disclosure whose stated root cause is `specs/shared/` itself is an amendment candidate, and must leave the feature as a backlog entry rather than as a sentence in a report.** #7's reviewer deferred to "the next feature that touches this payload", which is a deferral to nobody in a repository one phase from closing; a backlog id would have been read at the next planning pass.
+
+**The second finding — the two halves of a shared spec can disagree with nothing noticing:**
+
+`openapi.yaml` and `asyncapi.yaml` are separate documents, and **no test in either repository loads both and compares them.** Enumerated, because a claim of absence is a search result and not a reading — and the first draft of this paragraph asserted "no file mentions both", which the command below immediately disproved:
+
+```
+$ comm -12 <(grep -rln "asyncapi" --include=*.cs --include=*.ts --include=*.tsx src/ tests/ apps/ | sort) \
+           <(grep -rln "openapi"  --include=*.cs --include=*.ts --include=*.tsx src/ tests/ apps/ | sort)
+src/Gateway/Application/Ports/IRpcClient.cs
+src/Gateway/Domain/Problem/RpcErrorClassification.cs
+src/Projector/Application/Signals/OrderStreamUpdate.cs
+tests/Gateway.UnitTests/CancelOrderCommandHandlerTests.cs
+tests/Gateway.UnitTests/GatewayRpcPayloadTests.cs
+```
+
+Five hits, classified one line each:
+
+- `IRpcClient.cs:5,37,47` — doc comments citing each document for a different concept (`RpcHeaders`/`RpcTimeout` from one, `UpstreamUnavailable` from the other). No parse of either. **Not a comparison.**
+- `RpcErrorClassification.cs:3,13-52` — doc comments describing a translation *from* asyncapi's `RpcError` *to* openapi's `Problem`. Prose only; the class reads neither file. **Not a comparison.**
+- `OrderStreamUpdate.cs:4,8` — a doc comment saying the signal mirrors openapi's `OrderStreamUpdate` shape while the subject is versioned by asyncapi. **Not a comparison.**
+- `CancelOrderCommandHandlerTests.cs:14,49` — two doc comments citing one document each to justify two assertions about code. **Not a comparison.**
+- `GatewayRpcPayloadTests.cs:76-92` — the closest thing in the repository, and the one that makes the point. It **parses** `asyncapi.yaml` and asserts `InvoiceViewPayload` carries every declared property plus exactly one documented extra, `lines` — and the justification for that extra is that *"`openapi.yaml`'s `Invoice` (`:1752`) DOES declare an optional `lines`"*, written as a **hand-typed comment citing a line number**. The openapi half of that reconciliation is prose. **Not a comparison** — and it is a second live instance of the same seam.
+
+So both documents are each independently checked against code, by real guards that read them as text at test time, and **neither is ever checked against the other.**
+
+**#7 was checked separately, not assumed.** The same enumeration there returns fourteen files, and #7 is the more interesting case because it *does* have machinery that opens both documents — `packages/contracts` generates TypeScript types from each:
+
+```
+$ comm -12 <(grep -rln "asyncapi" --include=*.ts --include=*.tsx --include=*.vue apps/ packages/ | sort) \
+           <(grep -rln "openapi"  --include=*.ts --include=*.tsx --include=*.vue apps/ packages/ | sort)
+apps/gateway/src/application/commands/{cancel-order,place-order,register-payment,replenish-stock}.command.ts
+apps/gateway/src/application/ports/rpc-client.port.ts
+apps/gateway/src/application/queries/{list-catalog,list-stock}.query.ts
+apps/gateway/src/domain/problem/rpc-error-mapping.ts
+packages/contracts/scripts/{check,generate}.spec.ts
+packages/contracts/src/index.ts
+packages/contracts/src/generated/asyncapi.types.ts
+packages/contracts/dist/index.d.ts
+packages/contracts/dist/generated/asyncapi.types.d.ts
+```
+
+Nine are doc comments citing one document each for a different concept, exactly as in #8. `src/index.ts` and the two `dist/` files **re-export** both generated type sets side by side. And `scripts/generate.spec.ts:21` — *"produces byte-identical `asyncapi.types.ts` and `openapi.types.ts`"* — asserts that regeneration is **deterministic**, which is a claim about the generator, not about agreement between the documents. `check.spec.ts:53` mentions both only in a comment about neither file existing yet.
+
+So #7's codegen reads both documents and emits **two type sets that never meet**: a contradiction between the halves generates two perfectly valid, mutually silent type families. Having a build step that opens both files did not help, and would not have helped. That is the seam SA-2 lived in for two assessments.
+
+**Recommendation on guarding it — a process guard, not a test; and specifically *not* the schema-consistency test that first suggests itself:**
+
+**Against the obvious candidate.** The natural design is: load both YAMLs, intersect `components.schemas`, assert that every shared name has the same property keys and the same `required` list. It is cheap and definable, so I checked what it would actually buy:
+
+```
+asyncapi schemas: 99   openapi schemas: 57   shared names: 23
+shared names whose property/required sets differ: 0
+```
+
+The 23 are scalars and reference codes (`CancellationReason`, `CurrencyCode`, `Instant`, `MinorUnits`, `OrderStatus`, `PartyCode`, `UniqueId`, …) plus four small shared views (`PageInfo`, `Party`, `PartyRef`, `Product`). They have never drifted, and they are not where drift happens. **And it would have missed both cross-document divergences this repository actually has**: SA-2's, because `CancelOrderRequest` and `OrderCancelledPayload` share no name with anything on the other side; and `InvoiceView` against `Invoice`, for the same reason. A guard with a known 0-for-2 record against the real defect population, green on the day it is written and green forever after, is the guard-that-does-not-guard by construction — this repository's most-repeated failure shape, and I am not going to add another instance of it.
+
+**Against the general form, too.** 99 schemas against 57, describing different surfaces (36 channels against 17 REST paths), with no total mapping between them. A check that cannot be defined precisely gets defined loosely, and a loose check goes inert.
+
+**For a process guard, which is what would have caught this.** The instrument that detects this class already exists and already worked: **the acceptance bullet, which fired in #7 and fired again in #8.** Nothing failed to see the defect; what failed is that seeing it twice produced two paragraphs and no work item. So the guard belongs at the point of disclosure:
+
+> **When a feature report discloses an acceptance bullet as unmet and names `specs/shared/` itself as the reason, the reviewer must open a numbered backlog entry — an `SA-n` candidate — before approving. Approval prose may not discharge it by deferring to "the next feature that touches X".**
+
+That is checkable at review time, costs one backlog row, and is the only thing on this list that would have closed SA-2 at either of the two moments it was visible. #7's reviewer wrote precisely the forbidden sentence (*"the next feature that touches `OrderCancelledPayload` must close it"*) in a repository one phase from closing, so the deferral was to nobody. Recommended as a backlog entry and a `reviewer` convention, not as part of this amendment.
+
+**One small thing worth having on its own merits, unrelated to SA-2.** `GatewayRpcPayloadTests.cs:77` cites `openapi.yaml` by **line number** (`:1752`), and this amendment has just demonstrated that line numbers in that file move. A check that every `<file>:<line>` citation in a doc comment still points at what it claims is enumerable and cheap. It has nothing to do with cross-document consistency and should not be sold as if it did.
+
+**Mechanics, per the `SA-1` convention:**
+
+Applied to `order-to-cash-dotnet` and `order-to-cash-nestjs` in the same session, byte-identical:
+
+```
+$ diff order-to-cash-dotnet/specs/shared/asyncapi.yaml order-to-cash-nestjs/specs/shared/asyncapi.yaml ; echo "exit $?"
+exit 0
+$ sha256sum order-to-cash-{dotnet,nestjs}/specs/shared/asyncapi.yaml
+449674a438653103f0eafa82c2f7d04f837fe48eeb139c7431e715d76f9c725d  order-to-cash-dotnet/specs/shared/asyncapi.yaml
+449674a438653103f0eafa82c2f7d04f837fe48eeb139c7431e715d76f9c725d  order-to-cash-nestjs/specs/shared/asyncapi.yaml
+```
+
+Three lines added in each; nothing else in either repository's `specs/shared/` touched. `./init.sh` exit 0 here — `29 [OK] / 2 [WARN] / 0 [FAIL]`, counted off the run (`grep -c` on its captured output), both warnings expected: uncommitted changes mid-session, and `quality.sh` deliberately not run.
+
+**A third finding, and the one with the widest blast radius — found only because this amendment went looking for the check that was supposed to cover it.** The dispatching brief for `SA-2` stated that `init.sh` *"has a check that `specs/shared/` matches #7's, and this amendment is exactly the case where that check should stay green because both sides moved together."* **There is no such check.** Enumerated:
+
+```
+$ grep -n "specs" init.sh
+131:    if (!fs.existsSync(`specs/${f.name}/${doc}`)) { fail(`specs/${f.name}/${doc} missing (feature is ${f.status})`); missing++; }
+$ grep -nE "order-to-cash-nestjs|Assessments/|\.\./" init.sh ; echo "exit $?"
+exit 1
+```
+
+One hit, and it is the SDD triple-doc existence check for per-feature spec folders. `init.sh` never opens `specs/shared/`, never references the sibling repository, and contains no hash, `cmp` or `diff` against #7. **The trilogy's single most load-bearing invariant — `specs/shared/` byte-identical across all three repositories — has no automated guard anywhere in either repository.** A silent fork is currently detectable only by a human running `diff` by hand, exactly as this amendment did.
+
+That reframes the guard recommendation above. Between *"the two halves of the spec might disagree"* (real, but 0-for-2 on mechanical detection and already caught twice by acceptance criteria) and *"the shared spec might silently fork between repositories"* (the thing this whole assessment's parity claim rests on, currently unguarded and trivially checkable), **the second is the one worth building.** It is a handful of `sha256sum` comparisons across the eleven files of `specs/shared/`, needs the sibling checkout path from an env var or a skip, and it would fail loudly the first time anyone edited one copy alone. Recommended as a backlog entry, at higher priority than the cross-document check this amendment was asked about.
+
+**And it is the guard-that-does-not-guard in its purest form yet: a check believed to exist, cited in a brief as active coverage, that was never written.** The previous three disguises in `CLAUDE.md` were a check that fires on nothing, a check run against the wrong artefact, and a check whose invariants a wrong state satisfies. This is a fourth — a check whose only existence is in someone's description of the process. Recorded in both repositories' `progress/history.md` and in #8's README amendment registry.
+
+---
+
