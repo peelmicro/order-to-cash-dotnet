@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OrderToCash.Gateway.IntegrationTests</RootNamespace>
+    <AssemblyName>OrderToCash.Gateway.IntegrationTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Real MS-SQL container (one true end-to-end proof against
+         Fulfillment's REAL StockRpcResponder, never a stand-in) and real
+         MongoDB (MongoOrderReadModelIntegrationTests) — never mocks
+         (CLAUDE.md testing conventions). -->
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.MongoDb" />
+    <!-- NatsContainerFixture and KafkaContainerFixture (FulfillmentHost
+         needs a Kafka bootstrap configured even though the stock.list/
+         stock.replenish subjects under test emit no fact) — the generic
+         Testcontainers ContainerBuilder drives both directly, the same
+         precedent every other *.IntegrationTests project in this
+         repository already establishes for NATS (no Testcontainers.Nats
+         package exists) and for apache/kafka:4.3.1 (Testcontainers.Kafka
+         cannot drive it — see the sibling fixtures' own remarks). -->
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Confluent.Kafka" />
+    <PackageReference Include="NATS.Net" />
+    <PackageReference Include="MongoDB.Driver" />
+    <!-- MsSqlContainerFixture.CreateDbContext(FulfillmentDbContext) only —
+         the same EF Core SqlServer provider Fulfillment.IntegrationTests
+         itself references, needed here only because this project boots
+         Fulfillment's real host. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Gateway/Gateway.csproj" />
+    <ProjectReference Include="../../src/SharedKernel/SharedKernel.csproj" />
+    <ProjectReference Include="../../src/Contracts/Contracts.csproj" />
+    <!-- feature gateway_rest_auth's own named risk — booting Fulfillment's
+         REAL responder host (StockRpcResponder, real MS-SQL, real NATS) to
+         prove the Gateway's RPC client against the actual wire a real
+         responder produces, not a stand-in that could share the Gateway's
+         own assumption about the shape. Test-only: src/Gateway never
+         references src/Fulfillment. -->
+    <ProjectReference Include="../../src/Fulfillment/Fulfillment.csproj" />
+    <!-- feature gateway_sse_push's own named risk — #7's own review
+         finding N4 (the gateway → orders → Kafka → projector → NATS chain
+         was never walked in one run). StreamProjectorEndToEndTests boots
+         the REAL, unmodified ProjectorHost in-process (real Kafka, real
+         MongoDB, real NATS — OrderToCash.Fulfillment.FulfillmentHost's own
+         precedent above, never a spawned child process — see that test's
+         own header comment for why not). Test-only: src/Gateway never
+         references src/Projector. -->
+    <ProjectReference Include="../../src/Projector/Projector.csproj" />
+  </ItemGroup>
+
+</Project>

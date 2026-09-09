@@ -16,3 +16,4 @@ The only shared runtime code is `src/SharedKernel` (zero `PackageReference`) and
 No shared runtime code beyond `src/SharedKernel` and `src/Contracts`.
 The JSON wire shape must match #7 byte for byte
 money columns `int`
+Every `design.md` for a feature that ports a #7 mechanism carries a short section

@@ -440,6 +440,15 @@ services:
       OTC_REQUEST_TIMEOUT_MS: ${OTC_REQUEST_TIMEOUT_MS:-10000}
       GATEWAY_OPERATOR_USERNAME: ${GATEWAY_OPERATOR_USERNAME:-operator}
       GATEWAY_OPERATOR_PASSWORD: ${GATEWAY_OPERATOR_PASSWORD:-otc_operator_dev_password_change_me}
+      # NOTE: JWT_SECRET/JWT_EXPIRES_IN/JWT_ISSUER (declared in .env.example)
+      # are deliberately NOT listed here — n8n only ever calls
+      # POST /auth/login over REST and never needs the Gateway's own
+      # signing secret. They are read directly by the Gateway process
+      # itself (JwtOptions.FromEnvironment(), src/Gateway/Program.cs), which
+      # is not yet containerized in this compose file (no docker-compose.apps.yml
+      # exists in #8 yet, unlike #7's) — export them from .env before
+      # running the Gateway host locally, the same way GatewayMongoOptions'
+      # own error message already documents for MONGO_*.
       N8N_WORKFLOWS_ENABLED: ${N8N_WORKFLOWS_ENABLED:-true}
       ORDER_GENERATOR_ENABLED: ${ORDER_GENERATOR_ENABLED:-true}
       ORDER_GENERATOR_INTERVAL_SECONDS: ${ORDER_GENERATOR_INTERVAL_SECONDS:-45}

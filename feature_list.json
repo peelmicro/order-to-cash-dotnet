@@ -378,7 +378,7 @@
       "phase": 13,
       "title": "Gateway REST per the copied OpenAPI + JWT auth + login rate limiting",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "contract test asserts no drift from openapi.yaml",
         "RPC timeouts mapped to HTTP status codes",
@@ -391,7 +391,7 @@
       "phase": 13,
       "title": "SSE push of saga progress with heartbeat and Last-Event-ID reconnect",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "client reconnect resumes without duplicates",
         "heartbeat keeps the connection alive"
@@ -566,7 +566,7 @@
       "phase": 13,
       "title": "Orders: catalog.reference.list NATS responder for products/retailers/companies",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "GET /catalog/products, /catalog/retailers, /catalog/companies return real data through the Gateway",
         "no new bounded context — domain-model.md already assigns the reference catalogue to Orders",
@@ -579,7 +579,7 @@
       "phase": 13,
       "title": "Orders: orders.cancel NATS responder for operator-initiated cancellation",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "POST /orders/{id}/cancel succeeds through the Gateway for a cancellable order",
         "reuses the Order aggregate's existing cancelled state and cancellationReason invariant — no new domain modeling",
@@ -769,7 +769,7 @@
       "acceptance": [
         "deleting any single environment-variable read from any service's Program.cs makes a named test fail",
         "the mechanism is chosen once and applied to every composition root — an options-binding test that drives the real Program.cs path, or a startup smoke test per service, not a per-variable assertion",
-        "the guard covers the 34 reads that exist across the three current Program.cs files and is inherited by later services rather than re-invented",
+        "the guard covers EVERY environment-variable read in EVERY composition root and is inherited by later services rather than re-invented — the count is a reading, not a constant: it was 34 across three Program.cs files when this entry was filed and is 49 across six (Billing 12, Fulfillment 11, Notifications 11, Orders 11, Projector 4, Seed 0) as of phase 13, so re-enumerate before claiming coverage",
         "armed: the report names which read was deleted and the verbatim failure"
       ],
       "notes": "Found by feature 20's review (advisory A1) with a concrete probe: deleting the CREDIT_FAILURE_RATE read from src/Billing/Program.cs:23 leaves the whole suite green. NOT that feature's defect — all 34 reads across the three composition roots are equally unguarded, because no test project compiles a Program.cs. Filed against phase 13 rather than 10 because three more composition roots arrive in phases 11-13 and the fix should be chosen once and inherited, not applied four times. The shape this repository keeps paying for: a property that is real, correct, and guarded by nothing."
@@ -832,6 +832,81 @@
         "a collision that is deliberate is allowed to stay, provided the report says which field pair and why no requirement distinguishes them"
       ],
       "notes": "Found by the review of ids 58/59. Latent rather than live: grep finds exactly ONE hand-written envelope copy in the solution (Notifications' ToEnvelope), so no transposition is currently undetected — but these two fixtures would not catch one if it were written, and the Envelope constructor takes four Guid arguments in a row. This is the feature-18 lesson one level down: Assert.NotEqual proves non-collision and never provenance, and a fixture whose values collide defeats an assertion that was written correctly. Filed against phase 13 because the Gateway adds the next envelope-reading surface."
+    },
+    {
+      "id": 61,
+      "name": "catalog_ordering_claim_guarded_for_products_only",
+      "phase": 13,
+      "title": "EfCoreOrderReferenceCatalog orders four listings by code and only the products one is guarded — deleting the other three .OrderBy calls leaves the suite green",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "deleting the .OrderBy from EACH of the four list methods in EfCoreOrderReferenceCatalog makes a named test fail — products is already guarded, the other three are not",
+        "each guard seeds rows OUT of code order so the assertion cannot pass on insertion-order luck, which is how the products guard was itself proved falsifiable",
+        "armed: the report names each deleted .OrderBy and the verbatim failure",
+        "if any of the three carries no ordering requirement, the .OrderBy is DELETED rather than guarded, and the report says which and why"
+      ],
+      "notes": "Found by the round-2 review of feature 40 as advisory A5, with a probe: deleting .OrderBy from the retailers, companies and currencies list methods left 13 integration and 307 unit tests green. Not feature 40's defect — it guarded the products path and proved that guard falsifiable. Filed against phase 13 because the Gateway's list endpoints (id 25) are the ordering claim's first real consumer, and the file is open in this phase. The last acceptance bullet matters as much as the others: an unguarded .OrderBy that no requirement asks for is cheaper deleted than guarded."
+    },
+    {
+      "id": 62,
+      "name": "operator_cancel_races_saga_forward_progress",
+      "phase": 14,
+      "title": "An operator cancel reads the order status and enqueues compensation in one transaction while the saga advances the same order in another — nothing serialises the two",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the race is reproduced by a test that FAILS on today's code — a released resource stranded on an order that kept progressing — before any fix is written",
+        "the chosen defence is stated with its cost: whatever serialises the operator decision against the saga's own forward progress, and what it does to the fact-driven path's throughput",
+        "R25's precondition-unmet check keeps ignoring facts whose precondition genuinely no longer holds — the fix must not turn a correct no-op into a retry storm",
+        "armed: the fix is removed and the reproducing test fails again, with the verbatim message"
+      ],
+      "notes": "Disclosed, not introduced, by feature 41 — and independently by #7's own feature 41, which reproduced it live and also declined to fix it in scope. Both assessments therefore ship it, so it is parity rather than a #8 regression. Mechanism: CancelOrderCommandHandler reads status and enqueues a compensating command in ONE transaction, while the saga's forward progress (credit.approved.v1 advancing stock_reserved -> credit_approved -> confirmed) runs in an INDEPENDENT transaction on an INDEPENDENT consumer. If the order advances past the observed status before the compensating fact lands, SagaStepTable.ForStatus's equality-only R25 check correctly ignores that fact and a genuinely released resource is stranded. Worse on the credit_approved/confirmed branch than on stock_reserved. Confirmed present in #8's own integration harness: OrdersCancelAcceptanceTests isolates it by never starting a despatch.create stand-in, the same technique #7's suite used. Filed against phase 14 because reliability and retry semantics are that phase's subject and a fix here without R29/DLQ context would be guessing. Existed only in prose in two implementation reports until this entry; the reviewer flagged that and deliberately did not file it, to keep the backlog single-writer."
+    },
+    {
+      "id": 63,
+      "name": "readiness_retry_loops_are_paced_by_a_timeout_that_never_elapses",
+      "phase": 13,
+      "title": "Four readiness waits retry a fixed number of attempts with no delay between them, and the error they retry on returns in about a microsecond — so 100 attempts can expire in ~1ms",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "each of the SIX readiness loops paces its retries explicitly rather than relying on the request timeout to consume wall-clock: BillingHostFixture.WaitUntilReachableAsync, FulfillmentHostFixture, OrdersCreateAcceptanceTests, StandInRpcResponder, CatalogReferenceListAcceptanceTests.cs:351 and StandInFulfillmentStockCheckResponder.cs:194",
+        "the pacing is proved by a DETERMINISTIC test, not by observing that flakes stopped: delay the subscription by a controlled interval and show the unpaced loop loses every time and the paced loop wins every time",
+        "armed: the pacing delay is removed and the deterministic test fails again, with the verbatim message",
+        "if any of the four turns out not to need pacing, say which and why — a loop whose retried error genuinely costs wall-clock does not have this defect"
+      ],
+      "notes": "Found during feature 41's third fix round while arming the fix for a real flake in SagaIntegrationTestSupport. The insight generalises beyond these four files: a retry budget expressed in ATTEMPTS silently assumes each attempt costs time. NatsNoRespondersException is returned by the server almost instantly rather than by timing out, so a loop of 100 attempts paced only by its request timeout can exhaust the whole budget in about a millisecond and report 'not ready' while the subscription was 1ms away. Latent in all four: each is protected today by accident, because callers happen to warm up first. Filed against phase 13 because the Gateway (id 25) adds the next host fixture and will copy whichever shape it finds. WIDENED from four sites to six by feature 41's round-2 review: the original enumeration hand-excluded two hits on a READINESS ground orthogonal to the PACING claim being made — an enumeration filtered by the wrong predicate, which is the same class of error as post-filtering a search by content instead of path. Both halves matter — pace the loop, and prove the pacing with a change of KIND rather than of probability."
+    },
+    {
+      "id": 64,
+      "name": "orders_wire_key_theory_compares_a_hand_typed_list_to_itself",
+      "phase": 13,
+      "title": "Orders' BC23 wire-key theory compares a hand-typed key list against the spec and never against the record, so a required field missing from the C# type passes",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "Orders' BC23 theory derives its key set from the payload RECORD by reflection, the way tests/Billing.UnitTests/CreditRpcPayloadTests.cs:29-35 already does, rather than from a hand-typed list",
+        "armed: a required field is removed from a payload record and a named test FAILS — the exact mutation that left Orders.UnitTests 342/342 green when the review ran it",
+        "every payload record the theory is meant to cover is enumerated as a search result, with one classification line per hit, so a record with no case is visible as an unclassified line rather than absent",
+        "if Billing's form does not transfer cleanly, say what differs rather than reproducing the hand-typed shape"
+      ],
+      "notes": "Found by feature 41's round-2 review as finding B1, and the reviewer noted its own round-1 prescription had shaped the narrow fix that exposed it. The guard cannot fail on the defect it was added for: removing availableCreditAfter from the record again (call sites adjusted) left Orders.UnitTests 342/342 green. Not a code defect — the payloads are correct and nobody claimed a guard they lack. The pattern is this build's most-repeated one: a test that compares a hand-maintained restatement of a contract against the contract, never against the thing that implements it, so both sides can agree while the code diverges. Billing already has the reflection-over-the-record form; this is a port, not a design."
+    },
+    {
+      "id": 65,
+      "name": "gateway_order_detail_totals_transposition_survives",
+      "phase": 13,
+      "title": "OrderReadModelMapper.ToOrderDetail transposes InitialAmount and InitialDiscount with the whole suite green — the sibling method of a defect already fixed",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "transposing InitialAmount and InitialDiscount in OrderReadModelMapper.ToOrderDetail makes a named test fail",
+        "the detail fixture carries three DISTINCT non-zero values so a transposition cannot pass on equal values, and each of initialAmount, initialDiscount and totalAmount is asserted",
+        "both mapper methods are covered — the list path was fixed as review defect D5 and the detail path is this entry; say so explicitly rather than fixing one and assuming the other",
+        "armed: the report names the transposition and the verbatim failure"
+      ],
+      "notes": "Found as finding E1 by feature 25's round-2 review, which also recorded that its own round-1 prescription had scoped D5 to the list method at OrderReadModelMapper.cs:76 and thereby missed the sibling at :84 — the reviewer's under-scoping, disclosed as such, not an implementer shortfall. The fixture already carries (124950, 700, 124250), so the remedy is three assertions. The general shape is one this build keeps meeting: a defect fixed at the site where it was FOUND rather than across the class it belongs to, so the sibling survives with the suite green. When a review prescribes a fix, the prescription should name the class, not the line."
     },
     {
       "id": 44,

@@ -1,13 +1,55 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <RootNamespace>OrderToCash.Gateway</RootNamespace>
     <AssemblyName>OrderToCash.Gateway</AssemblyName>
+    <!--
+      The ONLY service in this solution that is an HTTP surface — every
+      other service's "Presentation" is a NATS responder or a Kafka
+      consumer BackgroundService. Sdk.Web brings the ASP.NET Core shared
+      framework in as a FrameworkReference (Microsoft.AspNetCore.App),
+      which already contains Kestrel, Minimal APIs, Authorization
+      (AllowAnonymousAttribute — used as a plain metadata marker, no
+      AddAuthentication() pipeline is configured) and RateLimiting
+      (Microsoft.AspNetCore.RateLimiting — the login throttle, R63). JWT
+      issuing/verification is hand-rolled in Infrastructure/Auth over
+      System.Security.Cryptography — see JwtTokenService's own remarks —
+      so NO Microsoft.AspNetCore.Authentication.JwtBearer package (that one
+      is NOT part of the shared framework; it would need a genuinely new
+      PackageVersion) and no other new NuGet dependency is needed for this
+      feature at all.
+    -->
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="../SharedKernel/SharedKernel.csproj" />
     <ProjectReference Include="../Contracts/Contracts.csproj" />
+    <!-- Application/Commands, Application/Queries only — the hand-rolled
+         dispatcher (CLAUDE.md's binding dispatcher ruling, Phase 8 gate,
+         ratified for the Gateway too even though its "commands" are
+         outward NATS RPC calls). No Domain/ namespace may reference
+         OrderToCash.Cqrs: CqrsDomainPurityTests fails the build if one
+         ever does. -->
+    <ProjectReference Include="../Cqrs/Cqrs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Messaging only — the outbound RPC client (NATS core
+         request-reply, specs/shared/asyncapi.yaml rpcTransport server). -->
+    <PackageReference Include="NATS.Net" />
+    <!-- Infrastructure/Persistence only — a DIRECT, READ-ONLY client of the
+         projector's otc_read_model.order_timeline collection (R54): no RPC
+         hop, the projector answers no query subject. Never referenced from
+         Domain/: DomainPurityTests fails the build if it ever is. -->
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The copied OpenAPI contract, embedded so GET /docs and the contract
+         test read the SAME bytes this repository ships under
+         specs/shared/ — never a filesystem path that may not exist inside
+         a deployed container. -->
+    <EmbeddedResource Include="../../specs/shared/openapi.yaml" LogicalName="openapi.yaml" />
   </ItemGroup>
 
 </Project>
