@@ -1,6 +1,7 @@
 using System.Reflection;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
+using OrderToCash.Orders.Domain;
 using OrderToCash.Orders.Domain.Errors;
 using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Presentation.Rpc;
@@ -257,5 +258,66 @@ public sealed class OrdersCreateErrorMapperTests
         Assert.Equal("VALIDATION_FAILED", payload.Code);
         Assert.NotEqual("INTERNAL_ERROR", payload.Code);
         Assert.Equal(error.Message, payload.Message);
+    }
+
+    /// <summary>Feature <c>orders_catalog_responder</c> — <c>catalog.reference.list</c>'s own wire-shape refusal, mapped the same way A2's <c>InvalidOrdersCreateRequestError</c> already is.</summary>
+    [Fact]
+    public void Map_AnInvalidCatalogReferenceListRequestError_MapsToValidationFailedNotInternalError()
+    {
+        var error = new InvalidCatalogReferenceListRequestError("catalog.reference.list request's kinds carries a value outside the declared enum: widgets.");
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal("VALIDATION_FAILED", payload.Code);
+        Assert.NotEqual("INTERNAL_ERROR", payload.Code);
+        Assert.Equal(error.Message, payload.Message);
+    }
+
+    /// <summary>Feature <c>orders_cancel_responder</c> — <c>orders.cancel</c>'s own wire-shape refusal, mapped the same way as the two validators above.</summary>
+    [Fact]
+    public void Map_AnInvalidOrdersCancelRequestError_MapsToValidationFailedNotInternalError()
+    {
+        var error = new InvalidOrdersCancelRequestError("orders.cancel request is missing or has an empty required field: orderId.");
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal("VALIDATION_FAILED", payload.Code);
+        Assert.NotEqual("INTERNAL_ERROR", payload.Code);
+        Assert.Equal(error.Message, payload.Message);
+    }
+
+    /// <summary>Feature <c>orders_cancel_responder</c> — an unknown <c>orderId</c> maps to NOT_FOUND, distinct from <see cref="ReferenceDataNotFoundError"/> above but the same wire code.</summary>
+    [Fact]
+    public void Map_AnOrderNotFoundError_MapsToNotFound()
+    {
+        var orderId = Guid.NewGuid();
+        var error = new OrderNotFoundError(orderId);
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal("NOT_FOUND", payload.Code);
+        Assert.Equal(error.Message, payload.Message);
+    }
+
+    /// <summary>
+    /// Feature <c>orders_cancel_responder</c>, acceptance bullet 3: a
+    /// terminal-status cancel refusal maps to the wire-documented
+    /// <c>ORDER_NOT_CANCELLABLE</c> code — checked BEFORE the generic
+    /// <c>DomainError</c> case, since <see cref="OrderNotCancellableError"/>
+    /// IS a <c>DomainError</c> and would otherwise collapse to the less
+    /// specific <c>VALIDATION_FAILED</c> this test would then wrongly pass
+    /// against.
+    /// </summary>
+    [Fact]
+    public void Map_AnOrderNotCancellableError_MapsToOrderNotCancellableNotValidationFailedNotUnavailable()
+    {
+        var error = new OrderNotCancellableError(OrderStatus.Invoiced);
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal("ORDER_NOT_CANCELLABLE", payload.Code);
+        Assert.NotEqual("VALIDATION_FAILED", payload.Code);
+        Assert.NotEqual("UNAVAILABLE", payload.Code);
+        Assert.Equal("invoiced", payload.Details!["status"]);
     }
 }

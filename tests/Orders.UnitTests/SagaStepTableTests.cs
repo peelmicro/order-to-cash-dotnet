@@ -9,10 +9,16 @@ namespace OrderToCash.Orders.UnitTests;
 
 /// <summary>
 /// design.md §4.1, §11.1 — the fourteen-row step table, exhaustively:
-/// EVERY one of the ten consumed facts × EVERY one of the nine
-/// <see cref="OrderStatus"/> values, built from real <see cref="Order"/>
+/// EVERY one of the ten SINGLE-variant consumed facts × EVERY one of the
+/// nine <see cref="OrderStatus"/> values, built from real <see cref="Order"/>
 /// instances with no store and no framework. The four self-produced facts
 /// (SO2) are covered separately, since they carry no precondition at all.
+/// <c>credit.released.v1</c> and <c>stock.released.v1</c> (feature
+/// <c>orders_cancel_responder</c>'s operator-cancel compensation, more than
+/// one legal precondition each) are EXCLUDED from this generic theory —
+/// mirroring #7's own <c>MULTI_VARIANT_FACT_TYPES</c> exclusion
+/// (<c>saga-steps.spec.ts</c>) — and covered by their own dedicated blocks
+/// below instead.
 /// </summary>
 public sealed class SagaStepTableTests
 {
@@ -22,15 +28,16 @@ public sealed class SagaStepTableTests
         OrderStatus.Despatched, OrderStatus.Invoiced, OrderStatus.Paid, OrderStatus.Completed, OrderStatus.Cancelled,
     ];
 
-    private static readonly string[] _consumedFacts =
+    /// <summary>The eight SINGLE-variant consumed facts (out of ten total — credit.released.v1 and stock.released.v1 are multi-variant, covered separately below).</summary>
+    private static readonly string[] _singleVariantConsumedFacts =
     [
         "order.placed.v1", "stock.reserved.v1", "stock.rejected.v1", "credit.approved.v1", "credit.rejected.v1",
-        "stock.released.v1", "order.despatched.v1", "invoice.issued.v1", "payment.received.v1", "credit.released.v1",
+        "order.despatched.v1", "invoice.issued.v1", "payment.received.v1",
     ];
 
     public static IEnumerable<object[]> FactsCrossStatuses()
     {
-        foreach (var eventType in _consumedFacts)
+        foreach (var eventType in _singleVariantConsumedFacts)
         {
             foreach (var status in _allStatuses)
             {
@@ -126,13 +133,84 @@ public sealed class SagaStepTableTests
     }
 
     [Theory]
+    [InlineData("order.confirmed.v1")]
+    [InlineData("order.completed.v1")]
+    [InlineData("order.cancelled.v1")]
+    [InlineData("order.saga_failed.v1")]
+    public void SO2_TheFourSelfProducedFacts_MapToSkip(string eventType)
+    {
+        var step = SagaStepTable.For(eventType);
+
+        Assert.IsType<SagaStep.Skip>(step);
+    }
+
+    // ── credit.released.v1 and stock.released.v1 — multi-variant (feature orders_cancel_responder) ──
+
+    [Fact]
+    public void CreditReleasedV1_ExposesThreeVariants_OneForEachOfPaidCreditApprovedAndConfirmed()
+    {
+        var variants = SagaStepTable.Variants("credit.released.v1");
+
+        Assert.NotNull(variants);
+        Assert.Equal(3, variants!.Count);
+        var preconditions = variants.Select(PreconditionOf).OrderBy(s => s).ToList();
+        Assert.Equal([OrderStatus.CreditApproved, OrderStatus.Confirmed, OrderStatus.Paid], preconditions);
+    }
+
+    [Fact]
+    public void StockReleasedV1_ExposesThreeVariants_OneForEachOfStockReservedCreditApprovedAndConfirmed()
+    {
+        var variants = SagaStepTable.Variants("stock.released.v1");
+
+        Assert.NotNull(variants);
+        Assert.Equal(3, variants!.Count);
+        var preconditions = variants.Select(PreconditionOf).OrderBy(s => s).ToList();
+        Assert.Equal([OrderStatus.StockReserved, OrderStatus.CreditApproved, OrderStatus.Confirmed], preconditions);
+    }
+
+    [Fact]
+    public void For_ThrowsForBothMultiVariantEventTypes_RatherThanSilentlyPickingOne()
+    {
+        Assert.Throws<InvalidOperationException>(() => SagaStepTable.For("credit.released.v1"));
+        Assert.Throws<InvalidOperationException>(() => SagaStepTable.For("stock.released.v1"));
+    }
+
+    [Fact]
+    public void R24_CreditReleasedV1_PaidVariant_CompletesTheOrderAndOwesNothing()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.Paid);
+        var fact = BuildFact("credit.released.v1", "credit_rejected");
+        var step = (SagaStep.Advance)SagaStepTable.ForStatus("credit.released.v1", OrderStatus.Paid)!;
+
+        step.Apply!(order, fact);
+
+        Assert.Equal(OrderStatus.Completed, order.Status);
+        var raised = Assert.IsType<OrderCompleted>(Assert.Single(order.DomainEvents));
+        Assert.Equal(fact.EventId, raised.CausationId.Value);
+        Assert.Null(step.CommandAfter);
+    }
+
+    [Theory]
+    [InlineData(OrderStatus.CreditApproved)]
+    [InlineData(OrderStatus.Confirmed)]
+    public void CreditReleasedV1_CreditApprovedOrConfirmedVariant_LeavesStatusUntouchedAndOwesStockRelease(OrderStatus status)
+    {
+        var order = OrderTestData.RehydratedOrder(status);
+        var step = (SagaStep.Advance)SagaStepTable.ForStatus("credit.released.v1", status)!;
+
+        Assert.Null(step.Apply);
+        Assert.Equal(SagaCommandKind.StockRelease, step.CommandAfter);
+        Assert.Equal(status, order.Status);
+    }
+
+    [Theory]
     [InlineData("credit_rejected", CancellationReason.CreditRejected)]
     [InlineData("order_cancelled", CancellationReason.OperatorCancelled)]
-    public void R28_SO7_StockReleasedV1_CancelsWithExactlyOneStockReleasedCompensationStepBuiltFromTheObservedFact(string wireReason, CancellationReason expectedReason)
+    public void R28_SO7_StockReleasedV1_StockReservedVariant_CancelsWithExactlyOneStockReleasedCompensationStepBuiltFromTheObservedFact(string wireReason, CancellationReason expectedReason)
     {
         var order = OrderTestData.RehydratedOrder(OrderStatus.StockReserved);
         var fact = BuildFact("stock.released.v1", wireReason);
-        var step = (SagaStep.Cancel)SagaStepTable.For("stock.released.v1")!;
+        var step = (SagaStep.Cancel)SagaStepTable.ForStatus("stock.released.v1", OrderStatus.StockReserved)!;
 
         var reason = step.Reason(fact);
         var compensationSteps = step.CompensationSteps(fact);
@@ -148,15 +226,42 @@ public sealed class SagaStepTableTests
     }
 
     [Theory]
-    [InlineData("order.confirmed.v1")]
-    [InlineData("order.completed.v1")]
-    [InlineData("order.cancelled.v1")]
-    [InlineData("order.saga_failed.v1")]
-    public void SO2_TheFourSelfProducedFacts_MapToSkip(string eventType)
+    [InlineData(OrderStatus.CreditApproved)]
+    [InlineData(OrderStatus.Confirmed)]
+    public void StockReleasedV1_CreditApprovedOrConfirmedVariant_CancelsWithBothCompensationStepsInCausalOrder(OrderStatus status)
     {
-        var step = SagaStepTable.For(eventType);
+        var order = OrderTestData.RehydratedOrder(status);
+        var fact = BuildFact("stock.released.v1", "order_cancelled");
+        var step = (SagaStep.Cancel)SagaStepTable.ForStatus("stock.released.v1", status)!;
 
-        Assert.IsType<SagaStep.Skip>(step);
+        var reason = step.Reason(fact);
+        var compensationSteps = step.CompensationSteps(fact);
+        order.Cancel(reason, compensationSteps, fact.OccurredAt, UniqueId.From(fact.EventId));
+
+        Assert.Equal(CancellationReason.OperatorCancelled, reason);
+        var cancelled = Assert.IsType<OrderCancelled>(Assert.Single(order.DomainEvents));
+        Assert.Equal(2, cancelled.CompensationSteps.Count);
+
+        // Causal order — saga.md §4.3 point 3: credit released BEFORE stock released.
+        var first = cancelled.CompensationSteps[0];
+        var second = cancelled.CompensationSteps[1];
+        Assert.Equal(CompensationStepKind.CreditReleased, first.Step);
+        Assert.Null(first.EventId);
+        Assert.Equal("credit.released.v1", first.EventType);
+
+        Assert.Equal(CompensationStepKind.StockReleased, second.Step);
+        Assert.Equal(fact.EventId, second.EventId!.Value.Value);
+        Assert.Equal(fact.EventType, second.EventType);
+        Assert.Equal(fact.OccurredAt, second.OccurredAt);
+    }
+
+    [Theory]
+    [InlineData("credit.released.v1")]
+    [InlineData("stock.released.v1")]
+    public void ForStatus_ReturnsNullWhenNoVariantsPreconditionMatches_TheGeneralisedR25Case(string eventType)
+    {
+        // Placed matches neither multi-variant eventType's three preconditions.
+        Assert.Null(SagaStepTable.ForStatus(eventType, OrderStatus.Placed));
     }
 
     private static SagaFact BuildFact(string eventType, string stockReleasedReason)
@@ -224,11 +329,9 @@ public sealed class SagaStepTableTests
         "stock.rejected.v1" => (OrderStatus.Cancelled, 1, null),
         "credit.approved.v1" => (OrderStatus.Confirmed, 1, SagaCommandKind.DespatchCreate),
         "credit.rejected.v1" => (OrderStatus.StockReserved, 0, SagaCommandKind.StockRelease),
-        "stock.released.v1" => (OrderStatus.Cancelled, 1, null),
         "order.despatched.v1" => (OrderStatus.Despatched, 0, SagaCommandKind.InvoiceIssue),
         "invoice.issued.v1" => (OrderStatus.Invoiced, 0, null),
         "payment.received.v1" => (OrderStatus.Paid, 0, null),
-        "credit.released.v1" => (OrderStatus.Completed, 1, null),
         _ => throw new InvalidOperationException($"No expected outcome fixture for '{eventType}'."),
     };
 }

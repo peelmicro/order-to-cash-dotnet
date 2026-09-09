@@ -1,6 +1,7 @@
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Domain;
+using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.SharedKernel;
 using Xunit;
 
@@ -110,6 +111,56 @@ public sealed class SagaFactHandlerTests
         // Save happens BEFORE enqueue.
         Assert.True(orders.SaveChangesCalledAtSequence < store.EnqueueCalledAtSequence);
         Assert.Empty(ignoredFacts.Records);
+    }
+
+    /// <summary>
+    /// Review round 2, D1: <c>SagaCommandRequestFactory.StockReleaseReasonFor</c> is called from exactly ONE
+    /// production site — <c>SagaFactHandler.HandleAsync</c>'s <c>command == SagaCommandKind.StockRelease</c> branch
+    /// (<c>SagaFactHandler.cs:114</c>) — so this drives the real handler end to end and opens the ENQUEUED
+    /// payload's <c>Reason</c>, rather than re-implementing the switch or calling the factory directly. Transposing
+    /// <c>StockReleaseReasonFor</c>'s two arms must fail this test.
+    /// </summary>
+    [Fact]
+    public async Task CreditRejectedV1_StockReservedVariant_EnqueuesStockReleaseWithReasonCreditRejected_ThroughTheFactory()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.StockReserved);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var ignoredFacts = new FakeSagaIgnoredFactRecorder();
+        var store = new FakeSagaCommandStore();
+        var handler = BuildHandler(orders, runner, ignoredFacts, store);
+
+        var fact = BuildFact("credit.rejected.v1", order.Id.Value);
+        var result = await handler.HandleAsync(fact, CancellationToken.None);
+
+        Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.StockRelease, enqueued.Command);
+        var payload = RpcJson.Deserialize<StockReleaseRequestPayload>(System.Text.Encoding.UTF8.GetBytes(enqueued.Payload));
+        Assert.Equal("credit_rejected", payload.Reason);
+    }
+
+    /// <summary>Same enqueue path, the OTHER fact-driven variant: R27's mirror image for the operator-cancel compensation (feature <c>orders_cancel_responder</c>).</summary>
+    [Theory]
+    [InlineData(OrderStatus.CreditApproved)]
+    [InlineData(OrderStatus.Confirmed)]
+    public async Task CreditReleasedV1_CreditApprovedOrConfirmedVariant_EnqueuesStockReleaseWithReasonOrderCancelled_ThroughTheFactory(OrderStatus status)
+    {
+        var order = OrderTestData.RehydratedOrder(status);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var ignoredFacts = new FakeSagaIgnoredFactRecorder();
+        var store = new FakeSagaCommandStore();
+        var handler = BuildHandler(orders, runner, ignoredFacts, store);
+
+        var fact = BuildFact("credit.released.v1", order.Id.Value);
+        var result = await handler.HandleAsync(fact, CancellationToken.None);
+
+        Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.StockRelease, enqueued.Command);
+        var payload = RpcJson.Deserialize<StockReleaseRequestPayload>(System.Text.Encoding.UTF8.GetBytes(enqueued.Payload));
+        Assert.Equal("order_cancelled", payload.Reason);
     }
 
     private static SagaFactHandler BuildHandler(FakeOrderRepository orders, FakeIdempotentSagaRunner runner, FakeSagaIgnoredFactRecorder ignoredFacts, FakeSagaCommandStore store) =>

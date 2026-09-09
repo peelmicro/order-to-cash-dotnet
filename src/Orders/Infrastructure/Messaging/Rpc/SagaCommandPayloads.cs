@@ -119,3 +119,25 @@ public sealed record InvoiceIssueReplyPayload(
     string Status,
     bool Created,
     Guid? InvoiceId = null);
+
+// -- billing.credit.release ---------------------------------------------------
+// Feature orders_cancel_responder — the sixth saga command (design.md §6.1's
+// five, extended). No `reason` field on the request: `asyncapi.yaml`
+// `CreditReleaseRequestPayload`'s own description says this RPC always
+// releases with reason `order_cancelled`, the only external trigger for it.
+
+/// <summary><c>asyncapi.yaml</c> <c>CreditReleaseRequestPayload</c>.</summary>
+public sealed record CreditReleaseRequestPayload(string OrderReference, string RetailerCode, string CompanyCode);
+
+/// <summary>
+/// <c>asyncapi.yaml</c> <c>CreditReleaseReplyPayload</c>. <c>Released: false</c>
+/// is a plain success — an idempotent repeat or nothing was ever held
+/// (BC11, B5), not an error, no ledger entry, no fact.
+/// </summary>
+public sealed record CreditReleaseReplyPayload(
+    bool Released,
+    string OrderReference,
+    long AvailableCreditAfter,
+    string? CreditCode = null,
+    string? Currency = null,
+    long? ReleasedAmount = null);

@@ -82,6 +82,60 @@ public sealed class SagaFactCommandHandlerTests
         Assert.Empty(store.Enqueued);
     }
 
+    /// <summary>
+    /// Feature <c>orders_cancel_responder</c>: <c>credit.released.v1</c>'s
+    /// ORIGINAL <c>paid</c> variant (R24) still owes nothing — its handler
+    /// must not publish just because it is no longer a plain delegation.
+    /// </summary>
+    [Fact]
+    public async Task CreditReleasedV1_PaidVariant_OwesNothingAndPublishesNothing()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.Paid);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var store = new FakeSagaCommandStore();
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var dispatcher = new RecordingDispatcher();
+        var handler = new HandleCreditReleasedFactCommandHandler(sagaHandler, dispatcher);
+
+        await handler.HandleAsync(new HandleCreditReleasedFactCommand(BuildFact("credit.released.v1", order.Id.Value)), CancellationToken.None);
+
+        Assert.Empty(store.Enqueued);
+        Assert.Empty(dispatcher.Published);
+    }
+
+    /// <summary>
+    /// Feature <c>orders_cancel_responder</c>: <c>credit.released.v1</c>'s
+    /// NEW <c>credit_approved</c>/<c>confirmed</c> variant owes
+    /// <c>stock.release</c> — the handler publishes
+    /// <c>CreditReleasedForCancellationRecorded</c>, a DIFFERENT event type
+    /// from <c>CreditRejectionRecorded</c> (which the fact-driven
+    /// <c>credit.rejected.v1</c> handler publishes for the same owed
+    /// command), so a reader can tell which branch fired.
+    /// </summary>
+    [Theory]
+    [InlineData(OrderStatus.CreditApproved)]
+    [InlineData(OrderStatus.Confirmed)]
+    public async Task CreditReleasedV1_CreditApprovedOrConfirmedVariant_PublishesCreditReleasedForCancellationRecorded(OrderStatus status)
+    {
+        var order = OrderTestData.RehydratedOrder(status);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var store = new FakeSagaCommandStore();
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var dispatcher = new RecordingDispatcher();
+        var handler = new HandleCreditReleasedFactCommandHandler(sagaHandler, dispatcher);
+
+        await handler.HandleAsync(new HandleCreditReleasedFactCommand(BuildFact("credit.released.v1", order.Id.Value)), CancellationToken.None);
+
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.StockRelease, enqueued.Command);
+
+        var published = Assert.Single(dispatcher.Published);
+        var @event = Assert.IsType<CreditReleasedForCancellationRecorded>(published);
+        Assert.Equal(order.Id.Value, @event.OrderId);
+    }
+
     private static (HandleOrderPlacedFactCommandHandler Handler, RecordingDispatcher Dispatcher) BuildOrderPlacedHandler(Order order, bool duplicate, bool alreadyEnqueued)
     {
         var orders = new FakeOrderRepository { OrderToReturn = order };

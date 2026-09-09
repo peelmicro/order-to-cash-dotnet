@@ -9,10 +9,15 @@ namespace OrderToCash.Orders.Application.Commands;
 /// matching dispatch-owed event through <see cref="IDispatcher.PublishAsync"/>
 /// ONLY when the outcome is <see cref="SagaFactOutcome.Processed"/> AND a
 /// command was enqueued — i.e. strictly after the transaction committed
-/// (§5.1 step 4). Five facts own no dispatch-owed event at all
+/// (§5.1 step 4). Four facts own no dispatch-owed event at all
 /// (<c>stock.rejected.v1</c>, <c>stock.released.v1</c>, <c>invoice.issued.v1</c>,
-/// <c>payment.received.v1</c>, <c>credit.released.v1</c> — their step never
-/// owes a follow-up command), so their handlers simply delegate.
+/// <c>payment.received.v1</c> — every one of their variants never owes a
+/// follow-up command), so their handlers simply delegate.
+/// <c>credit.released.v1</c> (feature <c>orders_cancel_responder</c>) is NO
+/// LONGER one of these: its <c>credit_approved</c>/<c>confirmed</c>
+/// variants DO owe <see cref="Sagas.SagaCommandKind.StockRelease"/>, so
+/// <see cref="HandleCreditReleasedFactCommandHandler"/> is conditional, the
+/// same shape as <see cref="HandleCreditRejectedFactCommandHandler"/>.
 /// </summary>
 public sealed class HandleOrderPlacedFactCommandHandler(SagaFactHandler handler, IDispatcher dispatcher) : ICommandHandler<HandleOrderPlacedFactCommand>
 {
@@ -103,8 +108,22 @@ public sealed class HandlePaymentReceivedFactCommandHandler(SagaFactHandler hand
         handler.HandleAsync(command.Fact, cancellationToken);
 }
 
-public sealed class HandleCreditReleasedFactCommandHandler(SagaFactHandler handler) : ICommandHandler<HandleCreditReleasedFactCommand>
+/// <summary>
+/// Feature <c>orders_cancel_responder</c>: <c>credit.released.v1</c> now owes
+/// a command on its <c>credit_approved</c>/<c>confirmed</c> variants (the
+/// original <c>paid</c> variant, R24, still owes nothing) — no longer a
+/// plain delegation. Mirrors <see cref="HandleCreditRejectedFactCommandHandler"/>'s
+/// exact conditional-publish shape, one line different: the event type.
+/// </summary>
+public sealed class HandleCreditReleasedFactCommandHandler(SagaFactHandler handler, IDispatcher dispatcher) : ICommandHandler<HandleCreditReleasedFactCommand>
 {
-    public Task HandleAsync(HandleCreditReleasedFactCommand command, CancellationToken cancellationToken) =>
-        handler.HandleAsync(command.Fact, cancellationToken);
+    public async Task HandleAsync(HandleCreditReleasedFactCommand command, CancellationToken cancellationToken)
+    {
+        var result = await handler.HandleAsync(command.Fact, cancellationToken).ConfigureAwait(false);
+
+        if (result is { Outcome: SagaFactOutcome.Processed, Enqueued: { } enqueued })
+        {
+            await dispatcher.PublishAsync(new CreditReleasedForCancellationRecorded(enqueued.OrderId, command.Fact.CorrelationId), cancellationToken).ConfigureAwait(false);
+        }
+    }
 }

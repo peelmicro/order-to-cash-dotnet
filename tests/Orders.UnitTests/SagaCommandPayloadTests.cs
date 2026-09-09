@@ -193,6 +193,11 @@ public sealed class SagaCommandPayloadTests
     [InlineData("CreditHoldReplyPayload", new[] { "outcome", "orderReference", "creditCode", "currency", "heldAmount", "availableCredit", "reason" })]
     [InlineData("InvoiceIssueRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "currency", "lines", "discount" })]
     [InlineData("InvoiceIssueReplyPayload", new[] { "orderReference", "invoiceId", "invoiceReference", "invoiceDate", "currency", "totalAmount", "status", "created" })]
+    // Review round 2, D2: this feature added CreditReleaseRequestPayload/CreditReleaseReplyPayload (billing.credit.release,
+    // the sixth saga command) and skipped this file's own BC23 guard for them — the omission is why the reply payload's
+    // required availableCreditAfter shipped missing.
+    [InlineData("CreditReleaseRequestPayload", new[] { "orderReference", "retailerCode", "companyCode" })]
+    [InlineData("CreditReleaseReplyPayload", new[] { "released", "orderReference", "creditCode", "currency", "releasedAmount", "availableCreditAfter" })]
     public void BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi(string schemaName, string[] handRetypedKeys)
     {
         var parsed = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);

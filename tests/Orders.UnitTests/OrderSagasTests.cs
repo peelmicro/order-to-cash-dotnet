@@ -6,7 +6,8 @@ namespace OrderToCash.Orders.UnitTests;
 
 /// <summary>
 /// design.md §5.5 — <c>SO3_EachDispatchOwedEvent_SignalsItsOwnSagaCommandAndNothingElse</c>:
-/// all five event-to-signal mappings, against a recording <see cref="ISagaCommandSignal"/>.
+/// all six event-to-signal mappings (feature <c>orders_cancel_responder</c>
+/// adds the sixth), against a recording <see cref="ISagaCommandSignal"/>.
 /// </summary>
 public sealed class OrderSagasTests
 {
@@ -21,6 +22,7 @@ public sealed class OrderSagasTests
         await AssertSignalsExactlyOne(new CreditRejectionRecorded(orderId, correlationId), SagaCommandKind.StockRelease, signal => new CreditRejectionRecordedHandler(signal));
         await AssertSignalsExactlyOne(new OrderConfirmedBySaga(orderId, correlationId), SagaCommandKind.DespatchCreate, signal => new OrderConfirmedBySagaHandler(signal));
         await AssertSignalsExactlyOne(new OrderMarkedDespatched(orderId, correlationId), SagaCommandKind.InvoiceIssue, signal => new OrderMarkedDespatchedHandler(signal));
+        await AssertSignalsExactlyOne(new CreditReleasedForCancellationRecorded(orderId, correlationId), SagaCommandKind.StockRelease, signal => new CreditReleasedForCancellationRecordedHandler(signal));
 
         async Task AssertSignalsExactlyOne<TEvent>(TEvent @event, SagaCommandKind expectedCommand, Func<RecordingSagaCommandSignal, OrderToCash.Cqrs.IEventHandler<TEvent>> buildHandler)
         {

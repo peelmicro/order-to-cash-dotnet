@@ -5,6 +5,7 @@ using NATS.Client.Core;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
+using OrderToCash.Orders.Application.Queries;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Presentation.Rpc;
 using OrderToCash.SharedKernel;
@@ -12,11 +13,18 @@ using OrderToCash.SharedKernel;
 namespace OrderToCash.Orders.Presentation;
 
 /// <summary>
-/// The <c>orders.create</c> NATS responder — ONE <see cref="BackgroundService"/>
+/// The Orders NATS RPC responder — ONE <see cref="BackgroundService"/>
 /// subscribing to ONE transport (CLAUDE.md: "One BackgroundService per
-/// transport"), the inbound half of the RPC pair this feature builds (the
-/// outbound half, <c>fulfillment.stock.check</c>, is
-/// <c>NatsStockAvailabilityChecker</c> in <c>Infrastructure/Messaging/</c>).
+/// transport"), THREE subjects: <c>orders.create</c> (the inbound half of the
+/// RPC pair feature <c>orders_acceptance</c> builds — the outbound half,
+/// <c>fulfillment.stock.check</c>, is <c>NatsStockAvailabilityChecker</c> in
+/// <c>Infrastructure/Messaging/</c>), since feature
+/// <c>orders_catalog_responder</c>, <c>catalog.reference.list</c>, and since
+/// feature <c>orders_cancel_responder</c>, <c>orders.cancel</c>. Extended
+/// rather than forked into a second responder class — matching
+/// <c>BillingRpcResponder</c>'s own precedent (its remarks: "CLAUDE.md's
+/// non-negotiable is one BackgroundService per transport"), one concurrent
+/// <see cref="Task"/> loop per subject via <see cref="Task.WhenAll(Task[])"/>.
 /// </summary>
 /// <remarks>
 /// <see cref="IDispatcher"/> is registered scoped (a singleton would
@@ -25,16 +33,16 @@ namespace OrderToCash.Orders.Presentation;
 /// one captive <c>DbContext</c> per process). This responder is itself a
 /// singleton <see cref="BackgroundService"/>, so it creates ONE
 /// <see cref="IServiceScope"/> PER inbound request and resolves
-/// <see cref="IDispatcher"/> from it — never once at construction.
-/// Processing is deliberately sequential (one request handled fully before
-/// the next <c>SubscribeAsync</c> iteration is awaited): the order-number
-/// allocator already serialises every placing transaction behind its
-/// exclusive row lock (design.md's own accepted throughput ceiling, D7 in
-/// #7's review), so a concurrent responder would not raise placement
-/// throughput — it would only let unrelated requests (a future
-/// <c>orders.cancel</c>, say) interleave, which this feature does not yet
-/// have. Revisit if a later feature adds a second concurrent RPC subject
-/// this responder must not block.
+/// <see cref="IDispatcher"/> from it — never once at construction. Each
+/// subject's own loop processes its requests sequentially (one request
+/// handled fully before that loop's next <c>SubscribeAsync</c> iteration is
+/// awaited): <c>orders.create</c>'s reasoning is unchanged from before this
+/// feature (the order-number allocator already serialises every placing
+/// transaction behind its exclusive row lock — design.md's own accepted
+/// throughput ceiling, D7 in #7's review), and <c>catalog.reference.list</c>
+/// is a read-only query with nothing to serialise, so running its own loop
+/// concurrently with (never blocked by) <c>orders.create</c>'s is exactly
+/// what two independent <c>Task.WhenAll</c> loops give for free.
 /// </remarks>
 public sealed class OrdersCreateResponder(
     INatsConnection connection,
@@ -43,13 +51,41 @@ public sealed class OrdersCreateResponder(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var loops = new[]
+        {
+            SubscribeOrdersCreateLoopAsync(stoppingToken),
+            SubscribeCatalogReferenceListLoopAsync(stoppingToken),
+            SubscribeOrdersCancelLoopAsync(stoppingToken),
+        };
+
+        await Task.WhenAll(loops).ConfigureAwait(false);
+    }
+
+    private async Task SubscribeOrdersCreateLoopAsync(CancellationToken stoppingToken)
+    {
         await foreach (var message in connection.SubscribeAsync<byte[]>(RpcSubjects.OrdersCreate, cancellationToken: stoppingToken).ConfigureAwait(false))
         {
-            await HandleAsync(message, stoppingToken).ConfigureAwait(false);
+            await HandleOrdersCreateAsync(message, stoppingToken).ConfigureAwait(false);
         }
     }
 
-    private async Task HandleAsync(NatsMsg<byte[]> message, CancellationToken stoppingToken)
+    private async Task SubscribeCatalogReferenceListLoopAsync(CancellationToken stoppingToken)
+    {
+        await foreach (var message in connection.SubscribeAsync<byte[]>(RpcSubjects.CatalogReferenceList, cancellationToken: stoppingToken).ConfigureAwait(false))
+        {
+            await HandleCatalogReferenceListAsync(message, stoppingToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task SubscribeOrdersCancelLoopAsync(CancellationToken stoppingToken)
+    {
+        await foreach (var message in connection.SubscribeAsync<byte[]>(RpcSubjects.OrdersCancel, cancellationToken: stoppingToken).ConfigureAwait(false))
+        {
+            await HandleOrdersCancelAsync(message, stoppingToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleOrdersCreateAsync(NatsMsg<byte[]> message, CancellationToken stoppingToken)
     {
         using var scope = scopeFactory.CreateScope();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
@@ -79,6 +115,71 @@ public sealed class OrdersCreateResponder(
         }
     }
 
+    private async Task HandleCatalogReferenceListAsync(NatsMsg<byte[]> message, CancellationToken stoppingToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+
+        try
+        {
+            if (message.Data is null)
+            {
+                throw new InvalidCatalogReferenceListRequestError("catalog.reference.list request carried no payload.");
+            }
+
+            var request = RpcJson.Deserialize<CatalogReferenceListRequestPayload>(message.Data);
+            CatalogReferenceListRequestValidator.Validate(request);
+
+            var kinds = request.Kinds is { Count: > 0 } ? request.Kinds : CatalogReferenceKinds.All;
+            var includeDisabled = request.IncludeDisabled ?? false;
+
+            var dispatcher = scope.ServiceProvider.GetRequiredService<IDispatcher>();
+            var result = await dispatcher
+                .QueryAsync<ListCatalogReferenceQuery, CatalogReferenceListResult>(new ListCatalogReferenceQuery(kinds, includeDisabled), stoppingToken)
+                .ConfigureAwait(false);
+
+            await message.ReplyAsync(RpcJson.Serialize(ToReplyPayload(result)), cancellationToken: stoppingToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "catalog.reference.list failed: {Message}", ex.Message);
+
+            var errorPayload = OrdersCreateErrorMapper.Map(ex, clock.UtcNow);
+            await message.ReplyAsync(RpcJson.Serialize(errorPayload), cancellationToken: stoppingToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleOrdersCancelAsync(NatsMsg<byte[]> message, CancellationToken stoppingToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+
+        try
+        {
+            if (message.Data is null)
+            {
+                throw new InvalidOrdersCancelRequestError("orders.cancel request carried no payload.");
+            }
+
+            var request = RpcJson.Deserialize<OrdersCancelRequestPayload>(message.Data);
+            OrdersCancelRequestValidator.Validate(request);
+
+            var command = new CancelOrderCommand(request.OrderId!.Value, request.Note);
+
+            var dispatcher = scope.ServiceProvider.GetRequiredService<IDispatcher>();
+            var result = await dispatcher.SendAsync<CancelOrderCommand, CancelOrderResult>(command, stoppingToken).ConfigureAwait(false);
+
+            await message.ReplyAsync(RpcJson.Serialize(ToReplyPayload(result)), cancellationToken: stoppingToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "orders.cancel failed: {Message}", ex.Message);
+
+            var errorPayload = OrdersCreateErrorMapper.Map(ex, clock.UtcNow);
+            await message.ReplyAsync(RpcJson.Serialize(errorPayload), cancellationToken: stoppingToken).ConfigureAwait(false);
+        }
+    }
+
     private static PlaceOrderCommand ToCommand(OrdersCreateRequestPayload request) =>
         new(
             request.RequestId,
@@ -101,4 +202,22 @@ public sealed class OrdersCreateResponder(
             InitialDiscount: result.InitialDiscount.MinorUnits,
             TotalAmount: result.TotalAmount.MinorUnits,
             OrderDate: result.OrderDate);
+
+    private static CatalogReferenceListReplyPayload ToReplyPayload(CatalogReferenceListResult result) =>
+        new(
+            Products: result.Products?.Select(p => new ProductPayload(p.Code, p.Ean, p.Name, p.Description, p.Price.MinorUnits, p.Price.Currency, p.Enabled)).ToList(),
+            Retailers: result.Retailers?.Select(ToPartyPayload).ToList(),
+            Companies: result.Companies?.Select(ToPartyPayload).ToList(),
+            Currencies: result.Currencies?.Select(c => new CurrencyViewPayload(c.Code, c.IsoNumber, c.Symbol, c.DecimalPoints)).ToList());
+
+    private static OrdersCancelReplyPayload ToReplyPayload(CancelOrderResult result) =>
+        new(
+            OrderId: result.OrderId,
+            OrderReference: result.OrderReference,
+            Status: OrderToCash.Orders.Domain.OrderStatuses.ToToken(result.Status),
+            CompensationPlanned: result.CompensationPlanned,
+            CancellationReason: result.CancellationReason is { } reason ? OrderToCash.Orders.Domain.CancellationReasons.ToToken(reason) : null);
+
+    private static PartyPayload ToPartyPayload(PartyCatalogEntry party) =>
+        new(party.Code, party.Name, party.Country, party.Vat, party.Gln.Value, party.Currency, party.Enabled);
 }

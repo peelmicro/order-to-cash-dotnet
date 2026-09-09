@@ -22,12 +22,15 @@ public sealed class SagaFactHandler(
 {
     public async Task<SagaFactResult> HandleAsync(SagaFact fact, CancellationToken cancellationToken)
     {
-        var step = SagaStepTable.For(fact.EventType);
+        var variants = SagaStepTable.Variants(fact.EventType);
 
-        // Absent or Skip — no I/O. Unreachable in practice (SagaFactsConsumer
+        // Absent or [Skip] — no I/O. Unreachable in practice (SagaFactsConsumer
         // filters self-produced facts before any dispatch, SO2), and the
-        // belt-and-braces is deliberate (design.md §5.1 step 1).
-        if (step is null or SagaStep.Skip)
+        // belt-and-braces is deliberate (design.md §5.1 step 1). A Skip row
+        // is always single-variant (SagaStepTable never pairs it with
+        // anything else), so this check is enough to rule Skip out before
+        // any order is ever loaded.
+        if (variants is null || variants is [SagaStep.Skip])
         {
             return new SagaFactResult(SagaFactOutcome.Ignored, null);
         }
@@ -58,33 +61,58 @@ public sealed class SagaFactHandler(
                     return;
                 }
 
-                var precondition = PreconditionOf(step);
+                // R25, generalised: for a single-variant eventType this is
+                // exactly the original equality check. For credit.released.v1
+                // and stock.released.v1 (feature orders_cancel_responder,
+                // more than one legal precondition each) this picks the ONE
+                // variant whose precondition matches the order's CURRENT
+                // status — null means none of the catalogued preconditions
+                // are met, the same "ignored" outcome, generalised rather
+                // than restricted to a single expected value.
+                var matchedStep = SagaStepTable.ForStatus(fact.EventType, order.Status);
 
-                if (order.Status != precondition)
+                if (matchedStep is null)
                 {
-                    // R25 — equality only, no ranges. The redelivery-safety
-                    // argument (design.md §4.4) is what makes this lossless.
+                    // The FIRST catalogued variant's precondition — for a
+                    // single-variant eventType this IS the (only) expected
+                    // status; for a multi-variant one it is one informative
+                    // representative of several, never left null (R25's
+                    // pre-existing persisted-record shape has exactly one
+                    // ExpectedStatus column). The FULL set of legal
+                    // preconditions is in this log line's own message,
+                    // never discarded.
+                    var expectedStatus = PreconditionOf(variants[0]);
+
                     await ignoredFactRecorder.RecordAsync(
-                        new SagaIgnoredFactRecord(fact.EventId, fact.EventType, order.Id.Value, fact.CorrelationId, SagaIgnoredFactMarker.PreconditionUnmet, order.Status, precondition),
+                        new SagaIgnoredFactRecord(fact.EventId, fact.EventType, order.Id.Value, fact.CorrelationId, SagaIgnoredFactMarker.PreconditionUnmet, order.Status, expectedStatus),
                         ct).ConfigureAwait(false);
                     logger.LogInformation(
-                        "Saga ignored {EventType} ({EventId}) for order {OrderId}: observed status {Observed}, expected {Expected}.",
+                        "Saga ignored {EventType} ({EventId}) for order {OrderId}: observed status {Observed}, expected one of [{ExpectedStatuses}].",
                         fact.EventType,
                         fact.EventId,
                         order.Id,
                         order.Status,
-                        precondition);
+                        string.Join(", ", variants.Select(PreconditionOf)));
                     ignored = true;
                     return;
                 }
 
-                var owedCommand = ApplyStep(step, order, fact);
+                var owedCommand = ApplyStep(matchedStep, order, fact);
 
                 await orders.SaveChangesAsync(ct).ConfigureAwait(false);
 
                 if (owedCommand is { } command)
                 {
-                    var payloadJson = SagaCommandRequestFactory.BuildJson(command, order);
+                    // stock.release's own reason is contextual (R27's
+                    // credit_rejected vs. the operator-cancel compensation's
+                    // order_cancelled) — SagaCommandRequestFactory.BuildJson's
+                    // generic overload deliberately throws for this one
+                    // command; the reason-aware builder derives it from the
+                    // TRIGGERING fact's own eventType (never inferred any
+                    // other way).
+                    var payloadJson = command == SagaCommandKind.StockRelease
+                        ? SagaCommandRequestFactory.BuildStockReleaseJson(order, fact.EventType)
+                        : SagaCommandRequestFactory.BuildJson(command, order);
                     var enqueueOutcome = await commandStore.EnqueueAsync(
                         order.Id.Value,
                         order.OrderReference.Value,

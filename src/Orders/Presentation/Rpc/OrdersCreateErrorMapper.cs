@@ -1,20 +1,25 @@
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
+using OrderToCash.Orders.Domain.Errors;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Presentation.Rpc;
 
 /// <summary>
-/// Translates every failure the <c>orders.create</c> responder can observe
-/// — the application-layer errors of <c>PlaceOrderCommandHandler</c>, the
-/// domain errors of the <c>Order</c> aggregate, the stock-check port's
-/// transport errors, and anything unexpected — into the ONE wire shape
+/// Translates every failure the Orders NATS responder can observe — the
+/// application-layer errors of <c>PlaceOrderCommandHandler</c>, the domain
+/// errors of the <c>Order</c> aggregate, the stock-check port's transport
+/// errors, and anything unexpected — into the ONE wire shape
 /// <c>asyncapi.yaml</c>'s <c>RpcError</c> schema names. Reproduces #7's
 /// mapping (orders_aggregate design.md §9.2, itself citing
 /// <c>apps/orders/src/presentation/rpc-error-mapper.ts:72-75</c>) rather
 /// than inventing a finer-grained one — an RPC reply is on the wire, and the
-/// same wire the API test script asserts against.
+/// same wire the API test script asserts against. Extended by feature
+/// <c>orders_catalog_responder</c> for <c>catalog.reference.list</c>'s own
+/// failures rather than forked into a second mapper, matching
+/// <c>BillingErrorMapper</c>'s own precedent of one shared mapper across
+/// every subject one responder answers.
 /// </summary>
 public static class OrdersCreateErrorMapper
 {
@@ -40,6 +45,37 @@ public static class OrdersCreateErrorMapper
         // BEFORE every other case so it never falls through to the
         // catch-all as an INTERNAL_ERROR.
         InvalidOrdersCreateRequestError e => new RpcErrorPayload("VALIDATION_FAILED", e.Message, OccurredAt: occurredAt),
+
+        // Feature orders_catalog_responder: catalog.reference.list's own
+        // wire-shape refusal (a bad or empty `kinds`), the same
+        // client-caused-refusal treatment as InvalidOrdersCreateRequestError
+        // above.
+        InvalidCatalogReferenceListRequestError e => new RpcErrorPayload("VALIDATION_FAILED", e.Message, OccurredAt: occurredAt),
+
+        // Feature orders_cancel_responder: orders.cancel's own wire-shape
+        // refusal (orderId missing/empty, or reason not the wire's own
+        // operator_cancelled const) — the same client-caused-refusal
+        // treatment as the two validators above.
+        InvalidOrdersCancelRequestError e => new RpcErrorPayload("VALIDATION_FAILED", e.Message, OccurredAt: occurredAt),
+
+        // Feature orders_cancel_responder: orders.cancel's orderId matches
+        // no order in the write model. Distinct type from
+        // ReferenceDataNotFoundError below (a different application-layer
+        // refusal, same wire code) — both collapse to NOT_FOUND.
+        OrderNotFoundError e => new RpcErrorPayload("NOT_FOUND", e.Message, OccurredAt: occurredAt),
+
+        // Feature orders_cancel_responder, acceptance bullet 3: an order in
+        // a terminal state (despatched/invoiced/paid/completed/already-
+        // cancelled) is refused with the wire-documented ORDER_NOT_CANCELLABLE
+        // code, not a 503 — checked BEFORE the generic DomainError case
+        // below, since OrderNotCancellableError IS a DomainError
+        // (IllegalOrderTransitionError) and would otherwise collapse to the
+        // less specific VALIDATION_FAILED.
+        OrderNotCancellableError e => new RpcErrorPayload(
+            "ORDER_NOT_CANCELLABLE",
+            e.Message,
+            new Dictionary<string, object?> { ["status"] = OrderToCash.Orders.Domain.OrderStatuses.ToToken(e.From) },
+            OccurredAt: occurredAt),
 
         StockUnavailableError e => new RpcErrorPayload(
             "STOCK_UNAVAILABLE",

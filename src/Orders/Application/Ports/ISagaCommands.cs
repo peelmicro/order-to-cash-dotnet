@@ -37,6 +37,14 @@ public interface ISagaCommands
     Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
 
     Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The sixth saga command (feature <c>orders_cancel_responder</c>) —
+    /// releases an active credit hold, always with reason
+    /// <c>order_cancelled</c> (the request payload carries no <c>reason</c>
+    /// field at all).
+    /// </summary>
+    Task<CreditReleaseReplyPayload> ReleaseCreditAsync(CreditReleaseRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken);
 }
 
 /// <summary>

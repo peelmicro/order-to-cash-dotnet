@@ -27,6 +27,30 @@ public sealed partial class RpcSubjectsTests
         Assert.Equal(RpcSubjects.StockCheck, address);
     }
 
+    /// <summary>Feature <c>orders_catalog_responder</c>.</summary>
+    [Fact]
+    public void RpcSubjects_CatalogReferenceList_EqualsTheAsyncApiCatalogReferenceListChannelAddress()
+    {
+        var address = ReadChannelAddress("catalogReferenceList");
+        Assert.Equal(RpcSubjects.CatalogReferenceList, address);
+    }
+
+    /// <summary>Feature <c>orders_cancel_responder</c>.</summary>
+    [Fact]
+    public void RpcSubjects_OrdersCancel_EqualsTheAsyncApiOrdersCancelChannelAddress()
+    {
+        var address = ReadChannelAddress("ordersCancel");
+        Assert.Equal(RpcSubjects.OrdersCancel, address);
+    }
+
+    /// <summary>Feature <c>orders_cancel_responder</c> — the sixth saga command, <c>billing.credit.release</c>.</summary>
+    [Fact]
+    public void RpcSubjects_CreditRelease_EqualsTheAsyncApiCreditReleaseChannelAddress()
+    {
+        var address = ReadChannelAddress("creditRelease");
+        Assert.Equal(RpcSubjects.CreditRelease, address);
+    }
+
     private static string ReadChannelAddress(string channelKey)
     {
         var specPath = RepositoryPaths.Find(Path.Combine("specs", "shared", "asyncapi.yaml"));

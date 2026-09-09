@@ -205,6 +205,11 @@ internal static class StandInSagaResponders
         string natsUrl, Func<InvoiceIssueRequestPayload, InvoiceIssueReplyPayload?> answer, CancellationToken cancellationToken) =>
         StandInRpcResponder<InvoiceIssueRequestPayload, InvoiceIssueReplyPayload>.StartAsync(natsUrl, RpcSubjects.InvoiceIssue, answer, cancellationToken);
 
+    /// <summary>The sixth stand-in (feature <c>orders_cancel_responder</c>) — standing in for Billing's own <c>billing.credit.release</c> responder.</summary>
+    public static Task<StandInRpcResponder<CreditReleaseRequestPayload, CreditReleaseReplyPayload>> StartCreditReleaseAsync(
+        string natsUrl, Func<CreditReleaseRequestPayload, CreditReleaseReplyPayload?> answer, CancellationToken cancellationToken) =>
+        StandInRpcResponder<CreditReleaseRequestPayload, CreditReleaseReplyPayload>.StartAsync(natsUrl, RpcSubjects.CreditRelease, answer, cancellationToken);
+
     /// <summary>
     /// Publishes one fact envelope directly to a real Kafka topic, keyed by
     /// <c>correlationId</c> — standing in for the responder's own outbox

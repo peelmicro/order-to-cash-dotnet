@@ -19,6 +19,7 @@ public sealed partial class SagaRpcSubjectsTests
     [InlineData("despatchCreate", nameof(RpcSubjects.DespatchCreate))]
     [InlineData("creditHold", nameof(RpcSubjects.CreditHold))]
     [InlineData("invoiceIssue", nameof(RpcSubjects.InvoiceIssue))]
+    [InlineData("creditRelease", nameof(RpcSubjects.CreditRelease))]
     public void SagaRpcSubjects_EqualTheAddressesTheAsyncApiChannelsDeclare(string channelKey, string subjectConstantName)
     {
         var address = ReadChannelAddress(channelKey);
@@ -29,6 +30,7 @@ public sealed partial class SagaRpcSubjectsTests
             nameof(RpcSubjects.DespatchCreate) => RpcSubjects.DespatchCreate,
             nameof(RpcSubjects.CreditHold) => RpcSubjects.CreditHold,
             nameof(RpcSubjects.InvoiceIssue) => RpcSubjects.InvoiceIssue,
+            nameof(RpcSubjects.CreditRelease) => RpcSubjects.CreditRelease,
             _ => throw new InvalidOperationException($"Unrecognised subject constant name '{subjectConstantName}'."),
         };
 

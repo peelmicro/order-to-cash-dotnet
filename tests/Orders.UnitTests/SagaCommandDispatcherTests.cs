@@ -177,6 +177,31 @@ public sealed class SagaCommandDispatcherTests
         Assert.Empty(store.ParkCalls);
     }
 
+    /// <summary>
+    /// Feature <c>orders_cancel_responder</c> — the sixth <c>InvokeAsync</c>
+    /// switch case: a claimed <see cref="SagaCommandKind.CreditRelease"/> row
+    /// is dispatched through <see cref="ISagaCommands.ReleaseCreditAsync"/>,
+    /// not silently swallowed by the exhaustive switch's default arm.
+    /// </summary>
+    [Fact]
+    public async Task CreditRelease_DispatchesThroughReleaseCreditAsync()
+    {
+        var store = new FakeSagaCommandStore { ClaimResult = BuildClaimedCreditRelease() };
+        var delay = new FakeSagaRetryDelay();
+        var sagaCommands = new FakeSagaCommands(_ => throw new InvalidOperationException("must not be called"))
+        {
+            ReleaseCreditOverride = request => Task.FromResult(new CreditReleaseReplyPayload(true, request.OrderReference, AvailableCreditAfter: 500_00)),
+        };
+
+        var dispatcher = BuildDispatcher(store, sagaCommands, delay);
+
+        await dispatcher.DispatchAsync(_orderId, SagaCommandKind.CreditRelease, CancellationToken.None);
+
+        Assert.Equal(1, sagaCommands.ReleaseCreditCallCount);
+        Assert.Single(store.MarkSentCalls);
+        Assert.Empty(store.ParkCalls);
+    }
+
     private static SagaCommandDispatcher BuildDispatcher(FakeSagaCommandStore store, FakeSagaCommands sagaCommands, FakeSagaRetryDelay delay) =>
         new(store, sagaCommands, delay, Options.Create(new OrdersSagaOptions()), NullLogger<SagaCommandDispatcher>.Instance);
 
@@ -184,6 +209,12 @@ public sealed class SagaCommandDispatcherTests
     {
         var payload = Encoding.UTF8.GetString(RpcJson.Serialize(new StockReserveRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", [])));
         return new SagaCommandRecord(_commandId, _orderId, "ORD-000001", SagaCommandKind.StockReserve, payload, Guid.NewGuid(), 0);
+    }
+
+    private static SagaCommandRecord BuildClaimedCreditRelease()
+    {
+        var payload = Encoding.UTF8.GetString(RpcJson.Serialize(new CreditReleaseRequestPayload("ORD-000001", "RETAILER1", "COMPANY1")));
+        return new SagaCommandRecord(_commandId, _orderId, "ORD-000001", SagaCommandKind.CreditRelease, payload, Guid.NewGuid(), 0);
     }
 
     private sealed class FakeSagaRetryDelay : ISagaRetryDelay
@@ -252,5 +283,16 @@ public sealed class SagaCommandDispatcherTests
         public Task<CreditHoldReplyPayload> HoldCreditAsync(CreditHoldRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        /// <summary>Overridable, unlike the other unused-in-this-file methods — feature <c>orders_cancel_responder</c>'s own dispatcher-mapping test below needs a controllable reply.</summary>
+        public Func<CreditReleaseRequestPayload, Task<CreditReleaseReplyPayload>>? ReleaseCreditOverride { get; set; }
+
+        public int ReleaseCreditCallCount { get; private set; }
+
+        public Task<CreditReleaseReplyPayload> ReleaseCreditAsync(CreditReleaseRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken)
+        {
+            ReleaseCreditCallCount++;
+            return ReleaseCreditOverride is { } overrideFunc ? overrideFunc(request) : throw new NotSupportedException();
+        }
     }
 }

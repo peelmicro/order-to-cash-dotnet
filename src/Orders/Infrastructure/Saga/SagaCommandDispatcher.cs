@@ -163,6 +163,7 @@ public sealed class SagaCommandDispatcher(
         SagaCommandKind.DespatchCreate => sagaCommands.CreateDespatchAsync(RpcJson.Deserialize<DespatchCreateRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
         SagaCommandKind.CreditHold => sagaCommands.HoldCreditAsync(RpcJson.Deserialize<CreditHoldRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
         SagaCommandKind.InvoiceIssue => sagaCommands.IssueInvoiceAsync(RpcJson.Deserialize<InvoiceIssueRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
+        SagaCommandKind.CreditRelease => sagaCommands.ReleaseCreditAsync(RpcJson.Deserialize<CreditReleaseRequestPayload>(System.Text.Encoding.UTF8.GetBytes(payloadJson)), meta, cancellationToken),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unrecognised SagaCommandKind member."),
     };
 }

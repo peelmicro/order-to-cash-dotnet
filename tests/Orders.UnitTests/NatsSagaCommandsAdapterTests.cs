@@ -26,6 +26,7 @@ public sealed class NatsSagaCommandsAdapterTests
     [InlineData(RpcSubjectUnderTest.DespatchCreate)]
     [InlineData(RpcSubjectUnderTest.CreditHold)]
     [InlineData(RpcSubjectUnderTest.InvoiceIssue)]
+    [InlineData(RpcSubjectUnderTest.CreditRelease)]
     public async Task EachMethod_SendsOnItsOwnSubjectAndReturnsTheTypedReply(RpcSubjectUnderTest subjectUnderTest)
     {
         string? observedSubject = null;
@@ -51,6 +52,7 @@ public sealed class NatsSagaCommandsAdapterTests
     [InlineData(RpcSubjectUnderTest.DespatchCreate)]
     [InlineData(RpcSubjectUnderTest.CreditHold)]
     [InlineData(RpcSubjectUnderTest.InvoiceIssue)]
+    [InlineData(RpcSubjectUnderTest.CreditRelease)]
     public async Task FS2_SendsCorrelationAndRequestIdHeaders_OnEverySagaCommandRequest(RpcSubjectUnderTest subjectUnderTest)
     {
         NatsHeaders? observedHeaders = null;
@@ -231,6 +233,7 @@ public sealed class NatsSagaCommandsAdapterTests
         DespatchCreate,
         CreditHold,
         InvoiceIssue,
+        CreditRelease,
     }
 
     private static string ExpectedSubject(RpcSubjectUnderTest subject) => subject switch
@@ -240,6 +243,7 @@ public sealed class NatsSagaCommandsAdapterTests
         RpcSubjectUnderTest.DespatchCreate => RpcSubjects.DespatchCreate,
         RpcSubjectUnderTest.CreditHold => RpcSubjects.CreditHold,
         RpcSubjectUnderTest.InvoiceIssue => RpcSubjects.InvoiceIssue,
+        RpcSubjectUnderTest.CreditRelease => RpcSubjects.CreditRelease,
         _ => throw new ArgumentOutOfRangeException(nameof(subject)),
     };
 
@@ -252,6 +256,7 @@ public sealed class NatsSagaCommandsAdapterTests
         RpcSubjectUnderTest.DespatchCreate => adapter.CreateDespatchAsync(new DespatchCreateRequestPayload("ORD-000001"), meta, CancellationToken.None),
         RpcSubjectUnderTest.CreditHold => adapter.HoldCreditAsync(new CreditHoldRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", new SagaMoney(1000, "EUR")), meta, CancellationToken.None),
         RpcSubjectUnderTest.InvoiceIssue => adapter.IssueInvoiceAsync(new InvoiceIssueRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", []), meta, CancellationToken.None),
+        RpcSubjectUnderTest.CreditRelease => adapter.ReleaseCreditAsync(new CreditReleaseRequestPayload("ORD-000001", "RETAILER1", "COMPANY1"), meta, CancellationToken.None),
         _ => throw new ArgumentOutOfRangeException(nameof(subject)),
     };
 
@@ -264,6 +269,7 @@ public sealed class NatsSagaCommandsAdapterTests
         RpcSubjectUnderTest.DespatchCreate => JsonSerializer.SerializeToUtf8Bytes(new { orderReference = "ORD-000001", despatchReference = "DES-000001", despatchDate = DateTimeOffset.UtcNow, created = true, lines = new object[0] }),
         RpcSubjectUnderTest.CreditHold => JsonSerializer.SerializeToUtf8Bytes(new { outcome = "approved", orderReference = "ORD-000001", currency = "EUR", availableCredit = 5000 }),
         RpcSubjectUnderTest.InvoiceIssue => JsonSerializer.SerializeToUtf8Bytes(new { orderReference = "ORD-000001", invoiceReference = "INV-000001", invoiceDate = DateTimeOffset.UtcNow, currency = "EUR", totalAmount = 1000, status = "issued", created = true }),
+        RpcSubjectUnderTest.CreditRelease => JsonSerializer.SerializeToUtf8Bytes(new { released = true, orderReference = "ORD-000001", creditCode = "CR-000001", currency = "EUR", releasedAmount = 1000 }),
         _ => throw new ArgumentOutOfRangeException(nameof(subject)),
     };
 

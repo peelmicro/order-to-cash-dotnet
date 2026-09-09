@@ -6,7 +6,9 @@ using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 namespace OrderToCash.Orders.Infrastructure.Messaging;
 
 /// <summary>
-/// The five outbound saga commands (design.md §6.1) over the EXISTING
+/// The five outbound saga commands (design.md §6.1) — plus a sixth,
+/// <c>billing.credit.release</c> (feature <c>orders_cancel_responder</c>) —
+/// over the EXISTING
 /// singleton <see cref="INatsConnection"/> — no second NATS connection is
 /// created. One method per subject, reusing
 /// <see cref="NatsStockAvailabilityChecker"/>'s shape verbatim in structure:
@@ -69,6 +71,9 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
 
     public Task<InvoiceIssueReplyPayload> IssueInvoiceAsync(InvoiceIssueRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) =>
         SendAsync<InvoiceIssueRequestPayload, InvoiceIssueReplyPayload>(RpcSubjects.InvoiceIssue, request, meta, cancellationToken);
+
+    public Task<CreditReleaseReplyPayload> ReleaseCreditAsync(CreditReleaseRequestPayload request, SagaCommandMeta meta, CancellationToken cancellationToken) =>
+        SendAsync<CreditReleaseRequestPayload, CreditReleaseReplyPayload>(RpcSubjects.CreditRelease, request, meta, cancellationToken);
 
     /// <summary>
     /// The taxonomy of design.md §6.1's table, in the ONE place it is

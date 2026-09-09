@@ -2,11 +2,14 @@ using Confluent.Kafka;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using NATS.Client.Core;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure;
+using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Infrastructure.Persistence;
+using OrderToCash.Orders.Presentation.Rpc;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.IntegrationTests;
@@ -61,7 +64,107 @@ internal static class SagaIntegrationTestSupport
         var host = builder.Build();
         await host.StartAsync();
 
+        // BackgroundService.StartAsync returns as soon as ExecuteAsync is
+        // SCHEDULED, not once OrdersCreateResponder's three real NATS
+        // subscriptions (orders.create, catalog.reference.list,
+        // orders.cancel — all three started together from the same
+        // Task.WhenAll in ExecuteAsync) have actually landed server-side —
+        // the identical subscribe-side race BillingHostFixture and
+        // FulfillmentHostFixture close for their own responders, and that
+        // OrdersCreateAcceptanceTests.WaitUntilOrdersCreateReachableAsync
+        // closes locally for its own directly-built host. This shared saga
+        // harness never closed it. Every caller of StartHostAsync that
+        // warms up via PlaceOrderAsync (an in-process dispatcher call) first
+        // happens to absorb enough real wall-clock time for the race to
+        // have already resolved by the time it sends a NATS RPC — the one
+        // caller that does not, OrdersCancelAcceptanceTests.UnknownOrderId_RepliesNotFound,
+        // sends its orders.cancel RPC immediately after this method
+        // returns and could lose the race under load, observed live as
+        // NATS.Client.Core.NatsNoRespondersException. Deterministic proof
+        // of the mechanism, and of this fix's own correctness against an
+        // artificially delayed subscriber, is in
+        // OrdersCancelResponderReadinessRaceTests.
+        await using (var probeConnection = new NatsConnection(new NatsOpts { Url = nats.Url }))
+        {
+            await WaitUntilOrdersResponderReachableAsync(probeConnection, CancellationToken.None);
+        }
+
         return (host, connectionString);
+    }
+
+    /// <summary>
+    /// Blocks until a real request/reply round trip to <c>orders.cancel</c>
+    /// succeeds — proof, not inference, that <see cref="OrdersCreateResponder"/>'s
+    /// subscription (and, since all three of its subjects are started
+    /// together from the same <c>ExecuteAsync</c>, its siblings' too) is
+    /// genuinely live server-side. The probe order id is a fresh
+    /// <see cref="Guid"/> no order can ever hold, so the only possible
+    /// success reply is a harmless <c>NOT_FOUND</c> error body — never a
+    /// real cancellation. Retried exactly like
+    /// <c>BillingHostFixture.WaitUntilReachableAsync</c>/
+    /// <c>FulfillmentHostFixture.WaitUntilReachableAsync</c>/
+    /// <c>OrdersCreateAcceptanceTests.WaitUntilOrdersCreateReachableAsync</c>:
+    /// <see cref="NatsNoReplyException"/> and <see cref="NatsNoRespondersException"/>
+    /// both mean "not subscribed yet," not "give up."
+    /// </summary>
+    public static Task WaitUntilOrdersResponderReachableAsync(INatsConnection connection, CancellationToken cancellationToken)
+    {
+        var probe = RpcJson.Serialize(new OrdersCancelRequestPayload(Guid.NewGuid(), OrderReference: null, "operator_cancelled", Note: null));
+        return WaitUntilReachableAsync(connection, RpcSubjects.OrdersCancel, probe, cancellationToken);
+    }
+
+    /// <summary>
+    /// The generic retry/catch loop <see cref="WaitUntilOrdersResponderReachableAsync"/>
+    /// specialises to <c>orders.cancel</c> — extracted so
+    /// <c>OrdersCancelResponderReadinessRaceTests</c> can arm this loop's own
+    /// correctness against a deliberately delayed, synthetic subscriber,
+    /// deterministically, without needing the real production responder.
+    /// Same shape as <c>BillingHostFixture.WaitUntilReachableAsync</c>/
+    /// <c>FulfillmentHostFixture.WaitUntilReachableAsync</c>/
+    /// <c>OrdersCreateAcceptanceTests.WaitUntilOrdersCreateReachableAsync</c>,
+    /// with ONE deliberate strengthening those three precedents do not have:
+    /// a fixed pacing delay after EVERY failed attempt, not only a per-attempt
+    /// request timeout. <see cref="NatsNoRespondersException"/> is the
+    /// server's IMMEDIATE "definitely nobody subscribed" sentinel — it does
+    /// not wait out the request's own timeout — so a loop that paces only via
+    /// that timeout can burn through all its attempts in a few milliseconds
+    /// and give up long before a genuinely slow subscription lands. Found
+    /// arming <c>OrdersCancelResponderReadinessRaceTests</c> against a
+    /// synthetic 300ms-delayed subscriber: the unpaced first draft of this
+    /// loop exhausted 100 attempts and threw in ~1ms. <see cref="NatsNoReplyException"/>
+    /// and <see cref="NatsNoRespondersException"/> both mean "not subscribed
+    /// yet," not "give up."
+    /// </summary>
+    public static async Task WaitUntilReachableAsync(INatsConnection connection, string subject, byte[] probe, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var reply = await connection.RequestAsync<byte[], byte[]>(
+                    subject,
+                    probe,
+                    replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                if (reply.Data is not null)
+                {
+                    return;
+                }
+            }
+            catch (NatsNoReplyException)
+            {
+            }
+            catch (NatsNoRespondersException)
+            {
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"'{subject}' never became reachable.");
     }
 
     /// <summary>Places an order through the REAL <see cref="PlaceOrderCommandHandler"/>, in-process — the caller must already have a stand-in <c>fulfillment.stock.check</c> responder running.</summary>

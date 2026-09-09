@@ -76,6 +76,11 @@ public sealed class SagaCompensationCreditRejectedTests(KafkaContainerFixture ka
             // R27 — issues stock.release, stays stock_reserved.
             await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "stock.release", "sent", _wait);
             Assert.NotNull(observedRelease);
+            // D1 (review round 2): the request's reason is what SagaCommandRequestFactory.StockReleaseReasonFor
+            // derives from the TRIGGERING fact's own eventType (credit.rejected.v1 => credit_rejected) — not a
+            // constant, since this feature's operator-cancel branch feeds credit.released.v1 through the same
+            // factory arm to a different reason. Counting the row is not enough; open it.
+            Assert.Equal("credit_rejected", observedRelease.Reason);
             Assert.Equal("stock_reserved", await SagaIntegrationTestSupport.WaitForOrderStatusAsync(connectionString, mssql, orderId, "stock_reserved", TimeSpan.FromSeconds(1)));
 
             var releasedFactEventId = Guid.NewGuid();

@@ -27,4 +27,13 @@ public static class RpcSubjects
     public const string CreditHold = "billing.credit.hold";
 
     public const string InvoiceIssue = "billing.invoice.issue";
+
+    /// <summary>The sixth saga command subject — feature <c>orders_cancel_responder</c>, <c>asyncapi.yaml</c> <c>channels.creditRelease.address</c>. Caller — orders (<c>CancelOrderCommandHandler</c>, and the fact-driven compensation step it triggers). Responder — billing.</summary>
+    public const string CreditRelease = "billing.credit.release";
+
+    /// <summary>Feature <c>orders_catalog_responder</c> — <c>asyncapi.yaml</c> <c>channels.catalogReferenceList.address</c>. Caller — gateway. Responder — orders.</summary>
+    public const string CatalogReferenceList = "catalog.reference.list";
+
+    /// <summary>Feature <c>orders_cancel_responder</c> — <c>asyncapi.yaml</c> <c>channels.ordersCancel.address</c>. Caller — gateway. Responder — orders.</summary>
+    public const string OrdersCancel = "orders.cancel";
 }

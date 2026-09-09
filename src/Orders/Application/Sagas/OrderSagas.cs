@@ -57,3 +57,22 @@ public sealed class OrderMarkedDespatchedHandler(ISagaCommandSignal signal) : IE
         return Task.CompletedTask;
     }
 }
+
+/// <summary>
+/// The sixth of these classes (feature <c>orders_cancel_responder</c>) — the
+/// SECOND step of the reverse-order-of-acquisition operator-cancel
+/// compensation: <c>credit.release</c> has already been processed (the FIRST
+/// step, enqueued directly by <c>CancelOrderCommandHandler</c>, outside this
+/// fast-path mechanism entirely), and the resulting <c>credit.released.v1</c>
+/// fact's <c>credit_approved</c>/<c>confirmed</c> variant now owes
+/// <c>stock.release</c> — the SAME owed command <see cref="CreditRejectionRecordedHandler"/>
+/// signals for R27's unrelated branch.
+/// </summary>
+public sealed class CreditReleasedForCancellationRecordedHandler(ISagaCommandSignal signal) : IEventHandler<CreditReleasedForCancellationRecorded>
+{
+    public Task HandleAsync(CreditReleasedForCancellationRecorded @event, CancellationToken cancellationToken)
+    {
+        signal.Signal(new SagaCommandRef(@event.OrderId, SagaCommandKind.StockRelease));
+        return Task.CompletedTask;
+    }
+}

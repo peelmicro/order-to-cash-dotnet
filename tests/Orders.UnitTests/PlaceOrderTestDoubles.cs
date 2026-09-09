@@ -84,6 +84,54 @@ internal sealed class FakeOrderReferenceCatalog : IOrderReferenceCatalog
     public Task<IReadOnlyDictionary<string, ProductReference>> FindProductsAsync(IReadOnlyCollection<string> productCodes, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyDictionary<string, ProductReference>>(
             Products.Where(kv => productCodes.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal));
+
+    // Feature orders_catalog_responder: the list-shaped half of this same
+    // port. Kept on the SAME fake class as the find-shaped half above —
+    // proving, at the test-double level too, that ListCatalogReferenceQueryHandlerTests
+    // exercises the identical port PlaceOrderCommandHandlerTests already
+    // exercises, never a second fake.
+    public List<ProductCatalogEntry> ProductEntries { get; } = [];
+
+    public List<PartyCatalogEntry> RetailerEntries { get; } = [];
+
+    public List<PartyCatalogEntry> CompanyEntries { get; } = [];
+
+    public List<CurrencyCatalogEntry> CurrencyEntries { get; } = [];
+
+    public List<bool> ListProductsIncludeDisabledCalls { get; } = [];
+
+    public List<bool> ListRetailersIncludeDisabledCalls { get; } = [];
+
+    public List<bool> ListCompaniesIncludeDisabledCalls { get; } = [];
+
+    public int ListCurrenciesCallCount { get; private set; }
+
+    public Task<IReadOnlyList<ProductCatalogEntry>> ListProductsAsync(bool includeDisabled, CancellationToken cancellationToken)
+    {
+        ListProductsIncludeDisabledCalls.Add(includeDisabled);
+        IReadOnlyList<ProductCatalogEntry> result = includeDisabled ? ProductEntries : ProductEntries.Where(p => p.Enabled).ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task<IReadOnlyList<PartyCatalogEntry>> ListRetailersAsync(bool includeDisabled, CancellationToken cancellationToken)
+    {
+        ListRetailersIncludeDisabledCalls.Add(includeDisabled);
+        IReadOnlyList<PartyCatalogEntry> result = includeDisabled ? RetailerEntries : RetailerEntries.Where(r => r.Enabled).ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task<IReadOnlyList<PartyCatalogEntry>> ListCompaniesAsync(bool includeDisabled, CancellationToken cancellationToken)
+    {
+        ListCompaniesIncludeDisabledCalls.Add(includeDisabled);
+        IReadOnlyList<PartyCatalogEntry> result = includeDisabled ? CompanyEntries : CompanyEntries.Where(c => c.Enabled).ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task<IReadOnlyList<CurrencyCatalogEntry>> ListCurrenciesAsync(CancellationToken cancellationToken)
+    {
+        ListCurrenciesCallCount++;
+        return Task.FromResult<IReadOnlyList<CurrencyCatalogEntry>>(CurrencyEntries);
+    }
 }
 
 /// <summary>Answers a fixed <see cref="StockAvailabilityResult"/> or throws a fixed transport exception — never both — recording every call's arguments for the "checked BEFORE anything is persisted" assertions.</summary>
