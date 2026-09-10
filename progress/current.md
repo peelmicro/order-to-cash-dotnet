@@ -1,7 +1,7 @@
 # Current session
 
 **Feature:** none active
-**Status:** **Phase 13's four features are all `done` — the Gateway is complete and all six services exist.** 43 of 64 features done. Six backlog entries remain filed against phase 13 (**56, 60, 61, 63, 64, 65**), so the phase is open and **no closing assessment is due**. `SA-2` is still with the human. **Nothing has been committed since `4f9746d`** — four features, a whole new service and several `CLAUDE.md` amendments are uncommitted
+**Status:** **PHASE 13 IS CLOSED** — all four features and all six backlog entries `done`. **50 of 70 features done**, all six services exist and the Gateway is complete. Owed: **`SA-2`'s own commit** (applied byte-identically in both repositories), and a wrap-up — nothing committed since `f70b6a1`. Next phase: **14**, reliability and observability, holding backlog ids **62, 67, 68, 69, 70, 71**
 
 ## Goal
 
@@ -37,7 +37,29 @@ Phase 10 wrote its map up front and closed five entries inside one feature, agai
 
 #7 shipped the same gap, disclosed; its reviewer ruled that **the next feature to touch `OrderCancelledPayload` must close it** — which was id 41. Recommendation put to the human: raise `SA-2` (add optional `note` to `OrderCancelledPayload`), back-port to #7 in the same session per `SA-1`'s convention. **Nothing in phase 13 waits on it.**
 
-## The guard-hardening loop — brief it with this, it is the reviewer's own framing
+## The guard-hardening loop — brief it with this
+
+Ids **60, 61, 63, 64, 65** share one cause: *a guard whose assertion cannot detect the defect it names.* Two features have since placed more exhibits on the same axis:
+
+- **upstream** — no assertion at all, hidden by a **missing ledger row** (feature 26's D1);
+- **the middle** — 60/61/63/64/65: a guard exists, names the right thing, cannot detect it;
+- **sideways** — a row that correctly claims **no guard is owed** and then offers evidence that **cannot fire** (feature 26's R2-1).
+
+**The instrument must interrogate ledger rows, not only tests:** *if this row's stated evidence were false, what would turn red, and has anyone seen it?* Because *"no guard is owed here"* is a claim like any other, and its honest justification is never *"the framework handles it"* but **"here is what I did to make it fail, and why nothing could."**
+
+### The three mutation families, and the reviewer's ruling on when each applies
+
+Feature 56 produced a **third** family. The ruling, which the loop's brief should carry verbatim in substance:
+
+**Run all three — and "is the identifier a parameter?" is the wrong discriminator.** At feature 56's D1, deletion could not apply (removing the body is a compile error) and corruption could not (the value is a source constant the test never supplied). **The right predicate is a property of the literal: does it name a member of a set whose other members also exist in this repository?** `MSSQL_DB_ORDERS` has three siblings; `"TrustServerCertificate=True;"` has none, and swapping it degenerates into corruption. Enumerable families here: `MSSQL_DB_*`, `MONGO_DB_*`, the `otc-*` client and consumer-group ids, the `*.v1` event types, the NATS subjects, the Mongo collections.
+
+**Why substitution earns its place: it is the only family whose green suite hides correct behaviour aimed at the wrong target.** Deletion gives missing behaviour, corruption gives wrong data, substitution gives a working system pointed at another service's database — the failure that crosses a service boundary. Both phase-13 instances were exactly that.
+
+**Its false negative, which the instrument must handle:** if the substituted sibling is unset, the read falls back to a default and fails for the *default* reason rather than the *name* reason. **A swap that fails is not evidence until the failure message names what you intended to break.**
+
+### Also fold in, cheaply
+
+`tests/Gateway.UnitTests/GatewayRpcPayloadTests.cs:77` cites a spec **line number** (`` `:1752` ``) beside the schema name. The line is correct today; the schema name is the stable reference and is already there. **Drop the number, keep the name** — one edit, and it removes the only line-citation in the solution.
 
 Ids **60, 61, 63, 64, 65** share one cause: *a guard whose assertion cannot detect the defect it names.* Feature 26 added two more exhibits, and the reviewer placed all three on one axis rather than treating them as a list:
 
@@ -48,6 +70,22 @@ Ids **60, 61, 63, 64, 65** share one cause: *a guard whose assertion cannot dete
 **Ruling on folding D1 in: fold the *question*, leave the *defect* closed.** D1 is finished and armed three ways; reopening it would be re-proving a closed thing.
 
 **The instrument that loop builds must therefore ask of every ledger row, not only every test:** *"if this row's stated evidence were false, what would turn red, and has anyone seen it?"* — because `"no guard is owed here"` is a claim like any other, and its honest justification is never *"the framework handles it"* but **"here is what I did to make it fail, and why nothing could."*
+
+## `SA-2`, and the three decisions that came out of it
+
+**The amendment.** An optional `note` on `OrderCancelledPayload` in `asyncapi.yaml`, byte-identical in both repositories (`sha256` equal, checked by me), history entry in each, registry row in #8's README. **It is uncommitted and must be committed on its own** — an amendment is never bundled.
+
+**Decision 1 — `init.sh` now checks shared-spec parity, and I built it because the spec author caught me asserting it already existed.** It did not. `init.sh` had exactly one mention of `specs/` — the per-feature triple-doc existence check — and **no** reference to a sibling checkout, hash or `cmp`. So the invariant this entire repository rests on, *the shared spec stays copied rather than quietly forked*, was unguarded through two amendments that happened to be applied correctly by hand.
+
+Section **5d** now `cmp`s each shared file against `../order-to-cash-nestjs` (override with `OTC_SIBLING_REPO`). **`test-matrix.md` is exempt by design, not convenience**: it carries each assessment's own Status column, so it is the one file that *must* diverge — and exempting it is what makes the other six checkable, since a check that hashed all seven would fail daily and be switched off within a week. **Armed three ways**: a divergence in a guarded file fails (exit 1, naming the file); a divergence in the exempt file is correctly ignored (exit 0); a missing sibling warns rather than fails (exit 0). Restored `cmp`-clean after each.
+
+**Decision 2 — a reviewer convention, in `CLAUDE.md` and `.claude/agents/reviewer.md`.** A disclosure whose root cause is `specs/shared/` must leave a numbered backlog entry or an `SA-n` proposal; approval prose may **not** discharge it with *"the next feature that touches X."* The evidence is that #7's own closing commit for that feature added **111 lines to `asyncapi.yaml`** and not the three that would have closed the gap — the file was open — and then **39 commits followed without touching it again.** *"The next feature"* named nobody, so nobody was named. Detection was never the failure; routing was.
+
+**Decision 3 — NO cross-document consistency test.** The spec author costed it rather than guessing: 99 asyncapi schemas against 57 openapi, 23 shared names, **zero** property/`required` drift today — and it would have missed **both** real divergences these repositories have, including `SA-2`'s, because `CancelOrderRequest` and `OrderCancelledPayload` share no name with anything opposite. Green on the day it is written and 0-for-2 against the known defect population: that is another guard-that-does-not-guard, and it is rejected on those grounds rather than deferred.
+
+**And a fourth, small one.** The related worry — comments citing spec **line numbers**, which amendments move — was enumerated rather than assumed. The whole solution contains **one** such citation, `tests/Gateway.UnitTests/GatewayRpcPayloadTests.cs:77`'s `` `:1752` ``, and it is **correct** (that line is `lines:` under `Invoice`). No feature is warranted for a population of one. The proportionate fix rides the guard-hardening loop: **drop the line number and keep the schema name**, which is the stable reference and already present.
+
+*Method note, recorded because it is the fourth instance this phase: my first two attempts to enumerate those citations both missed the only one that exists, because I searched for `openapi.yaml:1752` and for the filename adjacent to digits, while the text reads ``openapi.yaml`'s `Invoice` (`:1752`)``. The predicate was wrong twice before it was right.*
 
 ## Settled this session — do not re-open
 

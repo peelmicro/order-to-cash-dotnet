@@ -108,6 +108,33 @@ public sealed class OrderReadModelMapperTests
         Assert.Single(detail.Events);
     }
 
+    /// <summary>
+    /// Backlog id 65 — the sibling of review defect D5 (D5 was scoped to
+    /// <c>ToOrderSummary</c> at <c>OrderReadModelMapper.cs:76</c> and
+    /// thereby missed <c>ToOrderDetail</c>'s own totals mapping at
+    /// <c>:84</c>, disclosed as the reviewer's own under-scoping). No prior
+    /// test asserted <c>ToOrderDetail</c>'s <c>Totals</c> against
+    /// non-colliding values at all — <see cref="ToOrderDetail_AlwaysReturnsADocument_PlaceholderOrNot"/>
+    /// nulls <c>Totals</c> out entirely, and
+    /// <see cref="ToOrderDetail_PassesTheTimelineThroughUnmodified_IncludingCausationId"/>
+    /// never reads <c>detail.Totals</c> — so a transposition of
+    /// <c>InitialAmount</c>/<c>InitialDiscount</c> in <c>ToOrderDetail</c>
+    /// passed every test in this file. <see cref="CompleteDocument"/>
+    /// already carries three DISTINCT, non-zero values (124950, 700,
+    /// 124250) — the same fixture D5 fixed — so reusing it here is what
+    /// makes this a provenance check, not mere non-collision.
+    /// </summary>
+    [Fact]
+    public void ToOrderDetail_ReturnsTotals_WithAllThreeFieldsCarriedFromTheDocument()
+    {
+        var detail = OrderReadModelMapper.ToOrderDetail(CompleteDocument());
+
+        Assert.NotNull(detail.Totals);
+        Assert.Equal(124950, detail.Totals!.InitialAmount);
+        Assert.Equal(700, detail.Totals.InitialDiscount);
+        Assert.Equal(124250, detail.Totals.TotalAmount);
+    }
+
     [Fact]
     public void ToOrderDetail_PassesTheTimelineThroughUnmodified_IncludingCausationId()
     {

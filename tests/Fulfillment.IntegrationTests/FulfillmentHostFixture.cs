@@ -59,18 +59,41 @@ internal static class FulfillmentHostFixture
         return (host, connectionString);
     }
 
-    private static async Task WaitUntilReachableAsync(NatsConnection connection)
-    {
-        var probe = RpcJson.Serialize(new StockCheckRequestPayload("NATS-PROBE-CONNECTIVITY", [new StockCheckRequestLine("NATS-PROBE-CONNECTIVITY", 1)]));
+    private static Task WaitUntilReachableAsync(NatsConnection connection) =>
+        WaitUntilReachableAsync(
+            connection,
+            StockSubjects.StockCheck,
+            RpcJson.Serialize(new StockCheckRequestPayload("NATS-PROBE-CONNECTIVITY", [new StockCheckRequestLine("NATS-PROBE-CONNECTIVITY", 1)])),
+            CancellationToken.None);
 
+    /// <summary>
+    /// Backlog id 63 — extracted to a generic, subject/probe-parameterised
+    /// form (the exact shape <c>SagaIntegrationTestSupport.WaitUntilReachableAsync</c>
+    /// already established in Orders.IntegrationTests, ported here because
+    /// this fixture lives in a separate test assembly) so
+    /// <c>FulfillmentResponderReadinessRaceTests</c> can arm this loop's own
+    /// pacing deterministically, against a synthetic delayed subscriber, the
+    /// same way <c>OrdersCancelResponderReadinessRaceTests</c> proves the
+    /// Orders precedent. Previously this loop retried 100 times with NO
+    /// delay between attempts, paced only by the per-attempt request
+    /// timeout — <see cref="NatsNoRespondersException"/> is the server's
+    /// IMMEDIATE "definitely nobody subscribed" sentinel, so it does not
+    /// wait out that timeout, and the whole budget could expire in about a
+    /// millisecond.
+    /// </summary>
+    internal static async Task WaitUntilReachableAsync(NatsConnection connection, string subject, byte[] probe, CancellationToken cancellationToken)
+    {
         for (var attempt = 0; attempt < 100; attempt++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 var reply = await connection.RequestAsync<byte[], byte[]>(
-                    StockSubjects.StockCheck,
+                    subject,
                     probe,
-                    replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) });
+                    replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
 
                 if (reply.Data is not null)
                 {
@@ -83,9 +106,11 @@ internal static class FulfillmentHostFixture
             catch (NatsNoRespondersException)
             {
             }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken).ConfigureAwait(false);
         }
 
-        throw new TimeoutException("The Fulfillment responder never became reachable.");
+        throw new TimeoutException($"'{subject}' never became reachable.");
     }
 
     /// <summary>A raw request/reply over NATS — the production caller's own shape, never a hand-wired dispatcher call.</summary>

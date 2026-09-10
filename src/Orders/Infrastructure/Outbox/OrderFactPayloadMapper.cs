@@ -65,7 +65,8 @@ public sealed class OrderFactPayloadMapper : IFactPayloadMapper
         CompanyCode: cancelled.CompanyCode,
         CancellationReason: CancellationReasons.ToToken(cancelled.CancellationReason),
         CancelledAt: cancelled.CancelledAt,
-        CompensationSteps: [.. cancelled.CompensationSteps.Select(ToCompensationStep)]);
+        CompensationSteps: [.. cancelled.CompensationSteps.Select(ToCompensationStep)],
+        Note: cancelled.Note);
 
     private static Contracts.Facts.OrderLine ToOrderLine(OrderPlacedLine line) => new(
         ProductCode: line.ProductCode,

@@ -74,7 +74,7 @@ public sealed class GatewayRpcPayloadTests
     /// D8, "a comment, not a change"): it carries an extra <c>lines</c>
     /// member Billing's own responder never sends and
     /// <c>asyncapi.yaml</c>'s <c>InvoiceView</c> does not declare — legal
-    /// because <c>openapi.yaml</c>'s <c>Invoice</c> (`:1752`) DOES declare
+    /// because <c>openapi.yaml</c>'s <c>Invoice</c> schema DOES declare
     /// an optional <c>lines</c>, and the property round-trips to
     /// <c>null</c>/omitted rather than reaching the wire. So the spec's own
     /// property set must be a SUBSET of the type's, with the singleton

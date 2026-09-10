@@ -270,6 +270,45 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
+section "5d. Shared-spec parity with #7"
+
+# THE CLAIM THIS WHOLE REPOSITORY RESTS ON, and until phase 13 nothing checked
+# it. `specs/shared/` is copied from #7, not written, and the benchmark is only
+# honest if it STAYS copied: a silent edit here turns "we reused the spec" into
+# "we forked it and did not notice". Two cross-repository amendments (SA-1,
+# SA-2) were applied correctly by hand — and nothing would have said otherwise
+# if they had not been. Found while raising SA-2, when a coordinator asserted
+# this check existed and the spec author enumerated init.sh and showed it did
+# not.
+#
+# test-matrix.md is EXEMPT by design, not by convenience: it carries each
+# assessment's own per-requirement Status column, so it is the one file that
+# MUST diverge. Exempting it is what makes the other six checkable — a check
+# that hashed all seven would fail every day and be switched off within a week.
+SIBLING="${OTC_SIBLING_REPO:-../order-to-cash-nestjs}"
+if [ ! -d "$SIBLING/specs/shared" ]; then
+  warn "sibling checkout not found at $SIBLING — shared-spec parity unchecked (set OTC_SIBLING_REPO to enable)"
+else
+  PARITY_DIFF=0
+  PARITY_SEEN=0
+  for f in specs/shared/*; do
+    b=$(basename "$f")
+    [ "$b" = "test-matrix.md" ] && continue
+    PARITY_SEEN=$((PARITY_SEEN + 1))
+    if [ ! -f "$SIBLING/specs/shared/$b" ]; then
+      fail "specs/shared/$b has no counterpart in $SIBLING — the shared spec has forked"
+      PARITY_DIFF=$((PARITY_DIFF + 1))
+    elif ! cmp -s "$f" "$SIBLING/specs/shared/$b"; then
+      fail "specs/shared/$b DIFFERS from $SIBLING — a spec amendment must be applied to both repos in the same session, with an SA-n id"
+      PARITY_DIFF=$((PARITY_DIFF + 1))
+    fi
+  done
+  if [ "$PARITY_DIFF" -eq 0 ]; then
+    ok "shared spec byte-identical to #7 across $PARITY_SEEN file(s); test-matrix.md exempt (per-assessment Status column)"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────
 section "6. Repository state"
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then

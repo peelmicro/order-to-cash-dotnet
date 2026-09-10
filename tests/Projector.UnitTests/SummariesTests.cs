@@ -148,6 +148,26 @@ public sealed class SummariesTests
         Assert.Equal("Order ORD-000001 cancelled (buyer_requested)", result.Summary);
         Assert.Equal("buyer_requested", result.Detail!["cancellationReason"]);
         Assert.Equal(payload.CompensationSteps, result.Detail["compensationSteps"]);
+        Assert.False(result.Detail.ContainsKey("note")); // SA-2: no key at all when the fact carries none.
+    }
+
+    /// <summary>
+    /// SA-2/feature <c>operator_note_reaches_the_timeline</c> bullet 1's
+    /// summary-builder half: a fact carrying a note populates the
+    /// <c>note</c> detail key with the EXACT text — bracketed to the value
+    /// the test itself supplies, not merely asserted present (CLAUDE.md's
+    /// provenance rule; also the corruption half of bullet 4's arming, since
+    /// a wrong value here fails this same assertion).
+    /// </summary>
+    [Fact]
+    public void SA2_OrderCancelled_WithANote_PopulatesTheNoteDetailKeyWithTheExactText()
+    {
+        const string note = "Buyer changed their mind before despatch.";
+        var payload = new OrderCancelledPayload("ORD-000001", "RET01", "COM01", "operator_cancelled", DateTimeOffset.UtcNow, [], note);
+
+        var result = Summaries.OrderCancelled(payload);
+
+        Assert.Equal(note, result.Detail!["note"]);
     }
 
     [Fact]

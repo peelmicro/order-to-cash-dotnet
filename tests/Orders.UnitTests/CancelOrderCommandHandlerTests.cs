@@ -49,6 +49,30 @@ public sealed class CancelOrderCommandHandlerTests
     }
 
     /// <summary>
+    /// SA-2/feature <c>operator_note_reaches_the_timeline</c> bullet 1's
+    /// handler half — the immediate branch threads
+    /// <see cref="CancelOrderCommand.Note"/> onto the raised
+    /// <see cref="OrderCancelled"/> domain event, bracketed to the exact
+    /// text supplied (provenance, not merely non-null).
+    /// </summary>
+    [Fact]
+    public async Task Placed_CancelsImmediately_ThreadsTheSuppliedNoteOntoOrderCancelled()
+    {
+        var order = OrderTestData.PlacedOrder();
+        var orders = new FakeOrderRepository();
+        orders.Added.Add(order);
+        var store = new FakeSagaCommandStore();
+        var signal = new FakeSagaCommandSignal();
+        var handler = BuildHandler(orders, store, signal, OrderTestData.Now.AddMinutes(5));
+        const string note = "Cancelled at buyer's written request.";
+
+        await handler.HandleAsync(new CancelOrderCommand(order.Id.Value, Note: note), CancellationToken.None);
+
+        var cancelled = Assert.Single(order.DomainEvents.OfType<OrderToCash.Orders.Domain.Events.OrderCancelled>());
+        Assert.Equal(note, cancelled.Note);
+    }
+
+    /// <summary>
     /// Acceptance bullet 3, exhaustive over every status <c>Order.Cancel</c>
     /// itself refuses (including an ALREADY-cancelled order) — a domain
     /// error, never a 503, and the order is left byte-identical: no new

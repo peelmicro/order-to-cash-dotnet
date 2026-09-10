@@ -196,6 +196,125 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
         Assert.False(headers.TryGetLastBytes("traceparent", out _));
     }
 
+    /// <summary>
+    /// SA-2/feature <c>operator_note_reaches_the_timeline</c> bullet 1's
+    /// producer half, over the real broker: an <c>order.cancelled.v1</c>
+    /// raised with a note produces a wire payload whose <c>note</c> key
+    /// carries the exact supplied text — bracketed to a value the test
+    /// itself supplies, not merely asserted non-empty (CLAUDE.md's
+    /// provenance rule), and the corruption half of bullet 4's arming
+    /// (a wrong value must fail this same assertion, not merely "a" value).
+    /// </summary>
+    [Fact]
+    public async Task SA2_PublishedCancelledEnvelope_CarriesTheNoteKeyWithTheExactSuppliedText()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_sa2note_{Guid.NewGuid():N}");
+        await using var db = mssql.CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+        await OrderPersistenceTestSupport.SeedReferenceDataAsync(db);
+
+        var clock = new FakeClock(FakeClock.UtcNowToTheMillisecond());
+        var order = OrderPersistenceTestSupport.Place(new OrderNumber(9001), clock.UtcNow, UniqueId.New());
+        const string note = "Cancelled — duplicate order, confirmed with buyer.";
+        order.Cancel(CancellationReason.OperatorCancelled, [], clock.UtcNow, UniqueId.New(), note: note);
+
+        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
+        var unitOfWork = new EfCoreUnitOfWork(db);
+        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+
+        using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
+        using var publisher = new KafkaFactPublisher(producer);
+        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), NullLogger<OutboxRelay>.Instance);
+        await relay.RunOnceAsync(CancellationToken.None);
+
+        using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
+        {
+            BootstrapServers = kafka.BootstrapServers,
+            GroupId = $"sa2note-{Guid.NewGuid():N}",
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+        }).Build();
+        consumer.Subscribe(OrdersFactTopic.Name);
+
+        // The aggregate's own DomainEvents still carries BOTH order.placed.v1
+        // (from Place, above) and order.cancelled.v1 at this point — both
+        // are written to the outbox and published under the SAME key
+        // (aggregateId) — so the match must select on eventType too, not
+        // key alone, or this could read back the wrong fact.
+        ConsumeResult<string, byte[]>? consumed = null;
+        for (var attempt = 0; attempt < 200 && consumed is null; attempt++)
+        {
+            var candidate = consumer.Consume(TimeSpan.FromSeconds(15));
+            Assert.NotNull(candidate);
+            if (candidate!.Message.Key == order.Id.Value.ToString() &&
+                JsonDocument.Parse(candidate.Message.Value).RootElement.GetProperty("eventType").GetString() == "order.cancelled.v1")
+            {
+                consumed = candidate;
+            }
+        }
+
+        Assert.NotNull(consumed);
+        using var document = JsonDocument.Parse(consumed!.Message.Value);
+        var payload = document.RootElement.GetProperty("payload");
+        Assert.Equal(note, payload.GetProperty("note").GetString());
+    }
+
+    /// <summary>
+    /// SA-2 bullet 2's producer half: a cancellation raised with NO note
+    /// (every fact-driven, saga-decided branch, and an operator cancel that
+    /// supplied none) omits the <c>note</c> key from the wire entirely —
+    /// never <c>"note":null</c> — so a pre-SA-2 consumer parsing the same
+    /// stream sees no new required field.
+    /// </summary>
+    [Fact]
+    public async Task SA2_PublishedCancelledEnvelope_OmitsTheNoteKeyWhenNoneWasSupplied()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_sa2nonote_{Guid.NewGuid():N}");
+        await using var db = mssql.CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+        await OrderPersistenceTestSupport.SeedReferenceDataAsync(db);
+
+        var clock = new FakeClock(FakeClock.UtcNowToTheMillisecond());
+        var order = OrderPersistenceTestSupport.Place(new OrderNumber(9002), clock.UtcNow, UniqueId.New());
+        order.Cancel(CancellationReason.StockRejected, [], clock.UtcNow, UniqueId.New());
+
+        var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
+        var unitOfWork = new EfCoreUnitOfWork(db);
+        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+
+        using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
+        using var publisher = new KafkaFactPublisher(producer);
+        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), NullLogger<OutboxRelay>.Instance);
+        await relay.RunOnceAsync(CancellationToken.None);
+
+        using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
+        {
+            BootstrapServers = kafka.BootstrapServers,
+            GroupId = $"sa2nonote-{Guid.NewGuid():N}",
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+        }).Build();
+        consumer.Subscribe(OrdersFactTopic.Name);
+
+        // Same reasoning as the sibling test above: both order.placed.v1 and
+        // order.cancelled.v1 publish under the same key, so the eventType
+        // must be part of the match.
+        ConsumeResult<string, byte[]>? consumed = null;
+        for (var attempt = 0; attempt < 200 && consumed is null; attempt++)
+        {
+            var candidate = consumer.Consume(TimeSpan.FromSeconds(15));
+            Assert.NotNull(candidate);
+            if (candidate!.Message.Key == order.Id.Value.ToString() &&
+                JsonDocument.Parse(candidate.Message.Value).RootElement.GetProperty("eventType").GetString() == "order.cancelled.v1")
+            {
+                consumed = candidate;
+            }
+        }
+
+        Assert.NotNull(consumed);
+        using var document = JsonDocument.Parse(consumed!.Message.Value);
+        var payload = document.RootElement.GetProperty("payload");
+        Assert.False(payload.TryGetProperty("note", out _));
+    }
+
     private static async Task SeedGoldenReferenceDataAsync(OrdersDbContext db)
     {
         var now = DateTime.UtcNow;

@@ -1,5 +1,9 @@
+using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using OrderToCash.Contracts.Envelopes;
+using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Wire;
 using OrderToCash.Projector.Infrastructure.Persistence;
 using OrderToCash.Projector.IntegrationTests.TestSupport;
 using Xunit;
@@ -75,5 +79,78 @@ public sealed class TimelineProjectionTests(MongoContainerFixture mongoFixture, 
         await runtime.ApplyAsync(EnvelopeBuilders.StockReserved(correlationId: orderId, occurredAt: t0).ToDomain());
         var afterOlder = await DocAsync(runtime, orderId);
         Assert.Equal("2026-01-01T00:10:00.000Z", afterOlder["updatedAt"].AsString); // unchanged.
+    }
+
+    /// <summary>
+    /// SA-2/feature <c>operator_note_reaches_the_timeline</c> bullet 1, over
+    /// a REAL Mongo document: a cancellation carrying a note produces a
+    /// timeline entry whose <c>detail.note</c> is the exact supplied text —
+    /// bracketed to a value the test itself supplies (CLAUDE.md provenance
+    /// rule), and the corruption half of bullet 4's arming (a corrupted
+    /// wire value fails this same assertion, not merely a deleted one).
+    /// </summary>
+    [Fact]
+    public async Task SA2_ACancellationCarryingANote_ProducesATimelineEntryWhoseDetailNoteIsTheExactText()
+    {
+        await using var runtime = await ProjectionRuntime.CreateAsync(mongoFixture, natsFixture, "sa2-note");
+        var orderId = Guid.NewGuid();
+        const string note = "Buyer requested cancellation before despatch.";
+
+        var envelope = EnvelopeBuilders.OrderCancelled(correlationId: orderId, note: note);
+        await runtime.ApplyAsync(envelope.ToDomain());
+
+        var doc = await DocAsync(runtime, orderId);
+        var entry = doc["events"].AsBsonArray[0].AsBsonDocument;
+        Assert.Equal("order.cancelled.v1", entry["eventType"].AsString);
+        Assert.Equal(note, entry["detail"]["note"].AsString);
+    }
+
+    /// <summary>
+    /// SA-2 bullet 2, over a REAL Mongo document: a saga-decided
+    /// cancellation (no note supplied — every fact-driven cancellation
+    /// branch) leaves the <c>note</c> key absent from <c>detail</c>
+    /// entirely, never present as BSON null.
+    /// </summary>
+    [Fact]
+    public async Task SA2_ACancellationCarryingNoNote_ProducesATimelineEntryWithNoNoteKeyInDetail()
+    {
+        await using var runtime = await ProjectionRuntime.CreateAsync(mongoFixture, natsFixture, "sa2-no-note");
+        var orderId = Guid.NewGuid();
+
+        var envelope = EnvelopeBuilders.OrderCancelled(correlationId: orderId, cancellationReason: "stock_rejected", note: null);
+        await runtime.ApplyAsync(envelope.ToDomain());
+
+        var doc = await DocAsync(runtime, orderId);
+        var entry = doc["events"].AsBsonArray[0].AsBsonDocument;
+        Assert.False(entry["detail"].AsBsonDocument.Contains("note"));
+    }
+
+    /// <summary>
+    /// SA-2 bullet 3, over a REAL Mongo document: a replay of an envelope
+    /// genuinely predating this field (the raw JSON has no <c>note</c> key
+    /// at all, not a payload built then stripped) still projects
+    /// successfully — the exact concern the acceptance bullet names.
+    /// </summary>
+    [Fact]
+    public async Task SA2_ReplayingAnOldEnvelopeWithNoNoteKeyAtAll_StillProjects()
+    {
+        await using var runtime = await ProjectionRuntime.CreateAsync(mongoFixture, natsFixture, "sa2-old-envelope");
+        var orderId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        var oldEnvelopeJson =
+            "{\"eventId\":\"" + eventId + "\",\"eventType\":\"order.cancelled.v1\",\"aggregateId\":\"" + orderId + "\"," +
+            "\"correlationId\":\"" + orderId + "\",\"causationId\":\"" + Guid.NewGuid() + "\",\"occurredAt\":\"2025-06-01T00:00:00.000Z\"," +
+            "\"payload\":{\"orderReference\":\"ORD-000001\",\"retailerCode\":\"RET01\",\"companyCode\":\"COM01\"," +
+            "\"cancellationReason\":\"stock_rejected\",\"cancelledAt\":\"2025-06-01T00:00:00.000Z\",\"compensationSteps\":[]}}";
+        var envelope = JsonSerializer.Deserialize<Envelope<OrderCancelledPayload>>(oldEnvelopeJson, JsonWire.Options)!;
+        Assert.Null(envelope.Payload.Note); // genuinely absent, not present-and-null.
+
+        await runtime.ApplyAsync(envelope.ToDomain());
+
+        var doc = await DocAsync(runtime, orderId);
+        var entry = doc["events"].AsBsonArray[0].AsBsonDocument;
+        Assert.Equal("order.cancelled.v1", entry["eventType"].AsString);
+        Assert.False(entry["detail"].AsBsonDocument.Contains("note"));
     }
 }

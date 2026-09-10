@@ -11,6 +11,7 @@ namespace OrderToCash.Gateway.UnitTests;
 /// keys — the same three names #7's <c>jwt.config.ts</c> reads — appeared
 /// nowhere in code, <c>.env.example</c> or <c>docker-compose.infra.yml</c>.
 /// </summary>
+[Collection(GatewayEnvironmentVariableTestCollection.Name)]
 public sealed class JwtOptionsTests
 {
     [Fact]

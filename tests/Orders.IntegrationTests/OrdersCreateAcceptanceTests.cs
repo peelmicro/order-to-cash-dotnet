@@ -645,8 +645,18 @@ public sealed class OrdersCreateAcceptanceTests(NatsContainerFixture nats, MsSql
     /// every other test's stand-in construction happened to supply, and
     /// failed once under load with <c>NatsNoRespondersException</c> — on
     /// <c>orders.create</c> itself, not on the stock check under test.
+    ///
+    /// Backlog id 63 — this used to be its own unpaced 100-attempt loop
+    /// (paced only by the per-attempt request timeout), which
+    /// <see cref="NatsNoRespondersException"/>'s IMMEDIATE nature let expire
+    /// in about a millisecond. Delegates to
+    /// <see cref="SagaIntegrationTestSupport.WaitUntilReachableAsync"/> —
+    /// the SAME generic retry/catch loop, already paced and already proven
+    /// deterministically correct by
+    /// <c>OrdersCancelResponderReadinessRaceTests</c> — rather than carrying
+    /// a second, separately-armed copy of the identical mechanism.
     /// </summary>
-    private static async Task WaitUntilOrdersCreateReachableAsync(INatsConnection caller, CancellationToken cancellationToken)
+    private static Task WaitUntilOrdersCreateReachableAsync(INatsConnection caller, CancellationToken cancellationToken)
     {
         var probe = new OrdersCreateRequestPayload(
             RequestId: null,
@@ -657,32 +667,7 @@ public sealed class OrdersCreateAcceptanceTests(NatsContainerFixture nats, MsSql
             OrderDiscount: null,
             Notes: null);
 
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                var reply = await caller.RequestAsync<byte[], byte[]>(
-                    RpcSubjects.OrdersCreate,
-                    RpcJson.Serialize(probe),
-                    replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                if (reply.Data is not null)
-                {
-                    return;
-                }
-            }
-            catch (NatsNoReplyException)
-            {
-            }
-            catch (NatsNoRespondersException)
-            {
-            }
-        }
-
-        throw new TimeoutException("orders.create responder never became reachable.");
+        return SagaIntegrationTestSupport.WaitUntilReachableAsync(caller, RpcSubjects.OrdersCreate, RpcJson.Serialize(probe), cancellationToken);
     }
 
     private IHost BuildHost(string connectionString, int? stockCheckTimeoutMs = null)

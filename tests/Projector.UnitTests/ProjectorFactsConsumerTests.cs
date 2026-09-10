@@ -47,6 +47,46 @@ public sealed class ProjectorFactsConsumerTests
         Assert.IsType(FactCatalog.PayloadTypesByEventType[eventType], command.Envelope.Payload);
     }
 
+    /// <summary>
+    /// Backlog id 60 — <c>BuildMessage</c>'s previous default gave
+    /// <c>AggregateId</c> and <c>CorrelationId</c> the SAME guid, which
+    /// would have let <see cref="ProjectorFactsConsumer"/>'s hand-written
+    /// <see cref="OrderToCash.Projector.Domain.FactEnvelope"/> construction
+    /// read <c>envelope.AggregateId</c> instead of <c>envelope.CorrelationId</c>
+    /// and still pass — including <c>PR37</c> below, whose own inline
+    /// envelope carried the same collision. <c>FactEnvelope</c> never copies
+    /// <c>AggregateId</c> at all (it is dropped by design — the domain works
+    /// from <c>CorrelationId</c>, saga.md's <c>correlationId = orderId</c>),
+    /// so there is nothing to assert it against; giving it its own distinct
+    /// value here is what makes the <c>CorrelationId</c> assertion below a
+    /// genuine provenance check rather than one two source fields could
+    /// satisfy by accident (CLAUDE.md's "Assert.NotEqual can never prove
+    /// provenance" rule).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllFourteenFacts))]
+    public async Task EachOfTheFourteenFacts_DispatchedEnvelopeCopiesEveryFieldFromTheSource(string eventType)
+    {
+        var eventId = Guid.NewGuid();
+        var aggregateId = Guid.NewGuid();
+        var correlationId = Guid.NewGuid();
+        var causationId = Guid.NewGuid();
+        var occurredAt = new DateTimeOffset(2026, 1, 2, 3, 4, 5, 678, TimeSpan.Zero);
+
+        var payload = BuildPayload(eventType);
+        var message = BuildMessage(eventType, payload, eventId, aggregateId, correlationId, causationId, occurredAt);
+        var dispatcher = new RecordingDispatcher();
+
+        await RunOneMessageAsync(message, dispatcher);
+
+        var command = Assert.IsType<ProjectFactCommand>(Assert.Single(dispatcher.SentCommands));
+        Assert.Equal(eventId, command.Envelope.EventId);
+        Assert.Equal(eventType, command.Envelope.EventType);
+        Assert.Equal(correlationId, command.Envelope.CorrelationId);
+        Assert.Equal(causationId, command.Envelope.CausationId);
+        Assert.Equal(occurredAt, command.Envelope.OccurredAt);
+    }
+
     [Fact]
     public async Task PR3_AMalformedEnvelope_IsLoggedAndAcknowledged_WithNoWriteAndNoSignal()
     {
@@ -78,15 +118,20 @@ public sealed class ProjectorFactsConsumerTests
     public async Task PR37_EveryEnvelopeFieldReachesTheDispatchedFactVerbatim_SentinelPerField()
     {
         var sentinelEventId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var sentinelAggregateId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
         var sentinelCorrelationId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
         var sentinelCausationId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
         var sentinelOccurredAt = new DateTimeOffset(2032, 1, 2, 3, 4, 5, 678, TimeSpan.Zero);
         const string eventType = "order.placed.v1";
 
+        // sentinelAggregateId is DISTINCT from sentinelCorrelationId (backlog
+        // id 60) even though FactEnvelope never carries AggregateId — a
+        // collision here would let ProjectorFactsConsumer read the wrong
+        // source field and still pass the CorrelationId assertion below.
         var envelope = new Envelope<object>(
             sentinelEventId,
             eventType,
-            sentinelCorrelationId,
+            sentinelAggregateId,
             sentinelCorrelationId,
             sentinelCausationId,
             sentinelOccurredAt,
@@ -124,10 +169,28 @@ public sealed class ProjectorFactsConsumerTests
         _ => new { },
     };
 
-    private static FactStreamMessage BuildMessage(string eventType, object payload)
+    private static FactStreamMessage BuildMessage(
+        string eventType,
+        object payload,
+        Guid? eventId = null,
+        Guid? aggregateId = null,
+        Guid? correlationId = null,
+        Guid? causationId = null,
+        DateTimeOffset? occurredAt = null)
     {
-        var correlationId = Guid.NewGuid();
-        var envelope = new Envelope<object>(Guid.NewGuid(), eventType, correlationId, correlationId, Guid.NewGuid(), DateTimeOffset.UtcNow, payload);
+        // Each field defaults to its OWN distinct Guid.NewGuid()/UtcNow —
+        // never shared across two positional slots — so a test that asserts
+        // one field's value cannot pass merely because two source fields
+        // happened to collide (backlog id 60; see
+        // EachOfTheFourteenFacts_DispatchedEnvelopeCopiesEveryFieldFromTheSource).
+        var envelope = new Envelope<object>(
+            eventId ?? Guid.NewGuid(),
+            eventType,
+            aggregateId ?? Guid.NewGuid(),
+            correlationId ?? Guid.NewGuid(),
+            causationId ?? Guid.NewGuid(),
+            occurredAt ?? DateTimeOffset.UtcNow,
+            payload);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonWire.Options);
         return new FactStreamMessage("otc.orders.facts.v1", 0, 0, bytes);
     }

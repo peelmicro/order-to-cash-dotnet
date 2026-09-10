@@ -191,49 +191,25 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
         _cts.Dispose();
     }
 
-    private async Task WaitUntilSubscribedAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// A real round trip, not a fixed delay: repeatedly ping the subject
+    /// until SOME reply arrives, which is only possible once
+    /// SubscribeAsync's server-side registration has actually landed.
+    ///
+    /// Backlog id 63 — this used to be its own unpaced 100-attempt loop
+    /// (paced only by the per-attempt request timeout), which
+    /// <see cref="NatsNoRespondersException"/>'s IMMEDIATE nature let expire
+    /// in about a millisecond. Delegates to
+    /// <see cref="SagaIntegrationTestSupport.WaitUntilReachableAsync"/> —
+    /// the SAME generic retry/catch loop, already paced and already proven
+    /// deterministically correct by
+    /// <c>OrdersCancelResponderReadinessRaceTests</c> — rather than carrying
+    /// a second, separately-armed copy of the identical mechanism.
+    /// </summary>
+    private Task WaitUntilSubscribedAsync(CancellationToken cancellationToken)
     {
-        // A real round trip, not a fixed delay: repeatedly ping the subject
-        // with a short per-attempt timeout until SOME reply arrives, which
-        // is only possible once SubscribeAsync's server-side registration
-        // has actually landed.
         var probe = new StockCheckRequestPayload("PROBE", [new StockCheckRequestLine("PROBE", 1)]);
-
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                var reply = await _connection.RequestAsync<byte[], byte[]>(
-                    RpcSubjects.StockCheck,
-                    RpcJson.Serialize(probe),
-                    replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                if (reply.Data is not null)
-                {
-                    return;
-                }
-            }
-            catch (NatsNoReplyException)
-            {
-                // Nobody subscribed yet (or answered this particular probe
-                // in time) — retry. Empirically, NATS.Client.Core 3.2.0
-                // throws rather than returning a NatsMsg with a null Data.
-            }
-            catch (NatsNoRespondersException)
-            {
-                // The immediate 503 sentinel — this connection's own
-                // SubscribeAsync has been called but the server has not yet
-                // finished registering it (SubscribeAsync's own doc: the
-                // subscription is not established until the enumerable is
-                // iterated, and iteration races the server's processing of
-                // the SUB message). Retry exactly like a reply timeout.
-            }
-        }
-
-        throw new TimeoutException("Stand-in Fulfillment responder never became reachable.");
+        return SagaIntegrationTestSupport.WaitUntilReachableAsync(_connection, RpcSubjects.StockCheck, RpcJson.Serialize(probe), cancellationToken);
     }
 
     private async Task RunAsync(Func<StockCheckRequestPayload, byte[]?> rawAnswer, CancellationToken cancellationToken)

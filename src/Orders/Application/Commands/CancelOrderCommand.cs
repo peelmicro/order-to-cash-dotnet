@@ -15,12 +15,13 @@ namespace OrderToCash.Orders.Application.Commands;
 /// <see cref="CancellationReason.OperatorCancelled"/>.
 /// </summary>
 /// <remarks>
-/// <paramref name="Note"/> is carried because the wire declares it, but it
-/// cannot reach the read-model timeline in this deployment — see
-/// <c>CancelOrderCommandHandler</c>'s own remarks and
-/// <c>progress/impl_orders_cancel_responder.md</c>'s disclosure. It is not
-/// silently dropped; it is genuinely unused past this record, and that is
-/// stated here rather than left to look like an oversight.
+/// <paramref name="Note"/> reaches the read-model timeline (feature
+/// <c>operator_note_reaches_the_timeline</c>, SA-2) via
+/// <c>CancelOrderCommandHandler</c>'s immediate/<c>default</c> branch —
+/// see that handler's own remarks for the one class of branch (the
+/// compensation-then-fact-driven cancel completing later, via
+/// <c>SagaFactHandler</c>) where a supplied note still does not reach it,
+/// because neither release request payload on that path carries one.
 /// </remarks>
 public sealed record CancelOrderCommand(Guid OrderId, string? Note) : ICommand<CancelOrderResult>;
 

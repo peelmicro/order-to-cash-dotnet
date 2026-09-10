@@ -61,17 +61,28 @@ namespace OrderToCash.Orders.Application.Commands;
 /// already-owed forward command, both genuine saga-design decisions outside
 /// this feature's bounded scope.
 ///
-/// <b>The operator note (acceptance bullet 4) does not reach the read-model
-/// timeline.</b> <c>asyncapi.yaml</c>'s <c>OrderCancelledPayload</c> — the
-/// ONLY fact the read-model's projector ever builds an <c>order.cancelled</c>
-/// timeline entry from — carries no <c>note</c>/<c>operatorNote</c> field at
-/// all (confirmed by reading the schema; <c>specs/shared/</c> is read-only,
-/// and the Projector service is out of this feature's scope besides). This
-/// handler therefore does not thread <see cref="CancelOrderCommand.Note"/>
-/// anywhere observable — carrying it further would look like progress
-/// toward the criterion without being any, so it stops here, disclosed
-/// rather than silently dropped. #7 found the identical gap for the
-/// identical reason, independently, on the identical spec section.
+/// <b>The operator note (acceptance bullet 4) now reaches the read-model
+/// timeline — feature <c>operator_note_reaches_the_timeline</c>, SA-2.</b>
+/// <c>asyncapi.yaml</c>'s <c>OrderCancelledPayload</c> gained an optional
+/// <c>note</c> field (SA-2, the amendment this feature's brief exists to
+/// apply), so this handler now threads <see cref="CancelOrderCommand.Note"/>
+/// into <see cref="Order.Cancel"/> on the ONE branch that cancels
+/// synchronously and has a note to carry — the immediate/<c>default</c>
+/// branch below (an order in <c>placed</c>, or a terminal status
+/// <see cref="Order.Cancel"/> itself refuses). The
+/// <c>stock_reserved</c>/<c>credit_approved</c>/<c>confirmed</c> branches
+/// enqueue compensation and let a LATER, fact-driven call to
+/// <see cref="Order.Cancel"/> (<c>SagaFactHandler</c>, an independent
+/// transaction reacting to <c>stock.released.v1</c>/<c>credit.released.v1</c>)
+/// complete the cancellation — that caller has no access to this request's
+/// note (neither <c>StockReleaseRequestPayload</c> nor
+/// <c>CreditReleaseRequestPayload</c> carries one; SA-2 touched only
+/// <c>OrderCancelledPayload</c>), so a note supplied against one of those
+/// two branches is genuinely NOT carried to the eventual timeline entry —
+/// disclosed here rather than silently dropped, and out of this feature's
+/// bounded scope (its brief names <c>src/Contracts/</c>, <c>src/Orders/</c>,
+/// <c>src/Projector/</c> and does not ask for a new wire field on either
+/// release request).
 /// </remarks>
 public sealed class CancelOrderCommandHandler(
     IUnitOfWork unitOfWork,
@@ -110,7 +121,7 @@ public sealed class CancelOrderCommandHandler(
                         // Order.Cancel's own OrderNotCancellableError, left
                         // uncaught so it reaches the responder's error mapping.
                         var now = clock.UtcNow;
-                        order.Cancel(CancellationReason.OperatorCancelled, compensationSteps: [], now, UniqueId.New());
+                        order.Cancel(CancellationReason.OperatorCancelled, compensationSteps: [], now, UniqueId.New(), note: command.Note);
                         await orders.SaveChangesAsync(ct).ConfigureAwait(false);
                         return new CancelOrderResult(order.Id.Value, order.OrderReference.Value, order.Status, order.CancellationReason, CompensationPlanned: []);
                 }

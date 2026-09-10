@@ -62,6 +62,15 @@
          own header comment for why not). Test-only: src/Gateway never
          references src/Projector. -->
     <ProjectReference Include="../../src/Projector/Projector.csproj" />
+    <!-- feature operator_note_reaches_the_timeline's own named risk —
+         acceptance bullet 1 requires the note to be proved "end to end
+         through the real Gateway, Orders, Kafka and Projector"
+         (OperatorNoteReachesTimelineEndToEndTests). Boots Orders' REAL,
+         unmodified OrdersHost (real MS-SQL, real NATS, real Kafka) —
+         the identical precedent the two ProjectReferences above already
+         establish for Fulfillment and Projector. Test-only: src/Gateway
+         never references src/Orders. -->
+    <ProjectReference Include="../../src/Orders/Orders.csproj" />
   </ItemGroup>
 
 </Project>

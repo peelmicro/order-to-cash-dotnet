@@ -1940,3 +1940,181 @@ That reframes the guard recommendation above. Between *"the two halves of the sp
 
 ---
 
+## Feature 56 — `composition_root_env_reads_are_unguarded` (phase 13, `sdd: false`) — 2026-09-09
+
+**Effort:** **2 implementation passes (round-1 build + round-2 fix) + 2 review passes — REJECTED at round 1 (D1 blocking, D2 and D3 required corrections), APPROVED at round 2.** No spec session, no human gate (`sdd: false`); the specification of record is `feature_list.json` id 56's four acceptance bullets, whose population the leader **scope-corrected at dispatch** from *"every read in every `Program.cs`"* to *"every read reachable from a composition root, wherever it physically lives."* Wall-clock from artefact mtimes and birth times (local CEST, 2026-09-09), bracketed at the start by the leader's session-file rewrite at **14:29:01**:
+
+- **Round-1 implementation ≈14:29 → ≈15:14, ≈45 min.** `src/Fulfillment/Program.cs` 14:34:45 through `src/Gateway/Program.cs` 14:35:45 (six composition roots reduced to a single delegating call each), `GatewayEnvironmentVariableTestCollection.cs` 14:39:42 with the three pre-existing Gateway test classes joined to it 14:39:45–14:39:52, `ProjectorProgramConfiguration.cs` born 14:45:24, `BillingProgramConfiguration.cs` born 14:47:34, the ten new test files 14:51:21, then nine armed mutations across two families and a full container-backed `quality.sh`. **Its close cannot be read directly**: the round-2 pass rewrote `progress/impl_composition_root_env_reads.md` and `feature_list.json`, so both now carry 15:57 birth times and round 1's own report timestamp is gone. Bracketed above by the review's first probe backup at 15:24.
+- **Review round 1 ≈15:15 → 15:37:07, ≈22 min. REJECTED.** Eighteen mutation probes in three families (15:24–15:29), of which **sixteen bit and two were green**; the population independently re-derived by a *complement* sweep — searching for every env-read mechanism **other** than `Environment.GetEnvironmentVariable` — which returned two hits, both doc comments, making the 102-read narrow sweep safe to use; and `Program.<Main>$` verified by compiling a minimal reproduction of the pre-refactor shape and reflecting over the emitted assembly rather than accepting the claim.
+- **Round-2 fix ≈15:38 → 15:57:37, ≈20 min.** `tests/Seed.UnitTests/SeedDbConfigTests.cs` 15:40:59 (+3 tests), its three arming backups 15:43:23, a full `quality.sh` whose 18 `coverage.cobertura.xml` files span 15:47:31–15:55:21, `feature_list.json` 15:57:10, the report 15:57:37. **No source file changed** — the fix is three assertions, two report corrections and two re-derived counts.
+- **Review round 2 ≈15:58 → ≈16:15, ≈17 min. APPROVED.** Five mutations of my own, a `--no-incremental` solution rebuild, the eleven container-free projects at **1226/0/0**, `./init.sh` exit 0, both #7 counts re-derived against the NestJS checkout, and a three-way proof that the round disturbed nothing else.
+
+**Traceable total ≈1 h 46 min** across two implementation passes and two review passes.
+
+**#7 has no counterpart, and that is a measurement rather than an aside.** Verified as a search result, not a reading: #7's `feature_list.json` holds **41** features and **zero** of them match any of `process.env`, `env read`, `environment variable`, `composition root`, `main.ts` or `config loader`. #7 never filed this entry, has no `main.spec.ts`, and unit-tests **7 of its 29** `*.config.ts` loaders. So the whole 1 h 46 min is **#8-only process cost**, with no ratio to report. What it bought, concretely:
+
+1. **Six composition roots became testable objects.** Each service's inline `configure` lambda — unreachable, because C# top-level statements compile into `Program.<Main>$` and the lambda into `Program+<>c.<<Main>$>b__0_0`, names no C# source can write — was extracted verbatim into a `public static class <Service>ProgramConfiguration`. **82 of the 102 environment reads moved from provably unguarded to provably guarded**: feature 20's review had deleted one and watched the whole suite stay green; sixteen independent mutations in three families are now all red.
+2. **One live defect risk, found and closed.** `SeedDbConfig.BuildConnectionString` is the single read of the 102 whose variable **name is a parameter rather than a literal**, and the round-1 tests supplied that parameter themselves — so they could only ever prove the function reads whatever name the *test* handed it. Repointing `OrdersSeedWriter` at `MSSQL_DB_BILLING` left `Seed.UnitTests` **41/41 green** while `dotnet run --project src/Seed` would have written the Orders fixtures into the Billing database. Round 2 pins all three writers' own variable **and** default; the same mutation now takes down a named test, verified by the reviewer's own hand.
+3. **Twenty design-time reads knowingly excluded, and routed rather than narrated.** The four `IDesignTimeDbContextFactory` classes have zero call sites and are reached only by `dotnet ef`'s reflection, so no composition-root path can drive them — the exclusion is correct. But `dotnet ef` is tooling this team runs, so those reads are **live and unguarded**, and an exclusion is a decision rather than an absence. Filed as **id 67**, with acceptance requiring the *name* to be guarded and not merely the reading mechanism — the lesson D1 paid for.
+
+**A third mutation family, and it is the transferable artefact.** Deletion and corruption could neither of them have caught D1: deleting `ConnectionString()`'s body is a compile error, and a corruption probe *"only bites on a field whose expected value the test supplied"*, which a constant in the source never is. **Substitution — replacing a valid identifier with a valid sibling — is a distinct family**, and the discriminator for when it applies is a property of the literal, not of the parameter list: *does this literal name a member of a set whose other members also exist in this repository?* `MSSQL_DB_ORDERS` has three siblings; `"TrustServerCertificate=True;"` has none, and substituting it degenerates into corruption. It earns its place because it is the only one of the three whose green suite hides **correct behaviour aimed at the wrong target** — deletion produces missing behaviour, corruption produces wrong data, substitution produces a working system pointed at another service's database, topic or subject. With six services each owning a database, a topic set and a subject set, that is the failure that crosses a service boundary. Recommended into the guard-hardening loop's brief (ids 60/61/63/64/65), with its own false-negative caution: an instrument that swaps blindly must check the failure message names what it intended, or a sibling left unset will fail for the *default* reason rather than the *name* reason.
+
+**Finding R2-5, non-blocking, open at approval and routed.** The new guards pin which variable each seed writer reads; nothing pins which connection string each writer's `DbContext` is opened with. Substituting `billingConnectionString` at `src/Seed/Presentation/SeedRunner.cs:26` leaves `Seed.UnitTests` **44/44** and produces D1's exact consequence one hop further up. `Seed.IntegrationTests` cannot see it either — it builds its own connection strings and never calls `SeedRunner.RunAsync`. This is inside the residual the feature honestly discloses (the delegating line in each `Program.cs`, plus `Seed/Program.cs → SeedRunner.RunAsync()`, are guarded by nothing; replacing `configure: BillingProgramConfiguration.Configure` with a no-op leaves `Billing.UnitTests` 232/232 green), but it is the first **demonstrated** consequence of that residual, so it leaves a numbered entry rather than a paragraph — `composition_root_delegation_and_wiring_are_unguarded`, ten sites, for the leader to file. *"A later feature will close it"* is the sentence this repository has already paid for twice.
+
+**The ledger's most useful row was the one written second.** Round 1's row 1 said *"#7 never solved this"* and was half wrong — three Orders integration specs **do** `import { createOrdersNatsMicroserviceOptions } from './main'` (`orders-create-wire.integration.spec.ts:66`, `orders-create-idempotent-replay.integration.spec.ts:40`, `catalog-reference-list-wire.integration.spec.ts:42`), and a fourth non-spec importer exists at `test-support/saga-integration-harness.ts:32`. Re-framed, it states the real property difference: **#7's composition root is an ES module whose named exports a test can `import`; #8's is `Program.<Main>$`, which exports nothing nameable** — so #8 had to hand-build the seam that #7 got from the language, and the one line that still crosses it is as untestable as #7's own never-exported `bootstrap()` (`billing:13`, `gateway:14`, `orders:49`, `fulfillment:13`, `projector:14`, `notifications:10`). That is a better justification for the refactor than scoring #7, and it is what #9 should inherit. One refinement the row still owes: **only 1 of #7's 6 `main.ts` files exports anything at all** (`grep -rn "^export" apps/*/src/main.ts` → two hits, both `apps/orders/src/main.ts:30` and `:36`), so the language supplied the capability universally and #7 used it once.
+
+**Both counts in round 1's ledger were written rather than read, and both were wrong in the same direction** — *"six of roughly twenty"* config-loader specs is **7 of 29**, and *"zero tests drive any `main.ts`"* is **three do**. Neither changed a conclusion, and that is the point: `CLAUDE.md`'s *"a count is a reading"* fired here on figures nobody would have challenged, and the second error was hiding the ledger's best row underneath it.
+
+**Advisory, carried:** the round-2 report states that the three `*SeedWriter.cs` files are **untracked** and reasons from that to which restore check applies. They are tracked (`git ls-files --error-unmatch` returns all three), so `git diff` was available and is the stronger check — the behaviour was right and the reasoning inverted. `CLAUDE.md`'s arming clause turns on trackedness, and a wrong belief about which files are tracked is the precondition of both `git checkout --` incidents this repository has recorded.
+
+**Verdict:** APPROVED — see `progress/review_composition_root_env_reads.md` (two rounds). **This does not close phase 13**: ids **60, 61, 63, 64, 65** (one guard-hardening loop) and **66** (`operator_note_reaches_the_timeline`) remain, plus the newly routed delegation-and-wiring entry, and **`SA-2` is still uncommitted** — applied byte-identically to both repositories, and owed a commit of its own.
+
+---
+
+## Guard-hardening loop — ids 60, 61, 63, 64, 65 (phase 13, one loop, five entries)
+
+**Five backlog entries closed together, sharing one cause: a guard whose assertion cannot detect the defect it names.** All five `sdd: false`, none a port of a #7 mechanism, so no ledger was owed.
+
+- **60** — envelope fixtures gave two fields the same value, so a positional transposition passed. Two `BuildMessage` fixtures rebuilt with independently-random defaults; two new theories (10 Orders facts, 14 Projector facts) assert every envelope field through to the dispatched command.
+- **61** — three of four `.OrderBy` calls in `EfCoreOrderReferenceCatalog` were unguarded. Kept and guarded, with the deviation from the entry's *"delete rather than guard"* bullet stated and accepted.
+- **63** — six readiness loops paced by a timeout that never elapses. Four delegated to the one already-armed implementation; two given deterministic race suites of the shape `OrdersCancelResponderReadinessRaceTests` already used. **The population grew four → six → eight across three rounds, every step because somebody enumerated instead of assuming**; the 7th and 8th are routed as id 69.
+- **64** — the `BC23` wire-key theory compared a hand-typed list against the spec and never against the record. Ported Billing's reflection-over-the-record form. **Rejected in round 1**: its completeness claim was prose, it was false, and the record it hid (`SagaMoney`, backing `asyncapi.yaml`'s `Money` schema) was unguarded — proved live at 361/361 green.
+- **65** — `ToOrderDetail`'s totals were mapped correctly and asserted by nothing. Three assertions.
+
+### Effort record
+
+| Pass | Window (mtimes, this machine) | Duration |
+|---|---|---|
+| Implementation, round 1 | 16:16 → 17:11 | ≈55 min |
+| Review, round 1 — **REJECTED** | 17:15 → 18:03 | ≈48 min |
+| Implementation, round 2 | 18:05 → 18:45 | ≈40 min |
+| Review, round 2 — **APPROVED** | 18:47 → 19:20 | ≈33 min |
+
+**4 sessions, ≈2 h 56 min wall-clock.** Suite at close: **1610 passed, 0 failed, 0 skipped** across 18 projects (1252 container-free + 358 integration), reconciling to the reviewer's round-1 **1609** by exactly the one theory case round 2 adds. **Fourteen mutation probes** across the two review rounds, in all three families.
+
+**#7 filed none of these five entries.** There is no counterpart feature, no counterpart effort, and therefore no ratio — the whole ≈2 h 56 min is **#8-only process cost**, and it belongs in the benchmark as an absolute rather than a comparison.
+
+### What it bought, and the two things it did not
+
+**Bought:** six guards that provably could not fail now do — two envelope-provenance theories, three catalog-ordering guards, a totals transposition, and the `BC23` theory twice over (a removed field, an added undeclared property, and a substituted schema name). Eight readiness loops paced, two of them proved by a **change of kind** (a 300 ms delayed subscriber: unpaced loses every time, paced wins every time) rather than by observing that flakes stopped. And one dropped `Money` row restored — the only one of the five that was hiding an actual unguarded contract field.
+
+**Not bought, and routed rather than narrated:** two Gateway readiness loops are paced by nothing that can fail (**id 69**, filed), and the retyped-key-list shape id 64 retired is **still live in three more files** — `tests/Orders.UnitTests/OrdersCancelPayloadTests.cs:66`, `tests/Orders.UnitTests/CatalogReferenceListPayloadTests.cs:101` and `tests/Fulfillment.UnitTests/StockRpcPayloadTests.cs:162` — measured twice at full green (an undeclared property on `OrdersCancelReplyPayload` leaves `Orders.UnitTests` 362/362; the same on `DespatchCreateReplyPayload` leaves `Fulfillment.UnitTests` 124/124). Proposed as a numbered entry for the leader to file.
+
+### Was one loop for five entries right? Yes — with one condition, and this is the transferable result
+
+The loop's own blocking defect was an instance of the class the five entries share, which reads like an argument that grouping diluted attention. **It is the opposite, once you look at what found it.** D1 was found by a mutation, and what turned that mutation into proof was the **control** — the identical mutation on Billing's `CreditMoney`, which failed because Billing carries the row Orders had dropped. That control was nearly free only because Billing's form was already in context as id 64's own porting source. Run as five separate loops, the id-64 reviewer would have had a green Orders result and no cheap way to tell *"my mutation is wrong"* from *"the row is missing"* — and a green suite recorded as a pass is the likeliest outcome. Grouping also amortised the protocol: one arming discipline, one forced-rebuild lesson learned on id 61's false pass and applied to all five, one count reconciliation, one review.
+
+**The condition is enumeration.** Not one of the five entries was enumerated **as a class** across the repository. Id 63's population grew twice for exactly that reason; id 64 fixed one of four instances of its own shape, and the command that found the other three took under a second. So for #9: **when a loop's theme is a defect class, its first task is one repository-wide enumeration of that class, as a search result, before any fix is written.** Grouping made the loop cheaper and gave it its sharpest instrument; only enumeration would have made it complete.
+
+**A second, smaller lesson worth carrying.** Both rounds' reports contained a claim nobody read back: round 1 recorded `Projector.UnitTests` as 31 (a filtered class run written into a project-total cell, hiding a 74-test gap) and explicitly declined to reconcile against the baseline; round 2 promised a `quality.sh` result *"recorded below"* and never recorded it (the runs did happen — two green logs). `CLAUDE.md`'s *"a count is a reading"* applies to a table row as much as to a total, and a placeholder is a claim with no reading at all.
+
+**Verdict:** APPROVED — see `progress/review_guard_hardening.md` (two rounds). **This does not close phase 13**: id **66** (`operator_note_reaches_the_timeline`, the bullet `SA-2` made satisfiable) remains `pending`, and **`SA-2` is applied byte-identically in both repositories and still owes its own commit** and its README entry. `progress/current.md` is left naming a feature that is now `done`, which `init.sh` §4 flags — a leader-owned line to repoint at id 66.
+
+---
+
+## operator_note_reaches_the_timeline (id 66, phase 13) — 2026-09-09 — **the acceptance bullet two assessments disclosed and neither closed, closed; approved first time, the only feature in phase 13 that was**
+
+**Effort:** **1 implementer pass + 1 review pass — APPROVED at round 1, no fix round.** No spec session, no human gate (`sdd: false`); the specification of record is `feature_list.json` id 66's four acceptance bullets plus `specs/shared/asyncapi.yaml`'s `OrderCancelledPayload` **as amended by SA-2**. Wall-clock from artefact mtimes (local CEST, 2026-09-09), bracketed at the start by the leader's session-file rewrite at **20:21:54**:
+
+| Pass | Window | Duration |
+|---|---|---|
+| Implementation | 20:22 → 21:08:07 (`progress/impl_…md` complete) | ≈46 min |
+| Review — **APPROVED** | 21:10 → ≈21:50 | ≈40 min |
+
+**2 sessions, ≈1 h 28 min wall-clock.** **Zero new NuGet packages.** Suite at close, the reviewer's own `./quality.sh` (exit 0): **1623 passed, 0 failed, 0 skipped** across 18 test projects — reconciling to the 1610 baseline plus exactly the 13 tests this feature adds, and summed off the run's own 18 `Passed!` lines rather than read from the report.
+
+**#7 has no counterpart, and that is the measurement.** #7 disclosed this bullet and shipped without it; its reviewer wrote that *"the next feature that touches `OrderCancelledPayload` must close it"*, and `asyncapi.yaml` was never opened again — 39 commits, including a whole audit phase. So there is no ratio. The whole ≈1 h 28 min (plus SA-2's own amendment session, booked separately) is what closing a two-assessment-old contract defect cost, and it is the **cheapest feature in phase 13** by wall-clock and the only one approved first time.
+
+**What it bought.** `openapi.yaml` and `asyncapi.yaml` now agree for the first time in the trilogy on the immediate cancellation branch: the operator's note travels `POST /orders/{id}/cancel` → NATS `orders.cancel` → `CancelOrderCommand` → `Order.Cancel` → `OrderCancelled` → outbox → real Kafka `order.cancelled.v1` → `ProjectorHost` → `events[].detail.note` on a real Mongo document. Six production lines of substance across three services, thirteen tests, and a **four-service end-to-end test** — real Gateway, real `OrdersHost`, real Kafka, real `ProjectorHost`, no stand-in on any hop — which is the first time in this repository that `Gateway → Orders → Kafka → Projector → Mongo` has been walked in one process for a *write* path.
+
+**What it cost that #7 never paid: SA-2 had to come first.** This repository's `specs/shared/` is read-only without a human-gated amendment, which is stricter than #7's rule and is the reason #8's feature 41 could only re-disclose. The amendment is three lines and it needed its own session, its own cross-repository application and its own `init.sh` check — which did not exist until raising SA-2 revealed that the parity claim the whole assessment rests on was unverified. **The stricter rule made the fix slower and made the gap findable.** Both halves belong in the benchmark.
+
+### Verification, in one place
+
+Nine independent mutation probes by the reviewer, **all three families**, all killed by a named test: deletion at `Order.cs` (two tests died) and at `OrderFactPayloadMapper.cs` (real MS-SQL + real Kafka); corruption at `Summaries.cs`, at the mapper on the wire, and again through the whole four-service chain; **substitution** of the detail key for a real sibling (`note` → `notes`) and of the responder's argument for a real sibling field of the same type on the same payload (`request.Note` → `request.OrderReference`); and two optionality probes — writing the key unconditionally, and making it mandatory on the wire.
+
+**The last of those is the one worth carrying.** The dispatching brief's sharpest worry was that nulls are omitted here, so *no serialised-key assertion can see a missing optional field* — a guard that cannot fail. It can: forcing `note` to serialise when null killed **three** guards in two projects, including `GoldenEnvelopeParityTests.OrderCancelledV1_…`, the oracle built from #7's twelve captured envelopes. The parity oracle earned its keep on a feature written four phases after it was built.
+
+### Two findings, both routed, neither blocking
+
+**The residual on bullet 1 — and it is smaller and cheaper than either side thought.** The note reaches the timeline only on the **immediate** branch. `stock_reserved`, `credit_approved` and `confirmed` enqueue compensation and let a **later** transaction (`SagaFactHandler.cs:167`) raise the cancellation, and that caller has no note. Bullet 1 does not qualify the starting state, so this is a **partial closure**, disclosed precisely — in the handler's own `<remarks>`, not only in the report.
+
+The implementer, and the dispatching brief, both put the root cause in `specs/shared/`: closing it would mean a `note` on `StockReleaseRequestPayload` or `CreditReleaseRequestPayload`, i.e. an `SA-3`. **The review found that is one route and not the cheap one.** `specs/shared/` does not prescribe the `saga_commands` table at all — five hits for `saga_commands|saga command` across `specs/shared/*.md`, every one prose about progression, DLQ policy or the `order.saga_failed.v1` fact, none a column. And **#7 already carries the note there**: `apps/orders/src/application/cancel-order.handler.ts:272-283` puts it into the saga command's `triggeringEventEnvelope`, on both compensation branches (`:175`, `:234`), persisted at `saga-commands.schema.ts:61`. So the residual closes inside `src/Orders/` with **no wire change and no amendment**, reading the note back and passing it to the `note:` parameter this feature already added. **Routed as backlog entry `operator_note_survives_the_compensation_branches` (id 71)** — not as a sentence, which is the whole point of the rule this feature exists to honour.
+
+**A second, larger finding fell out of checking that premise.** #8's `saga_commands` stores `triggering_event_id` and nothing else — seven hits for `TriggeringEvent` in `src/Orders`, all the id; `SagaCommand.Payload` is the *outgoing* request; `ProcessedEvent` is id-only. **Orders keeps the triggering fact's bytes nowhere.** R29's outstanding dead-letter clause (`test-matrix.md:127`, owned by feature 27 `observability_reliability`) requires republishing that fact **verbatim**, which #7 does from exactly the column #8 lacks (`saga-first-park-dead-letter-handler.ts:44`). One column serves both this and entry 71.
+
+**The ledger.** The report wrote *"None. #7 never built this."* The **conclusion is right** and the review verified it independently rather than accepting it — #7 has no `note` on `OrderCancelledPayload` (`asyncapi.types.ts:780-786`) and none in its projector's cancel detail (`summaries.ts:94`), so the three hops this feature adds have no counterpart and no row is owed. **The sentence is overstated**, and it was written from `CLAUDE.md`'s own prose about #7's 39 commits rather than from #7's source — which is precisely the failure mode `CLAUDE.md` names for a row's history half, arriving this time in a claim that *no* row is owed. The correction is one paragraph, and its content is the evidence for entry 71.
+
+**And the guard enumeration the report skipped, run at review.** Ten `note` hits across #7's spec files; six are prose. The four that supply a cancellation note — `orders-cancel.integration.spec.ts:308`, `gateway/orders.integration.spec.ts:234`, `cancel-order.handler.spec.ts:135` and `:195` — **assert nothing about the note**, and the only two `triggeringEventEnvelope` assertions in #7 (`:178`, `:220`) check `eventType` alone. **So #7's own note retention is unguarded in #7, and nothing was dropped in translation here** — which breaks phase 13's run of three consecutive rejections for exactly that.
+
+### Notes for #9
+
+- **The bullet is closable, and the expensive-looking route is not the one to take.** #9 will inherit `openapi.yaml`'s promise and `asyncapi.yaml`'s `note` field. The immediate branch is five hops and cheap. The compensation branches need one implementation-owned column in the saga command store — read #7's `cancel-order.handler.ts:272-283` first, not the wire schemas.
+- **A negative ledger claim is still a claim about #7's source.** *"#7 never built this"* is as much a citation obligation as *"#7 relied on X"*, and it is the sentence most likely to be written from a summary. Both the conclusion and the evidence were checkable in one `grep` each.
+- **Test whether an optional field is optional by making it mandatory.** Asserting that a key is absent when the value is null is a guard that also passes when the field does not exist. The mutation that has teeth is forcing the key to be written — and here it recruited the golden-envelope oracle, which is the strongest instrument in this repository for wire questions.
+
+---
+
+## Phase 13 closing assessment — six services complete, ≈1.38× on the comparable work, and a phase whose defining defect class was found five times and shipped zero times
+
+Phase 13 delivered **the sixth and last service** and closed **four features, one shared amendment, one composition-root feature and a five-entry guard-hardening loop**. Every feature was `sdd: false`, so there was no spec phase and no human gate on any of them; `feature_list.json`'s acceptance bullets plus `specs/shared/` were the specification of record throughout.
+
+### 1. The clock, with #8-only work separated from the comparable work
+
+| Work item | #8 | passes | #7 | ratio |
+|---|---|---|---|---|
+| id 40 `orders_catalog_responder` | ≈1 h 45 min | 4 | ≈56 min | **≈1.88×** |
+| id 41 `orders_cancel_responder` | ≈3 h 20 min | 5 | ≈2 h 45 min | **≈1.21×** |
+| id 25 `gateway_rest_auth` | ≈2 h 35 min | 4 | ≈2 h 45 min | **≈0.94×** |
+| id 26 `gateway_sse_push` | ≈3 h 04 min | 4 | ≈1 h 22 min | **≈2.24×** |
+| **Comparable subtotal** | **≈10 h 44 min** | **17** | **≈7 h 48 min** | **≈1.38×** |
+| SA-2 (shared amendment) | n/a — no code, no tests | — | none | **#8-only** |
+| id 56 `composition_root_env_reads_are_unguarded` | ≈1 h 46 min | 4 | none | **#8-only** |
+| ids 60/61/63/64/65 guard-hardening loop | ≈2 h 56 min | 4 | none | **#8-only** |
+| id 66 `operator_note_reaches_the_timeline` | ≈1 h 28 min | 2 | none | **#8-only** |
+| **#8-only subtotal** | **≈6 h 10 min** | **10** | — | — |
+| **Phase total** | **≈16 h 54 min** | **27** | — | — |
+
+**≈36% of phase 13's wall-clock has no #7 counterpart at all.** That is the highest #8-only share of any phase in this build, and it is not overhead — it is three of the four things phase 13 produced that #7 does not have: guards that provably fail, a composition root a test can reach, and an acceptance criterion #7 disclosed and abandoned.
+
+**On the comparable ≈1.38×, the honest split is two causes and one confound.** The confound first, because it is the largest single line and it is not a stack difference: **container time**. A `Gateway.IntegrationTests` assembly run is minutes against real NATS/Kafka/Mongo/MS-SQL where #7's equivalents were Vitest against lighter fixtures, and phase 13's reviews spent a lot of runs there. The two real causes: **rework** (six rejections across seven work items — see §3), and **more built** than #7 built at the same seams, itemised per feature in the entries above and not re-argued here.
+
+**id 25 is the number to keep.** The Gateway — #7's most-rejected feature, rejected twice there — came in at **≈0.94×** and won on passes, 4 against 6. When #8 is not paying for a dropped guard or a wrong ledger row, reuse is at parity or better on the biggest feature in the phase.
+
+### 2. The defining defect class, and the case for the instruments
+
+Phase 13's rejections were not varied. **Five of the six were the same shape: a guard that could not fail.**
+
+| Feature | The guard that could not fail | How it was found |
+|---|---|---|
+| id 40 | #7's `includeDisabled` controller assertion, dropped in translation — forcing the flag to a constant left the suite green | reviewer mutation |
+| id 41 | #7's compensation-reason assertion, dropped — transposing the two arms left 337 unit + 6 container tests green | reviewer mutation |
+| id 25 | a route sweep that selected its candidate set **by the metadata under test**, so a violation removed itself from the population | reviewer mutation |
+| id 26 | a hand-built SSE teardown with no ledger row and no guard — deleting `Unsubscribe` left 193/193 and 10/10 green | reviewer mutation |
+| id 56 | a config helper taking the env-var **name** as a parameter — repointing the Orders seed writer at `MSSQL_DB_BILLING` left `Seed.UnitTests` 41/41 green | reviewer mutation |
+| ids 60–65 | five more of the same class, filed as backlog and closed as one loop | prior reviews |
+| **id 66** | **none — approved first time** | **nine reviewer mutations, all killed** |
+
+Three things follow, and they are the phase's transferable results.
+
+**The substitution family earned its place in `CLAUDE.md` this phase, twice, by two different routes** — both instances a seed writer repointable at another service's database with the suite green. Deletion leaves behaviour missing; corruption leaves data wrong; **substitution leaves a working system pointed at another service's database**, and with six services each owning a database, a topic set and a subject set, it is the only family that crosses a service boundary silently.
+
+**The ported-idiom ledger moved its failure one column to the right, on schedule.** Phase 13 bound the ledger to the **port** rather than to `design.md`, which is what made it apply to six `sdd: false` features at all. Its history halves were invented in ids 40 and 41; the rule requiring a file-and-line citation into #7's checkout fixed that within the phase — and the gaps promptly moved to the **Guard** column (id 25's rows 3 and 6: accurate, and inert). `CLAUDE.md`'s own generalisation of that — *a rule that hardens one half of a two-part claim will quietly borrow attention from the other* — was written mid-phase and is the single most reusable sentence phase 13 produced.
+
+**Every one of the five was found by a reviewer running a mutation, and none by reading.** Phase 13 is the strongest available evidence that the arming protocol is the instrument doing the work here, and that a green suite is not evidence about a red one.
+
+### 3. What phase 13 delivered
+
+- **The sixth service** — the Gateway: 14 REST routes against the copied `openapi.yaml`, JWT auth with login rate limiting, all eight NATS RPC subjects asserted against `asyncapi.yaml`, Mongo read-model queries, `GET /docs` serving the committed contract bytes verbatim, and SSE push with heartbeat and `Last-Event-ID` reconnect. **The first .NET target #7's n8n workflows and black-box API script can run against.**
+- **The two Orders responders it needs** — `catalog.reference.list` and `orders.cancel`.
+- **`SA-2`**, the trilogy's second shared amendment: three lines on `OrderCancelledPayload`, applied byte-identically to both repositories in one session — and, because raising it went looking for the check that should have covered it, **`init.sh` §5d**, which verifies `specs/shared/` against #7 file by file on every run. Until phase 13 the claim the whole assessment rests on was unverified.
+- **Six backlog entries closed** (56, 60, 61, 63, 64, 65) plus id 66, and **five more routed** (67, 68, 69, 70, and 71 from this review).
+- **Suite: 1623 tests, 0 failed, 0 skipped, across 18 projects.** Solution-wide, exit 0, run at close.
+
+### 4. What #9 inherits from phase 13
+
+- **All three mutation families, with the discriminator for when each applies.** Deletion and corruption answer different questions; substitution applies wherever an identifier is a **parameter rather than a constant** and names a member of a set whose siblings exist in the repository (`MSSQL_DB_*`, `MONGO_DB_*`, the `otc-*` client and consumer-group ids, the `*.v1` event types, the NATS subjects, the Mongo collection names). Its own false negative is documented: if the substituted sibling is unset, the read falls back to a default and the test fails for the wrong reason — a swap that fails is not evidence until the message names what you intended to break.
+- **The ledger, bound to the port and not to the document**, with both halves treated as claims: the history half cited to #7's source with a file and line, the guard half asked *does this test execute the code this row is about?* rather than *does it pass?*
+- **Enumerate #7's tests, not only its source, when porting a mechanism.** Three of this phase's six rejections were guards that existed in a checkout on this machine, in files named after the thing being ported.
+- **A sweep must not filter by the property it tests**, and a fix's completeness claim must be enumerated **on the wording of the claim being retired**, not the one being written.
+- **`specs/shared/` is read-only, and that is why the note gap was findable.** A disclosure whose root cause is the shared spec leaves a numbered entry or an `SA-n` — never a sentence. Phase 13 is where that rule was written, and id 66 is where it was first honoured.

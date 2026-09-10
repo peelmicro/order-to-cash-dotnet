@@ -168,4 +168,87 @@ public sealed class EfCoreOrderReferenceCatalogListTests(MsSqlContainerFixture m
 
         Assert.Equal(["PROD-A", "PROD-B", "PROD-C"], rows.Select(r => r.Code));
     }
+
+    /// <summary>
+    /// Backlog id 61 — the reviewer of feature 40's round 2 (advisory A5)
+    /// proved that deleting <c>.OrderBy</c> from the retailers, companies
+    /// and currencies list methods left 13 integration and 307 unit tests
+    /// green: only <see cref="ListProductsAsync_ThreeRowsSeededOutOfOrder_ReturnsThemOrderedByCode"/>
+    /// above guarded its own ordering claim, falsifiably, and the other
+    /// three did not. These three mirror it exactly — three codes seeded in
+    /// a deliberately NON-alphabetical insertion order, so a passing
+    /// assertion cannot be an accident of insertion order matching code
+    /// order. Kept (not deleted) for the same reason products was kept: all
+    /// four <c>List*Async</c> methods back <c>catalog.reference.list</c>
+    /// (asyncapi.yaml's <c>CatalogReferenceListReplyPayload</c>, symmetric
+    /// across <c>products</c>/<c>retailers</c>/<c>companies</c>/<c>currencies</c>)
+    /// and the openapi.yaml `/catalog/*` endpoints these back are all
+    /// described as feeding "the place-order form" — a deterministic,
+    /// human-readable order is the same UI-consistency case products was
+    /// guarded for, and nothing distinguishes the four collections from one
+    /// another. No requirement text mandates it for any of the four, so this
+    /// is a UI-consistency guard, not an `R&lt;n&gt;` requirement guard.
+    /// </summary>
+    [Fact]
+    public async Task ListRetailersAsync_ThreeRowsSeededOutOfOrder_ReturnsThemOrderedByCode()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_catalog_list_order_{Guid.NewGuid():N}");
+        var db = mssql.CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+
+        var now = DateTime.UtcNow;
+        var currencyId = Guid.NewGuid();
+        db.Currencies.Add(new Currency { Id = currencyId, Code = "EUR", IsoNumber = "978", Symbol = "€", DecimalPoints = 2, CreatedAt = now, UpdatedAt = now });
+        db.Retailers.Add(new Retailer { Id = Guid.NewGuid(), Code = "RETAILER-C", Name = "Retailer C", Country = "FR", Vat = "FR00000000010", Gln = "4006381333931", CurrencyId = currencyId, CreatedAt = now, UpdatedAt = now });
+        db.Retailers.Add(new Retailer { Id = Guid.NewGuid(), Code = "RETAILER-A", Name = "Retailer A", Country = "FR", Vat = "FR00000000011", Gln = "4006382333930", CurrencyId = currencyId, CreatedAt = now, UpdatedAt = now });
+        db.Retailers.Add(new Retailer { Id = Guid.NewGuid(), Code = "RETAILER-B", Name = "Retailer B", Country = "FR", Vat = "FR00000000012", Gln = "4006383333939", CurrencyId = currencyId, CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+
+        var catalog = new EfCoreOrderReferenceCatalog(db);
+        var rows = await catalog.ListRetailersAsync(includeDisabled: false, CancellationToken.None);
+
+        Assert.Equal(["RETAILER-A", "RETAILER-B", "RETAILER-C"], rows.Select(r => r.Code));
+    }
+
+    /// <summary>Backlog id 61 — see <see cref="ListRetailersAsync_ThreeRowsSeededOutOfOrder_ReturnsThemOrderedByCode"/>.</summary>
+    [Fact]
+    public async Task ListCompaniesAsync_ThreeRowsSeededOutOfOrder_ReturnsThemOrderedByCode()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_catalog_list_order_{Guid.NewGuid():N}");
+        var db = mssql.CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+
+        var now = DateTime.UtcNow;
+        var currencyId = Guid.NewGuid();
+        db.Currencies.Add(new Currency { Id = currencyId, Code = "EUR", IsoNumber = "978", Symbol = "€", DecimalPoints = 2, CreatedAt = now, UpdatedAt = now });
+        db.Companies.Add(new Company { Id = Guid.NewGuid(), Code = "COMPANY-C", Name = "Company C", Country = "FR", Vat = "FR00000000020", Gln = "5001234567890", CurrencyId = currencyId, CreatedAt = now, UpdatedAt = now });
+        db.Companies.Add(new Company { Id = Guid.NewGuid(), Code = "COMPANY-A", Name = "Company A", Country = "FR", Vat = "FR00000000021", Gln = "5001235567899", CurrencyId = currencyId, CreatedAt = now, UpdatedAt = now });
+        db.Companies.Add(new Company { Id = Guid.NewGuid(), Code = "COMPANY-B", Name = "Company B", Country = "FR", Vat = "FR00000000022", Gln = "5001236567898", CurrencyId = currencyId, CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+
+        var catalog = new EfCoreOrderReferenceCatalog(db);
+        var rows = await catalog.ListCompaniesAsync(includeDisabled: false, CancellationToken.None);
+
+        Assert.Equal(["COMPANY-A", "COMPANY-B", "COMPANY-C"], rows.Select(r => r.Code));
+    }
+
+    /// <summary>Backlog id 61 — see <see cref="ListRetailersAsync_ThreeRowsSeededOutOfOrder_ReturnsThemOrderedByCode"/>.</summary>
+    [Fact]
+    public async Task ListCurrenciesAsync_ThreeRowsSeededOutOfOrder_ReturnsThemOrderedByCode()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_catalog_list_order_{Guid.NewGuid():N}");
+        var db = mssql.CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+
+        var now = DateTime.UtcNow;
+        db.Currencies.Add(new Currency { Id = Guid.NewGuid(), Code = "USD", IsoNumber = "840", Symbol = "$", DecimalPoints = 2, CreatedAt = now, UpdatedAt = now });
+        db.Currencies.Add(new Currency { Id = Guid.NewGuid(), Code = "EUR", IsoNumber = "978", Symbol = "€", DecimalPoints = 2, CreatedAt = now, UpdatedAt = now });
+        db.Currencies.Add(new Currency { Id = Guid.NewGuid(), Code = "GBP", IsoNumber = "826", Symbol = "£", DecimalPoints = 2, CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+
+        var catalog = new EfCoreOrderReferenceCatalog(db);
+        var rows = await catalog.ListCurrenciesAsync(CancellationToken.None);
+
+        Assert.Equal(["EUR", "GBP", "USD"], rows.Select(r => r.Code));
+    }
 }

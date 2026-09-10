@@ -155,13 +155,14 @@ public static class EnvelopeBuilders
     public static Envelope<OrderCancelledPayload> OrderCancelled(
         Guid? eventId = null, Guid? correlationId = null, Guid? causationId = null, DateTimeOffset? occurredAt = null,
         string orderReference = "ORD-000001", string retailerCode = "RET01", string companyCode = "COM01",
-        string cancellationReason = "buyer_requested", IReadOnlyList<CompensationStep>? compensationSteps = null)
+        string cancellationReason = "buyer_requested", IReadOnlyList<CompensationStep>? compensationSteps = null,
+        string? note = null)
     {
         var correlation = correlationId ?? Guid.NewGuid();
         var when = occurredAt ?? DateTimeOffset.UtcNow;
         return new Envelope<OrderCancelledPayload>(
             eventId ?? Guid.NewGuid(), "order.cancelled.v1", correlation, correlation, causationId ?? Guid.NewGuid(),
-            when, new OrderCancelledPayload(orderReference, retailerCode, companyCode, cancellationReason, when, compensationSteps ?? []));
+            when, new OrderCancelledPayload(orderReference, retailerCode, companyCode, cancellationReason, when, compensationSteps ?? [], note));
     }
 
     public static Envelope<OrderSagaFailedPayload> OrderSagaFailed(

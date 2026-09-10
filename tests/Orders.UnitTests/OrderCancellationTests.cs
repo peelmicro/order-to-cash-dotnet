@@ -112,4 +112,44 @@ public sealed class OrderCancellationTests
             Assert.Equal(OrderStatus.Cancelled, order.Status);
         }
     }
+
+    /// <summary>
+    /// SA-2/feature <c>operator_note_reaches_the_timeline</c> bullet 2's
+    /// domain half: <see cref="Order.Cancel"/>'s <c>note</c> parameter is
+    /// optional, and a call that omits it (every fact-driven caller,
+    /// <c>stock_rejected</c>/<c>credit_rejected</c> included) raises
+    /// <see cref="OrderCancelled"/> with <see cref="OrderCancelled.Note"/>
+    /// absent (<see langword="null"/>) rather than an empty string — the
+    /// distinction the wire's own optionality depends on.
+    /// </summary>
+    [Fact]
+    public void SA2_Cancel_WithNoNoteSupplied_RaisesOrderCancelledWithNoteAbsent()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.Placed);
+
+        order.Cancel(CancellationReason.StockRejected, [], OrderTestData.Now, _causationId);
+
+        var cancelled = Assert.IsType<OrderCancelled>(Assert.Single(order.DomainEvents));
+        Assert.Null(cancelled.Note);
+    }
+
+    /// <summary>
+    /// SA-2/feature <c>operator_note_reaches_the_timeline</c> bullet 1's
+    /// domain half: the exact string supplied to <c>note</c> is carried
+    /// verbatim onto <see cref="OrderCancelled.Note"/> — bracketed to a
+    /// value the test itself supplies (CLAUDE.md's provenance rule), so a
+    /// corruption of the value in transit, not merely its presence, would
+    /// fail this assertion.
+    /// </summary>
+    [Fact]
+    public void SA2_Cancel_WithANoteSupplied_RaisesOrderCancelledCarryingTheExactNoteText()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.Placed);
+        const string note = "Buyer requested cancellation by phone — ref #A1B2C3.";
+
+        order.Cancel(CancellationReason.OperatorCancelled, [], OrderTestData.Now, _causationId, note: note);
+
+        var cancelled = Assert.IsType<OrderCancelled>(Assert.Single(order.DomainEvents));
+        Assert.Equal(note, cancelled.Note);
+    }
 }

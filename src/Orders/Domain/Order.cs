@@ -221,8 +221,13 @@ public sealed class Order : AggregateRoot
     /// <em>Trigger</em> column (<see cref="CancellationReasonNotApplicableError"/>,
     /// design.md §6.1). Raises <see cref="OrderCancelled"/> carrying the
     /// reason and the (defensively copied) compensation steps.
+    /// <paramref name="note"/> (SA-2, trailing and optional, matching every
+    /// other optional payload field's own declaration convention) is the
+    /// operator's free-text cancellation note — present only on the
+    /// operator-initiated, immediate branch that has one to carry; every
+    /// fact-driven caller leaves it at its default <see langword="null"/>.
     /// </summary>
-    public void Cancel(CancellationReason reason, IReadOnlyList<OrderCompensationStep> compensationSteps, DateTimeOffset occurredAt, UniqueId causationId)
+    public void Cancel(CancellationReason reason, IReadOnlyList<OrderCompensationStep> compensationSteps, DateTimeOffset occurredAt, UniqueId causationId, string? note = null)
     {
         if (!OrderStateMachine.IsLegal(Status, OrderStatus.Cancelled))
         {
@@ -250,7 +255,8 @@ public sealed class Order : AggregateRoot
                 CompanyCode,
                 reason,
                 CancelledAt: occurredAt,
-                CompensationSteps: steps),
+                CompensationSteps: steps,
+                Note: note),
             cancellationReason: reason);
     }
 

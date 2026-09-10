@@ -1,0 +1,145 @@
+using OrderToCash.Notifications;
+using OrderToCash.Notifications.Infrastructure;
+using Xunit;
+
+namespace OrderToCash.Notifications.UnitTests;
+
+/// <summary>
+/// Feature <c>composition_root_env_reads_are_unguarded</c> — drives
+/// <see cref="NotificationsProgramConfiguration.Configure"/>, the EXACT
+/// method <c>Program.cs</c> calls, so deleting any of its eleven environment
+/// reads — including the unconditional <c>SenderKind = Smtp</c> switch that
+/// makes this the one caller in the repository that sends real mail — fails
+/// a named test instead of leaving the suite green.
+/// </summary>
+public sealed class NotificationsProgramConfigurationTests
+{
+    private static readonly string[] _envVars =
+    [
+        "MSSQL_HOST", "MSSQL_HOST_PORT", "MSSQL_DB_NOTIFICATIONS", "MSSQL_APP_USER", "MSSQL_APP_PASSWORD",
+        "KAFKA_BOOTSTRAP_SERVERS", "KAFKA_HOST_PORT",
+        "NOTIFICATIONS_SMTP_HOST", "NOTIFICATIONS_SMTP_PORT", "MAILPIT_SMTP_HOST_PORT", "NOTIFICATIONS_SMTP_FROM_ADDRESS",
+    ];
+
+    private static void ClearAll()
+    {
+        foreach (var name in _envVars)
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+    }
+
+    [Fact]
+    public void Configure_BuildsEveryDocumentedDefault_WhenNoEnvVarsAreSetExceptTheRequiredPassword()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "dev-password");
+        try
+        {
+            var options = new NotificationsOptions();
+            NotificationsProgramConfiguration.Configure(options);
+
+            Assert.Equal(
+                "Server=localhost,1433;Database=otc_notifications;User Id=otc_app;Password=dev-password;TrustServerCertificate=True;",
+                options.ConnectionString);
+            Assert.Equal("localhost:9092", options.Kafka.BootstrapServers);
+            Assert.Equal(NotificationSenderKind.Smtp, options.SenderKind);
+            Assert.Equal("localhost", options.Smtp.Host);
+            Assert.Equal(1025, options.Smtp.Port);
+            Assert.Equal("no-reply@order-to-cash.example", options.Smtp.FromAddress);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    [Fact]
+    public void Configure_ReadsEveryVariable_WhenAllAreSetToNonDefaultValues()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_HOST", "sql-box");
+        Environment.SetEnvironmentVariable("MSSQL_HOST_PORT", "14330");
+        Environment.SetEnvironmentVariable("MSSQL_DB_NOTIFICATIONS", "custom_notifications_db");
+        Environment.SetEnvironmentVariable("MSSQL_APP_USER", "custom_user");
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "s3cr3t");
+        Environment.SetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS", "kafka-box:9999");
+        Environment.SetEnvironmentVariable("NOTIFICATIONS_SMTP_HOST", "smtp-box");
+        Environment.SetEnvironmentVariable("NOTIFICATIONS_SMTP_PORT", "2525");
+        Environment.SetEnvironmentVariable("NOTIFICATIONS_SMTP_FROM_ADDRESS", "custom@example.com");
+        try
+        {
+            var options = new NotificationsOptions();
+            NotificationsProgramConfiguration.Configure(options);
+
+            Assert.Equal(
+                "Server=sql-box,14330;Database=custom_notifications_db;User Id=custom_user;Password=s3cr3t;TrustServerCertificate=True;",
+                options.ConnectionString);
+            Assert.Equal("kafka-box:9999", options.Kafka.BootstrapServers);
+            Assert.Equal(NotificationSenderKind.Smtp, options.SenderKind);
+            Assert.Equal("smtp-box", options.Smtp.Host);
+            Assert.Equal(2525, options.Smtp.Port);
+            Assert.Equal("custom@example.com", options.Smtp.FromAddress);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    [Fact]
+    public void Configure_FallsBackToMailpitSmtpHostPort_WhenNotificationsSmtpPortIsUnsetButMailpitPortIsSet()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "dev-password");
+        Environment.SetEnvironmentVariable("MAILPIT_SMTP_HOST_PORT", "1030");
+        try
+        {
+            var options = new NotificationsOptions();
+            NotificationsProgramConfiguration.Configure(options);
+
+            Assert.Equal(1030, options.Smtp.Port);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    [Fact]
+    public void Configure_FallsBackToKafkaHostPortVariable_WhenTheExplicitBootstrapServersIsUnset()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "dev-password");
+        Environment.SetEnvironmentVariable("KAFKA_HOST_PORT", "9099");
+        try
+        {
+            var options = new NotificationsOptions();
+            NotificationsProgramConfiguration.Configure(options);
+
+            Assert.Equal("localhost:9099", options.Kafka.BootstrapServers);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    [Fact]
+    public void Configure_Throws_WhenMsSqlAppPasswordIsNotSet()
+    {
+        ClearAll();
+        try
+        {
+            var options = new NotificationsOptions();
+            var exception = Record.Exception(() => NotificationsProgramConfiguration.Configure(options));
+
+            Assert.IsType<InvalidOperationException>(exception);
+            Assert.Contains("MSSQL_APP_PASSWORD", exception!.Message);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+}

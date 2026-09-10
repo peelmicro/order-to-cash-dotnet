@@ -74,7 +74,18 @@ public sealed class FulfillmentStockEndToEndTests(KafkaContainerFixture kafka, M
             }
             catch (NatsNoRespondersException)
             {
+                // Backlog id 63 — the server's IMMEDIATE "definitely nobody
+                // subscribed" sentinel does not wait out the request's own
+                // timeout, so a loop paced only by that timeout can burn
+                // through all 100 attempts in about a millisecond. Paced
+                // explicitly below. Found enumerating id 63's six named
+                // sites — an 8th instance of the same unpaced shape, outside
+                // that enumeration (this file boots a real Fulfillment host
+                // from Gateway.IntegrationTests, a separate copy of
+                // FulfillmentHostFixture's own probe).
             }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50)).ConfigureAwait(false);
         }
 
         throw new TimeoutException("The Fulfillment responder never became reachable.");

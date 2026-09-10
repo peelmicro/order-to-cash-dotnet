@@ -135,7 +135,18 @@ public sealed class StandInResponder : IAsyncDisposable
             }
             catch (NatsNoRespondersException)
             {
+                // Backlog id 63 — this class's own summary above CLAIMED
+                // this loop was already paced, but nothing here actually
+                // delayed between attempts: NatsNoRespondersException
+                // returns near-instantly rather than waiting out the
+                // per-attempt timeout, so all 100 attempts could burn
+                // through in about a millisecond. Found enumerating id 63's
+                // six named sites — a 7th instance, outside that
+                // enumeration, whose doc comment already (incorrectly)
+                // described the fix this now actually performs.
             }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken).ConfigureAwait(false);
         }
 
         throw new TimeoutException($"Stand-in responder for '{_subject}' never became reachable.");

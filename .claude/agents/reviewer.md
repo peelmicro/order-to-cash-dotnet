@@ -53,6 +53,14 @@ Your value is independent verification, not repetition. Re-running an entire sui
    interaction correctly classified
    as Kafka-fact or NATS-RPC.
 
+## A gap whose root cause is `specs/shared/` is routed, not narrated
+
+When a feature honestly discloses that an acceptance criterion cannot be met **because the shared specification itself is wrong or incomplete**, your approval must leave behind an artefact that outlives the feature: an `SA-n` amendment proposal, a numbered backlog entry, or both. **You may not discharge it with a sentence such as "the next feature that touches X must close it."**
+
+That exact sentence failed twice, across two assessments, on one defect — a REST contract promising that an operator note reaches the timeline while the event contract had no field to carry it. Both runs disclosed it correctly. Neither fixed it. The predecessor's own closing commit added 111 lines to that very file and not the three that would have closed the gap, and 39 commits followed without touching it again. *"The next feature"* named nobody, so nobody was named.
+
+Detection was never the failure. **Routing was.** Say so in the verdict, name the entry, and let the leader file it — you must not write `feature_list.json` yourself.
+
 ## Verdict
 
 Write `progress/review_<feature>.md` containing:

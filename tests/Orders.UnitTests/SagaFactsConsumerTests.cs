@@ -7,6 +7,7 @@ using OrderToCash.Contracts.Wire;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
+using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Presentation;
 using Xunit;
 
@@ -42,6 +43,56 @@ public sealed class SagaFactsConsumerTests
 
         var sent = Assert.Single(dispatcher.SentCommands);
         Assert.Equal(expectedCommandType, sent.GetType());
+    }
+
+    /// <summary>
+    /// Backlog id 60 — <c>BuildMessage</c>'s previous default gave
+    /// <c>AggregateId</c> and <c>CorrelationId</c> the SAME guid (both set
+    /// from one shared <c>correlationId</c> local), which would have let
+    /// <see cref="SagaFactsConsumer"/>'s hand-written <c>SagaFact</c>
+    /// construction transpose those two positions and still pass every test
+    /// in this file — nothing here asserted <c>SagaFact</c>'s field values
+    /// at all. This asserts PROVENANCE, not mere non-collision (CLAUDE.md's
+    /// "Assert.NotEqual can never prove provenance" rule): each of the five
+    /// non-payload fields is checked against the specific source value it
+    /// was supposed to carry, using four independently-generated Guids, so a
+    /// transposition of any two of them fails on the wrong value rather than
+    /// passing by accident.
+    /// </summary>
+    [Theory]
+    [InlineData("order.placed.v1", typeof(HandleOrderPlacedFactCommand))]
+    [InlineData("stock.reserved.v1", typeof(HandleStockReservedFactCommand))]
+    [InlineData("stock.rejected.v1", typeof(HandleStockRejectedFactCommand))]
+    [InlineData("credit.approved.v1", typeof(HandleCreditApprovedFactCommand))]
+    [InlineData("credit.rejected.v1", typeof(HandleCreditRejectedFactCommand))]
+    [InlineData("stock.released.v1", typeof(HandleStockReleasedFactCommand))]
+    [InlineData("order.despatched.v1", typeof(HandleOrderDespatchedFactCommand))]
+    [InlineData("invoice.issued.v1", typeof(HandleInvoiceIssuedFactCommand))]
+    [InlineData("payment.received.v1", typeof(HandlePaymentReceivedFactCommand))]
+    [InlineData("credit.released.v1", typeof(HandleCreditReleasedFactCommand))]
+    public async Task EachConsumedFact_DispatchedFactCopiesEveryEnvelopeFieldFromTheSource(string eventType, Type expectedCommandType)
+    {
+        var eventId = Guid.NewGuid();
+        var aggregateId = Guid.NewGuid();
+        var correlationId = Guid.NewGuid();
+        var causationId = Guid.NewGuid();
+        var occurredAt = new DateTimeOffset(2026, 1, 2, 3, 4, 5, 678, TimeSpan.Zero);
+
+        var message = BuildMessage(eventType, BuildPayload(eventType), eventId, aggregateId, correlationId, causationId, occurredAt);
+        var dispatcher = new RecordingDispatcher();
+
+        await RunOneMessageAsync(message, dispatcher);
+
+        var sent = Assert.Single(dispatcher.SentCommands);
+        Assert.Equal(expectedCommandType, sent.GetType());
+
+        var fact = (SagaFact)sent.GetType().GetProperty("Fact")!.GetValue(sent)!;
+        Assert.Equal(eventId, fact.EventId);
+        Assert.Equal(eventType, fact.EventType);
+        Assert.Equal(aggregateId, fact.AggregateId);
+        Assert.Equal(correlationId, fact.CorrelationId);
+        Assert.Equal(causationId, fact.CausationId);
+        Assert.Equal(occurredAt, fact.OccurredAt);
     }
 
     [Theory]
@@ -100,10 +151,28 @@ public sealed class SagaFactsConsumerTests
         await consumer.StopAsync(CancellationToken.None);
     }
 
-    private static FactStreamMessage BuildMessage(string eventType, object payload)
+    private static FactStreamMessage BuildMessage(
+        string eventType,
+        object payload,
+        Guid? eventId = null,
+        Guid? aggregateId = null,
+        Guid? correlationId = null,
+        Guid? causationId = null,
+        DateTimeOffset? occurredAt = null)
     {
-        var correlationId = Guid.NewGuid();
-        var envelope = new Envelope<object>(Guid.NewGuid(), eventType, correlationId, correlationId, Guid.NewGuid(), DateTimeOffset.UtcNow, payload);
+        // Each field defaults to its OWN distinct Guid.NewGuid()/UtcNow —
+        // never shared across two positional slots — so a test that asserts
+        // one field's value cannot pass merely because two source fields
+        // happened to collide (backlog id 60; see
+        // EachConsumedFact_DispatchedFactCopiesEveryEnvelopeFieldFromTheSource).
+        var envelope = new Envelope<object>(
+            eventId ?? Guid.NewGuid(),
+            eventType,
+            aggregateId ?? Guid.NewGuid(),
+            correlationId ?? Guid.NewGuid(),
+            causationId ?? Guid.NewGuid(),
+            occurredAt ?? DateTimeOffset.UtcNow,
+            payload);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonWire.Options);
         return new FactStreamMessage("otc.orders.facts.v1", 0, 0, bytes);
     }

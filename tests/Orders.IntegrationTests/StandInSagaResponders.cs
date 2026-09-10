@@ -111,37 +111,19 @@ internal sealed class StandInRpcResponder<TRequest, TReply> : IAsyncDisposable
         _cts.Dispose();
     }
 
-    private async Task WaitUntilSubscribedAsync(CancellationToken cancellationToken)
-    {
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                var reply = await _connection.RequestAsync<byte[], byte[]>(
-                    _subject,
-                    _probeMarker,
-                    replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                if (reply.Data is not null)
-                {
-                    return;
-                }
-            }
-            catch (NatsNoReplyException)
-            {
-                // Nobody subscribed yet — retry.
-            }
-            catch (NatsNoRespondersException)
-            {
-                // The immediate 503 sentinel — retry exactly like a timeout.
-            }
-        }
-
-        throw new TimeoutException($"Stand-in responder for '{_subject}' never became reachable.");
-    }
+    /// <summary>
+    /// Backlog id 63 — this used to be its own unpaced 100-attempt loop
+    /// (paced only by the per-attempt request timeout), which
+    /// <see cref="NatsNoRespondersException"/>'s IMMEDIATE nature let expire
+    /// in about a millisecond. Delegates to
+    /// <see cref="SagaIntegrationTestSupport.WaitUntilReachableAsync"/> —
+    /// the SAME generic retry/catch loop, already paced and already proven
+    /// deterministically correct by
+    /// <c>OrdersCancelResponderReadinessRaceTests</c> — rather than carrying
+    /// a second, separately-armed copy of the identical mechanism.
+    /// </summary>
+    private Task WaitUntilSubscribedAsync(CancellationToken cancellationToken) =>
+        SagaIntegrationTestSupport.WaitUntilReachableAsync(_connection, _subject, _probeMarker, cancellationToken);
 
     private async Task RunAsync(Func<TRequest, TReply?> answer, CancellationToken cancellationToken)
     {

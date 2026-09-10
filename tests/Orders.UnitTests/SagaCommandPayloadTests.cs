@@ -173,45 +173,70 @@ public sealed class SagaCommandPayloadTests
     }
 
     /// <summary>
-    /// Backlog id 51, `BC23` (design.md §10.2) — this file's own hand-retyped
-    /// key lists (every <c>AssertKeys</c> call above) are cheap and readable
-    /// and catch UNILATERAL drift of the code; what they cannot catch is the
-    /// CORRELATED authoring error where the schema and this file's retyped
-    /// copy are changed together, wrongly, and stay green. This one case
-    /// closes exactly that gap, parsing the same key sets from
-    /// <c>specs/shared/asyncapi.yaml</c> via <see cref="AsyncApiSchema"/>
-    /// rather than retyping a third copy.
+    /// Every payload record the `BC23` theory below covers — the completeness
+    /// set `orders_wire_key_theory_compares_a_hand_typed_list_to_itself`'s own
+    /// enumeration bullet asks for. Re-review (round 2) found this set had
+    /// dropped <see cref="SagaMoney"/> (the record backing `asyncapi.yaml`'s
+    /// <c>Money</c> schema) — see `progress/impl_guard_hardening.md`'s
+    /// "Fix round — re-review's three items" section for the full
+    /// <c>grep -n "record "</c> enumeration this row was reconstructed from.
+    /// <c>StockReserveRequestLine</c>
+    /// is the one declared record genuinely NOT in this set: `asyncapi.yaml`
+    /// declares <c>StockReserveRequestPayload.lines[]</c>'s item shape INLINE,
+    /// with no named schema, so <see cref="AsyncApiSchema.PropertyNamesOf(string)"/>
+    /// has nothing to look up for it.
+    /// </summary>
+    public static TheoryData<string, Type> RequestAndReplySchemas() => new()
+    {
+        { "StockReserveRequestPayload", typeof(StockReserveRequestPayload) },
+        { "StockReserveReplyPayload", typeof(StockReserveReplyPayload) },
+        { "StockReleaseRequestPayload", typeof(StockReleaseRequestPayload) },
+        { "StockReleaseReplyPayload", typeof(StockReleaseReplyPayload) },
+        { "DespatchCreateRequestPayload", typeof(DespatchCreateRequestPayload) },
+        { "DespatchCreateReplyPayload", typeof(DespatchCreateReplyPayload) },
+        { "Money", typeof(SagaMoney) },
+        { "CreditHoldRequestPayload", typeof(CreditHoldRequestPayload) },
+        { "CreditHoldReplyPayload", typeof(CreditHoldReplyPayload) },
+        { "InvoiceIssueRequestPayload", typeof(InvoiceIssueRequestPayload) },
+        { "InvoiceIssueReplyPayload", typeof(InvoiceIssueReplyPayload) },
+        { "CreditReleaseRequestPayload", typeof(CreditReleaseRequestPayload) },
+        { "CreditReleaseReplyPayload", typeof(CreditReleaseReplyPayload) },
+    };
+
+    /// <summary>
+    /// Backlog id 51, `BC23` (design.md §10.2) — originally compared a
+    /// SCHEMA-PARSED key set against a hand-retyped key list living in this
+    /// same file's own <c>[InlineData]</c>, never against the payload record
+    /// that actually implements the contract. That guard could not fail on
+    /// the exact defect it was added for: removing
+    /// <c>availableCreditAfter</c> from <see cref="CreditReleaseReplyPayload"/>
+    /// left <c>Orders.UnitTests</c> 342/342 green, because both sides being
+    /// compared were restatements of the SAME assumption, never a reading of
+    /// the record. Backlog id 64 ports Billing's own
+    /// <c>CreditRpcPayloadTests.cs:29-35</c> form — <c>expected</c> parsed
+    /// from the spec, <c>actual</c> read by reflection off the payload TYPE
+    /// itself — which is where the guard's teeth actually are.
     /// </summary>
     [Theory]
-    [InlineData("StockReserveRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "lines" })]
-    [InlineData("StockReserveReplyPayload", new[] { "outcome", "orderReference", "reservations", "shortages" })]
-    [InlineData("StockReleaseRequestPayload", new[] { "orderReference", "reason" })]
-    [InlineData("StockReleaseReplyPayload", new[] { "outcome", "orderReference", "released" })]
-    [InlineData("DespatchCreateRequestPayload", new[] { "orderReference" })]
-    [InlineData("DespatchCreateReplyPayload", new[] { "orderReference", "despatchReference", "despatchDate", "created", "lines" })]
-    [InlineData("CreditHoldRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "amount" })]
-    [InlineData("CreditHoldReplyPayload", new[] { "outcome", "orderReference", "creditCode", "currency", "heldAmount", "availableCredit", "reason" })]
-    [InlineData("InvoiceIssueRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "currency", "lines", "discount" })]
-    [InlineData("InvoiceIssueReplyPayload", new[] { "orderReference", "invoiceId", "invoiceReference", "invoiceDate", "currency", "totalAmount", "status", "created" })]
-    // Review round 2, D2: this feature added CreditReleaseRequestPayload/CreditReleaseReplyPayload (billing.credit.release,
-    // the sixth saga command) and skipped this file's own BC23 guard for them — the omission is why the reply payload's
-    // required availableCreditAfter shipped missing.
-    [InlineData("CreditReleaseRequestPayload", new[] { "orderReference", "retailerCode", "companyCode" })]
-    [InlineData("CreditReleaseReplyPayload", new[] { "released", "orderReference", "creditCode", "currency", "releasedAmount", "availableCreditAfter" })]
-    public void BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi(string schemaName, string[] handRetypedKeys)
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryPayloadRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ParsedFromTheSpecNeverRetyped(string schemaName, Type payloadType)
     {
-        var parsed = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var retyped = handRetypedKeys.ToHashSet(StringComparer.Ordinal);
+        var expected = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
+        var actual = payloadType.GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal(parsed, retyped);
+        Assert.Equal(expected, actual);
     }
 
     /// <summary>
     /// `G5` — the arming that proves the guard has teeth. A SCRATCH copy of
     /// the real spec (never the real, read-only
     /// <c>specs/shared/asyncapi.yaml</c>) with <c>CreditHoldReplyPayload</c>'s
-    /// <c>orderReference</c> renamed: the hand-retyped list this file uses
-    /// for that schema no longer agrees with the scratch copy.
+    /// <c>orderReference</c> renamed: parsing the scratch copy no longer
+    /// agrees with <see cref="CreditHoldReplyPayload"/>'s actual property
+    /// set, read by REFLECTION off the record — never a hand-retyped list —
+    /// exactly what would make the real
+    /// <see cref="BC23_EveryPayloadRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ParsedFromTheSpecNeverRetyped"/>
+    /// case fail if the spec really changed this way.
     /// </summary>
     [Fact]
     public void G5_TheGuardFailsAgainstAScratchCopyWhoseCreditHoldReplyPayloadPropertyWasRenamed()
@@ -228,15 +253,20 @@ public sealed class SagaCommandPayloadTests
 
             var scratchText = File.ReadAllText(scratchPath);
             var parsedFromScratch = AsyncApiSchema.PropertyNamesOf(scratchText, "CreditHoldReplyPayload").ToHashSet(StringComparer.Ordinal);
-            var handRetyped = new[] { "outcome", "orderReference", "creditCode", "currency", "heldAmount", "availableCredit", "reason" }.ToHashSet(StringComparer.Ordinal);
+            var actual = typeof(CreditHoldReplyPayload).GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
 
-            Assert.NotEqual(handRetyped, parsedFromScratch);
+            Assert.NotEqual(actual, parsedFromScratch);
+            Assert.DoesNotContain("orderReference", parsedFromScratch);
+            Assert.Contains("orderReferenceRenamed", parsedFromScratch);
         }
         finally
         {
             File.Delete(scratchPath);
         }
     }
+
+    private static string ToCamelCase(System.Reflection.PropertyInfo property) =>
+        string.Concat(char.ToLowerInvariant(property.Name[0]).ToString(), property.Name[1..]);
 
     /// <summary>
     /// Round-trips through <see cref="RpcJson"/> and asserts the round-tripped

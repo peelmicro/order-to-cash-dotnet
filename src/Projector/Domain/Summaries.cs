@@ -79,14 +79,28 @@ public static class Summaries
     public static SummaryResult OrderCompleted(OrderCompletedPayload payload) =>
         new($"Order {payload.OrderReference} completed", null);
 
-    public static SummaryResult OrderCancelled(OrderCancelledPayload payload) =>
-        new(
-            $"Order {payload.OrderReference} cancelled ({payload.CancellationReason})",
-            new Dictionary<string, object>
-            {
-                ["cancellationReason"] = payload.CancellationReason,
-                ["compensationSteps"] = payload.CompensationSteps,
-            });
+    /// <summary>
+    /// SA-2: <c>note</c> is added to <c>detail</c> only when the fact
+    /// carries one — an operator-cancelled order with no note, and every
+    /// saga-decided cancellation (<c>stock_rejected</c>/<c>credit_rejected</c>),
+    /// never populate the key at all, matching the wire's own optionality
+    /// rather than writing a JSON <c>null</c> that would still be a key.
+    /// </summary>
+    public static SummaryResult OrderCancelled(OrderCancelledPayload payload)
+    {
+        var detail = new Dictionary<string, object>
+        {
+            ["cancellationReason"] = payload.CancellationReason,
+            ["compensationSteps"] = payload.CompensationSteps,
+        };
+
+        if (payload.Note is { } note)
+        {
+            detail["note"] = note;
+        }
+
+        return new($"Order {payload.OrderReference} cancelled ({payload.CancellationReason})", detail);
+    }
 
     public static SummaryResult OrderSagaFailed(OrderSagaFailedPayload payload) =>
         new(

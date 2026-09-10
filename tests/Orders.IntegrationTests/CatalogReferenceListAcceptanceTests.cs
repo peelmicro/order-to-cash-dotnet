@@ -348,36 +348,21 @@ public sealed class CatalogReferenceListAcceptanceTests(NatsContainerFixture nat
         }
     }
 
-    private static async Task WaitUntilCatalogReferenceListReachableAsync(INatsConnection caller, CancellationToken cancellationToken)
+    /// <summary>
+    /// Backlog id 63 — this used to be its own unpaced 100-attempt loop
+    /// (paced only by the per-attempt request timeout), which
+    /// <see cref="NatsNoRespondersException"/>'s IMMEDIATE nature let expire
+    /// in about a millisecond. Delegates to
+    /// <see cref="SagaIntegrationTestSupport.WaitUntilReachableAsync"/> —
+    /// the SAME generic retry/catch loop, already paced and already proven
+    /// deterministically correct by
+    /// <c>OrdersCancelResponderReadinessRaceTests</c> — rather than carrying
+    /// a second, separately-armed copy of the identical mechanism.
+    /// </summary>
+    private static Task WaitUntilCatalogReferenceListReachableAsync(INatsConnection caller, CancellationToken cancellationToken)
     {
         var probe = new CatalogReferenceListRequestPayload(Kinds: ["currencies"], IncludeDisabled: null);
-
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                var reply = await caller.RequestAsync<byte[], byte[]>(
-                    RpcSubjects.CatalogReferenceList,
-                    RpcJson.Serialize(probe),
-                    replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                if (reply.Data is not null)
-                {
-                    return;
-                }
-            }
-            catch (NatsNoReplyException)
-            {
-            }
-            catch (NatsNoRespondersException)
-            {
-            }
-        }
-
-        throw new TimeoutException("catalog.reference.list responder never became reachable.");
+        return SagaIntegrationTestSupport.WaitUntilReachableAsync(caller, RpcSubjects.CatalogReferenceList, RpcJson.Serialize(probe), cancellationToken);
     }
 
     private IHost BuildHost(string connectionString)

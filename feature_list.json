@@ -765,14 +765,14 @@
       "phase": 13,
       "title": "Every environment-variable read in every Program.cs can be deleted with the whole suite green — no test project compiles a composition root",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
-        "deleting any single environment-variable read from any service's Program.cs makes a named test fail",
+        "deleting any single environment-variable read reachable from a composition root makes a named test fail — including reads that live in an Options class rather than in Program.cs",
         "the mechanism is chosen once and applied to every composition root — an options-binding test that drives the real Program.cs path, or a startup smoke test per service, not a per-variable assertion",
-        "the guard covers EVERY environment-variable read in EVERY composition root and is inherited by later services rather than re-invented — the count is a reading, not a constant: it was 34 across three Program.cs files when this entry was filed and is 49 across six (Billing 12, Fulfillment 11, Notifications 11, Orders 11, Projector 4, Seed 0) as of phase 13, so re-enumerate before claiming coverage",
+        "the guard covers EVERY environment-variable read REACHABLE FROM A COMPOSITION ROOT, wherever the read physically lives, and is inherited by later services rather than re-invented. The population is NOT confined to Program.cs and the entry's original wording was wrong about that: as of phase 13 there are 102 reads across 18 files, of which only 52 are in the seven Program.cs files — the Gateway deliberately moved its reads into Options classes (JwtOptions, GatewaySseOptions, GatewayMongoOptions, LoginThrottleOptions, OperatorIdentityLoader), which is the SHAPE THIS ENTRY WANTS, not an evasion of it. Re-enumerate before claiming coverage; the count is a reading, not a constant",
         "armed: the report names which read was deleted and the verbatim failure"
       ],
-      "notes": "Found by feature 20's review (advisory A1) with a concrete probe: deleting the CREDIT_FAILURE_RATE read from src/Billing/Program.cs:23 leaves the whole suite green. NOT that feature's defect — all 34 reads across the three composition roots are equally unguarded, because no test project compiles a Program.cs. Filed against phase 13 rather than 10 because three more composition roots arrive in phases 11-13 and the fix should be chosen once and inherited, not applied four times. The shape this repository keeps paying for: a property that is real, correct, and guarded by nothing."
+      "notes": "Found by feature 20's review (advisory A1) with a concrete probe: deleting the CREDIT_FAILURE_RATE read from src/Billing/Program.cs:23 leaves the whole suite green. NOT that feature's defect — all 34 reads across the three composition roots are equally unguarded, because no test project compiles a Program.cs. Filed against phase 13 rather than 10 because three more composition roots arrive in phases 11-13 and the fix should be chosen once and inherited, not applied four times. The shape this repository keeps paying for: a property that is real, correct, and guarded by nothing. SCOPE CORRECTED at the phase-13 dispatch: the original text said 'in every Program.cs', which is narrower than the defect — 20 of the 102 reads sit in EF Core DbContextFactory classes used by design-time tooling rather than by the host, and the reviewer should rule on whether those are in scope or are a documented exclusion. Deciding that is part of the feature, not a precondition for it."
     },
     {
       "id": 57,
@@ -823,7 +823,7 @@
       "phase": 13,
       "title": "Test fixtures that give two envelope fields the same value make a transposition undetectable, and two more consumers carry the same latent collision",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "every fixture building an Envelope for a consumer test gives each of eventId, aggregateId, correlationId and causationId a DISTINCT value, so a positional transposition cannot pass",
         "the two known sites are fixed: tests/Orders.UnitTests/SagaFactsConsumerTests.cs:106 and tests/Projector.UnitTests/ProjectorFactsConsumerTests.cs:130",
@@ -839,7 +839,7 @@
       "phase": 13,
       "title": "EfCoreOrderReferenceCatalog orders four listings by code and only the products one is guarded — deleting the other three .OrderBy calls leaves the suite green",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "deleting the .OrderBy from EACH of the four list methods in EfCoreOrderReferenceCatalog makes a named test fail — products is already guarded, the other three are not",
         "each guard seeds rows OUT of code order so the assertion cannot pass on insertion-order luck, which is how the products guard was itself proved falsifiable",
@@ -869,12 +869,12 @@
       "phase": 13,
       "title": "Four readiness waits retry a fixed number of attempts with no delay between them, and the error they retry on returns in about a microsecond — so 100 attempts can expire in ~1ms",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "each of the SIX readiness loops paces its retries explicitly rather than relying on the request timeout to consume wall-clock: BillingHostFixture.WaitUntilReachableAsync, FulfillmentHostFixture, OrdersCreateAcceptanceTests, StandInRpcResponder, CatalogReferenceListAcceptanceTests.cs:351 and StandInFulfillmentStockCheckResponder.cs:194",
         "the pacing is proved by a DETERMINISTIC test, not by observing that flakes stopped: delay the subscription by a controlled interval and show the unpaced loop loses every time and the paced loop wins every time",
         "armed: the pacing delay is removed and the deterministic test fails again, with the verbatim message",
-        "if any of the four turns out not to need pacing, say which and why — a loop whose retried error genuinely costs wall-clock does not have this defect"
+        "if any of the SIX turns out not to need pacing, say which and why — a loop whose retried error genuinely costs wall-clock does not have this defect"
       ],
       "notes": "Found during feature 41's third fix round while arming the fix for a real flake in SagaIntegrationTestSupport. The insight generalises beyond these four files: a retry budget expressed in ATTEMPTS silently assumes each attempt costs time. NatsNoRespondersException is returned by the server almost instantly rather than by timing out, so a loop of 100 attempts paced only by its request timeout can exhaust the whole budget in about a millisecond and report 'not ready' while the subscription was 1ms away. Latent in all four: each is protected today by accident, because callers happen to warm up first. Filed against phase 13 because the Gateway (id 25) adds the next host fixture and will copy whichever shape it finds. WIDENED from four sites to six by feature 41's round-2 review: the original enumeration hand-excluded two hits on a READINESS ground orthogonal to the PACING claim being made — an enumeration filtered by the wrong predicate, which is the same class of error as post-filtering a search by content instead of path. Both halves matter — pace the loop, and prove the pacing with a change of KIND rather than of probability."
     },
@@ -884,7 +884,7 @@
       "phase": 13,
       "title": "Orders' BC23 wire-key theory compares a hand-typed key list against the spec and never against the record, so a required field missing from the C# type passes",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "Orders' BC23 theory derives its key set from the payload RECORD by reflection, the way tests/Billing.UnitTests/CreditRpcPayloadTests.cs:29-35 already does, rather than from a hand-typed list",
         "armed: a required field is removed from a payload record and a named test FAILS — the exact mutation that left Orders.UnitTests 342/342 green when the review ran it",
@@ -899,7 +899,7 @@
       "phase": 13,
       "title": "OrderReadModelMapper.ToOrderDetail transposes InitialAmount and InitialDiscount with the whole suite green — the sibling method of a defect already fixed",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "transposing InitialAmount and InitialDiscount in OrderReadModelMapper.ToOrderDetail makes a named test fail",
         "the detail fixture carries three DISTINCT non-zero values so a transposition cannot pass on equal values, and each of initialAmount, initialDiscount and totalAmount is asserted",
@@ -907,6 +907,97 @@
         "armed: the report names the transposition and the verbatim failure"
       ],
       "notes": "Found as finding E1 by feature 25's round-2 review, which also recorded that its own round-1 prescription had scoped D5 to the list method at OrderReadModelMapper.cs:76 and thereby missed the sibling at :84 — the reviewer's under-scoping, disclosed as such, not an implementer shortfall. The fixture already carries (124950, 700, 124250), so the remedy is three assertions. The general shape is one this build keeps meeting: a defect fixed at the site where it was FOUND rather than across the class it belongs to, so the sibling survives with the suite green. When a review prescribes a fix, the prescription should name the class, not the line."
+    },
+    {
+      "id": 66,
+      "name": "operator_note_reaches_the_timeline",
+      "phase": 13,
+      "title": "Carry the operator's cancellation note from the RPC request through order.cancelled.v1 to the read-model timeline entry — the acceptance bullet SA-2 makes satisfiable",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "POST /orders/{id}/cancel with a note results in that note on the order's read-model timeline entry, proved end to end through the real Gateway, Orders, Kafka and Projector",
+        "the note is optional everywhere it appears: a saga-decided cancellation (stock_rejected, credit_rejected) carries none and the timeline entry is still correct",
+        "the Contracts record, the Orders emission and the Projector projection all move together, and a replay of an OLD envelope without the field still projects",
+        "armed in BOTH directions: deleting the note from the emission fails a named test, and CORRUPTING it on the wire fails a named test — the second is the one that matters, since the first passes on any string"
+      ],
+      "notes": "This is feature 41's acceptance bullet 4, unmet in BOTH assessments and disclosed by both. It was unsatisfiable until SA-2, because openapi.yaml promised the note reached the timeline while asyncapi.yaml's OrderCancelledPayload had no field to carry it. #7's reviewer ruled that the next feature touching OrderCancelledPayload must close it; #8's id 41 was that feature and disclosed it a second time rather than closing it, because specs/shared/ is read-only without a human-gated amendment. SA-2 is that amendment. Filed against phase 13 so the bullet is closed in the same phase that re-disclosed it rather than routed around again — a defect both runs disclose and neither fixes is one the process routes around, and this entry exists to stop that happening a third time in #9."
+    },
+    {
+      "id": 67,
+      "name": "design_time_dbcontext_factory_env_reads_are_unguarded",
+      "phase": 14,
+      "title": "Twenty environment-variable reads in the four EF Core DbContextFactory classes are live tooling inputs with no guard — excluded from id 56 by a ruling, not by absence",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "deleting any one of the 20 reads in OrdersDbContextFactory, FulfillmentDbContextFactory, BillingDbContextFactory or NotificationsDbContextFactory makes a named test fail",
+        "the guard drives the factory the way dotnet ef does — through IDesignTimeDbContextFactory<T>.CreateDbContext — rather than calling a helper the factory happens to share",
+        "the variable NAME the factory chooses is guarded, not only that some variable is read: a factory repointed at another service's database must fail a named test",
+        "armed: each deleted read and each repointed name is named with its verbatim failure"
+      ],
+      "notes": "Ruled OUT of scope for id 56 by the implementer and upheld by the review, on a reachability claim verified as a search result: all four classes have zero call sites and are reached only by dotnet ef's reflection-based discovery. That makes the exclusion correct AND makes these reads live — dotnet ef is tooling this team runs to generate migrations, so a wrong or missing read here produces a migration against the wrong database. An exclusion is a decision, not an absence, and this entry is the artefact that decision leaves behind. Bullet 3 exists because id 56's D1 showed the shape: when a test supplies the variable NAME, it guards the reading mechanism and never the caller's choice of key."
+    },
+    {
+      "id": 68,
+      "name": "composition_root_delegation_and_wiring_are_unguarded",
+      "phase": 14,
+      "title": "Nothing drives Program.cs or the wiring between a read and its use — a service can read the right variable and hand it to the wrong dependency with the suite green",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "replacing any of the ten delegating call sites with a no-op makes a named test fail — the six Program.cs -> ProgramConfiguration.Configure calls, Seed/Program.cs -> SeedRunner.RunAsync, and the remainder the review enumerates",
+        "substituting one service's connection string for another's at SeedRunner.cs:26 makes a named test fail — the measured case: it currently leaves Seed.UnitTests 44/44 green while Orders fixtures go into the Billing database",
+        "the mechanism is chosen once and inherited, as id 56's was, rather than one bespoke test per call site",
+        "armed: each substitution and each no-op is named with its verbatim failure, and the failure message is checked to name the intended reason rather than an incidental one"
+      ],
+      "notes": "Routed from feature 56's review rather than discharged in prose: D2 disclosed the residual honestly and R2-5 then MEASURED a consequence of it. Two independent measurements are the acceptance: P17 (a no-op configure lambda leaves Billing 232/232 green) and R2-5 (a substituted connection string leaves Seed.UnitTests 44/44 green and produces id 56's D1 consequence by another route). Seed.IntegrationTests builds its own connection strings and never calls SeedRunner.RunAsync, so it cannot see it either. Id 56 guarded WHICH VARIABLE each writer reads; this entry guards WHERE THE VALUE GOES. Filed against phase 14 because the reliability phase is where host wiring gets its own tests, and because a mechanism chosen here should be the one later services inherit."
+    },
+    {
+      "id": 69,
+      "name": "gateway_readiness_pacing_is_unguarded",
+      "phase": 14,
+      "title": "The two Gateway readiness loops were paced during the guard-hardening loop but nothing proves the pacing — deleting both Task.Delay calls leaves 48/48 green",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "deleting the pacing delay in tests/Gateway.IntegrationTests/StandInResponder.cs and in FulfillmentStockEndToEndTests.cs each makes a named test fail",
+        "the proof is a DETERMINISTIC test in the shape the other six sites already use — delay the subscription by a controlled interval, show the unpaced loop loses every time and the paced loop wins every time — not an observation that flakes stopped",
+        "the failure message names the pacing as the reason, not an incidental timeout: a swap or deletion that fails for the wrong reason is not evidence",
+        "armed: each deleted delay is named with its verbatim failure"
+      ],
+      "notes": "Found as probe P10 by the review of the guard-hardening loop. These are the 7th and 8th unpaced readiness sites — beyond the six id 63 names — discovered by the implementer during id 63's enumeration, paced, and honestly flagged as not fully proven rather than folded in as done. The reviewer confirmed the gap: grep -ln for the deterministic-race test name returns three files, none of them in Gateway, and deleting both Task.Delay calls leaves Gateway.IntegrationTests 48/48 green. In scope for the class, not proved, and therefore routed here rather than discharged in prose. Worth noting for the benchmark: id 63's population grew four -> six -> eight, each step because somebody enumerated instead of assuming, which is the entry's own argument made three times."
+    },
+    {
+      "id": 70,
+      "name": "retyped_key_list_guards_survive_in_three_more_payload_test_files",
+      "phase": 14,
+      "title": "The hand-typed key list id 64 retired is alive in three more payload test files under the same test name — an undeclared property leaves both suites fully green",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "each of tests/Orders.UnitTests/OrdersCancelPayloadTests.cs:66, tests/Orders.UnitTests/CatalogReferenceListPayloadTests.cs:101 and tests/Fulfillment.UnitTests/StockRpcPayloadTests.cs:162 derives its key set from the payload RECORD by reflection, as tests/Billing.UnitTests/CreditRpcPayloadTests.cs:29-35 and now Orders' BC23 theory do",
+        "armed on the measured mutations: an undeclared property on OrdersCancelReplyPayload currently leaves Orders.UnitTests 362/362 green, and the same on DespatchCreateReplyPayload leaves Fulfillment.UnitTests 124/124 green — both must fail a named test",
+        "the schema NAME each row claims is guarded too, not only the key set: substituting a real sibling schema name must fail a named test naming what was broken",
+        "the enumeration is repository-wide and is a search result: every payload-key theory in the solution is listed with one classification line each, so a file with this shape and no entry here is visible as an unclassified line"
+      ],
+      "notes": "Found as F1 by round 2 of the guard-hardening loop's review, measured rather than argued. Outside id 64's acceptance and outside the scope round 1 set, so routed as an entry rather than folded in or narrated. The reviewer also added a probe the loop had not run — substituting the row's literal schema name for a real sibling — which is why bullet 3 exists: a key-set guard can be correct and still not guard which schema the row claims. Bullet 4 carries the condition the same review drew for #9: when work targets a defect CLASS, the first task is one repository-wide enumeration of that class, before any fix — id 64 fixed the instance it was filed for and the class survived in three more files."
+    },
+    {
+      "id": 71,
+      "name": "operator_note_survives_the_compensation_branches",
+      "phase": 14,
+      "title": "Carry the operator's cancellation note across the async saga boundary so stock_reserved, credit_approved and confirmed cancellations reach the timeline with it — the unqualified half of id 66's bullet 1",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "POST /orders/{id}/cancel with a note against an order in stock_reserved lands that note on the read-model timeline entry after the real compensation chain completes, proved end to end",
+        "the same for credit_approved and confirmed",
+        "a saga-decided cancellation (stock_rejected, credit_rejected) still carries no note and no note key on the wire",
+        "armed in all three families: deleting the retention, corrupting the retained text, and substituting the persisted column or field for a real sibling — the substitution must fail with a message naming what was broken",
+        "while the saga_commands row is open, store the triggering fact's BYTES and not only its id — R29's dead-letter clause (test-matrix.md:127, feature 27) cannot republish an envelope verbatim without them, and one column serves both needs"
+      ],
+      "notes": "NO SA-3 IS REQUIRED, and that is the part got wrong twice — by the implementer AND by the leader's own brief, both of which placed the root cause in specs/shared/. It is not there: grep -rn 'saga_commands|saga command' specs/shared/*.md returns five hits (saga.md:31, requirements.md:564, domain-model.md:275 and :475, test-matrix.md:127), all prose about saga progression and DLQ policy, NONE describing a column. The table is implementation-owned and per-assessment. #7 already solves this without a wire change: apps/orders/src/application/cancel-order.handler.ts:272-283 puts the note into the saga command's triggering envelope on both compensation branches (:175, :234), persisted at saga-commands.schema.ts:61. The #8 shape is an Orders-local column plus SagaFactHandler.cs:167 feeding the note: parameter feature 66 already added to Order.Cancel — wholly inside src/Orders/. Bullet 5 folds in review finding F3: grep -rn TriggeringEvent src/Orders returns seven hits, all the ID, so #8 stores the triggering fact's bytes nowhere."
     },
     {
       "id": 44,

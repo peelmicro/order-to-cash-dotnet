@@ -13,6 +13,7 @@ namespace OrderToCash.Gateway.UnitTests;
 /// introducing a first exception to it. Recorded as a genuine, deliberate
 /// gap against #7's own review finding, not silently closed.
 /// </summary>
+[Collection(GatewayEnvironmentVariableTestCollection.Name)]
 public sealed class LoginThrottleOptionsTests
 {
     [Fact]

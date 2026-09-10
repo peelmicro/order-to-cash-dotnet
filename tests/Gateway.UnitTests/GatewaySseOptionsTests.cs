@@ -15,6 +15,7 @@ namespace OrderToCash.Gateway.UnitTests;
 /// env var names and defaults #7's <c>loadSseConfig</c> reads (500 / 15000),
 /// which <c>GatewaySseOptions</c>'s own doc comment cites.
 /// </summary>
+[Collection(GatewayEnvironmentVariableTestCollection.Name)]
 public sealed class GatewaySseOptionsTests
 {
     [Fact]
