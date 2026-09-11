@@ -2270,3 +2270,46 @@ Full record: `progress/review_operator_note_survives_the_compensation_branches.m
 Full record: `progress/review_test_hosts_exhaust_the_per_user_inotify_limit.md`.
 
 ---
+
+## Shared amendment SA-3 (raised here, applied to #7 in the same session) — 2026-09-11
+
+**Effort:** n/a — an amendment, not a feature. No code and no tests in #8; the tests that assert the ruled meaning, in both repositories, are backlog id 75's.
+**Raised by:** assessment #8, Phase 14 — the leader, reading #7's retry dispatcher for feature 27's ledger row L29, filed as backlog id 75 carrying a recommendation.
+**Touches:** `specs/shared/asyncapi.yaml` only — five lines appended to the block `description` of `DeadLetterHeaders`. No `$ref`, property, `required` list, channel or other schema changed.
+
+**What was wrong:**
+
+`DeadLetterHeaders` declared `x-first-failed-at` and `x-failed-at` as a bare `$ref` to `Instant` with no description, while every neighbouring header (`x-attempts`, `x-error`, `x-original-topic`) said what it meant. The two assessments filled that silence differently, and both were green against it:
+
+- **#7 records the instant dispatch was entered**, in all three copies of its dispatcher, each read before the retry loop: `apps/orders/src/infrastructure/messaging/fact-retry-dispatcher.ts:135-136` (`const firstFailedAt = enteredAt;`), `apps/projector/src/infrastructure/messaging/fact-retry-dispatcher.ts:126` and `apps/notifications/src/infrastructure/messaging/fact-retry-dispatcher.ts:123` (`const firstFailedAt = this.clock.now();`). Only the orders copy has a spec asserting it (`fact-retry-dispatcher.spec.ts:89`).
+- **#8 records the first caught failure**: `firstFailedAt ??= clock.UtcNow` inside the catch, at `src/{Orders,Notifications,Projector}/Infrastructure/Messaging/FactRetryDispatcher.cs:97`.
+
+A redrive operator reading that header would get a different instant from each assessment for the same failure. Neither violated the contract, because the contract said nothing.
+
+**The ruling, at the human gate:** the meaning id 75 recommended, now the schema's own text:
+
+```yaml
+    `x-first-failed-at` is the instant the FIRST processing attempt failed —
+    never the instant processing began; it equals `x-failed-at` only when a
+    single attempt was made. `x-failed-at` is the instant the final attempt
+    failed, immediately before the record was dead-lettered.
+```
+
+**The first placement was wrong, and #7's generator is what showed it.** The first form put a `description` beside each header's `$ref`. #7's contract generator then emitted `'x-first-failed-at'?: string;` and `'x-failed-at'?: string;` instead of `Instant` — with a keyword beside the `$ref`, the reference was no longer followed, so a correct definition would have silently weakened two types. The final form appends the definition to the schema's block `description`, which the generator emits as the interface's JSDoc (#7 `packages/contracts/src/generated/asyncapi.types.ts:612-615`) while both headers stay `Instant` (`:638-639`). The meaning approved at the gate did not change, only its location. #8's `quality.sh` run on the first form was stopped and is cited here for nothing.
+
+**What applying it to #7 found — SA-2 never regenerated #7's contracts.** #7's SA-2 commit `bf45af0` touched `specs/shared/asyncapi.yaml` and `progress/history.md` only and never ran `pnpm --filter @otc/contracts run generate`, so `contracts:check` had failed with *"committed generated files are stale"* since 2026-09-09, and the stale hunk it printed was SA-2's `note?: string`. A controlled comparison — backup, HEAD's spec against SA-3's, `cmp`-verified restore — showed the **same four** contracts tests failing under both, all generated-files-are-stale checks: pre-existing, not caused by SA-3. #7's SA-3 commit `5723874` regenerated the types (+9 lines: SA-3's JSDoc and SA-2's missing `note?: string`) and says plainly that it repairs SA-2's miss.
+
+The same comparison surfaced a second #7 defect: a contracts test **writes into the real generated directory**, and a run rewrote the tracked `asyncapi.types.ts` with no generate command issued. It was restored from `git show HEAD:…` and `git diff` came back empty. The test was not identified by name. #7 is a completed assessment with no open backlog, so it is recorded here, where #9 will read it.
+
+**The lesson for the amendment convention.** SA-1 and SA-2 were applied to a checklist of identical bytes, a commit of their own, a `history.md` section and a README registry row. It never included **the receiving repository's own spec-derived artefacts and spec checks**, and #7 has both — a generator and a drift check — which is how SA-2 shipped stale for two days with the check that would have caught it sitting unrun. Applying an amendment to a repository now means regenerating what that repository derives from the spec and running its spec checks. For #8 that is the full `quality.sh`: a content search for `asyncapi.yaml` across `*.cs`, `*.sh`, `*.csproj`, `*.props`, `*.targets`, `*.mjs` and `*.ts`, excluding `bin/`, `obj/`, `node_modules/` and `.git/` by path, found no generator and no drift check; the spec's parsers are the `AsyncApiSchema.cs` helpers in `Billing.UnitTests`, `Fulfillment.UnitTests`, `Gateway.UnitTests` and `Orders.UnitTests`, all four inside that run.
+
+**A correction made while writing this section.** Id 75 and the first form of this amendment's README row cited only the orders site (`:136`) and priced #7's code change at one line. Reading all three copies shows **three sites, two of them with no spec at all** — the ledger-row lesson once more, in a dispatcher ported three times and read once. Both were corrected before this commit. #7's own SA-3 section, pushed in `5723874`, cites only the orders site too: true of that file, incomplete about #7. It is left as pushed and corrected here.
+
+**Verification:**
+- **#7, final form:** `contracts:check` → *"contracts:check OK"*; contracts tests counted at 5 files, 22 passed; contracts typecheck and workspace `pnpm run typecheck` exit 0; the tree held exactly `asyncapi.types.ts` (+9) and `asyncapi.yaml` (+5). Committed `5723874`, pushed `bf45af0..5723874`.
+- **#8, final form:** `specs/shared/asyncapi.yaml` `cmp`-IDENTICAL to #7's; net diff +5 lines; `./init.sh` exit 0 (*"shared spec byte-identical to #7 across 6 file(s)"*). `./quality.sh` (15:11): format OK, build OK, **18 projects, 1833 total, 1832 passed, 1 failed**, every per-project total identical to the 13:34 green run on the tree before SA-3's five description lines.
+- **The one red test, and why SA-3 is not its cause.** `Projector.IntegrationTests.OffsetContractTests.PR38_AThrowingHandlerLeavesTheCommittedOffsetUnchanged_ReadFromTheBroker` threw `KafkaException : Broker: Not coordinator` from `consumer.Committed` at `OffsetContractTests.cs:58`. That project has no `asyncapi.yaml` reader (its one mention is a comment, `ProjectorDeadLetterTests.cs:72`); the exception is a broker coordinator error inside a test helper, not a schema comparison; `/var/log/dpkg.log` shows no package change since 06:22. The helper is one of four committed-offset readers sharing a 5-attempt × 300 ms budget that catches every `KafkaException` — about 1.2 s of sleeps against a brand-new broker whose coordinator can take longer to load — where #7 waits on the same condition against a 60 s deadline (`apps/projector/src/test-support/kafka-test-fixture.ts:93-126`). It is the id 63 class again, *a retry budget counted in attempts against an error that returns without consuming wall-clock*, and it is routed as a bullet on backlog id 69 rather than disclosed here. Rerun alone three times on the same build: 1/1 passed each time — which shows the failure is intermittent and says nothing about its cause. The whole project rerun on the same build, alongside its neighbours as `quality.sh` ran it: **59/59 passed** (15:14:41–15:15:56).
+
+**For #9:** copy `specs/shared/` at or after both SA-3 commits; when applying any amendment, run that repository's own generator and drift check as part of applying it; put a schema's prose in its own `description`, never beside a `$ref`; and when a mechanism was ported N times, read all N copies before pricing a change to it.
+
+---
