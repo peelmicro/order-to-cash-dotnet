@@ -106,11 +106,15 @@ public sealed class SagaCompensationCreditRejectedTests(KafkaContainerFixture ka
 
             // Causal order: the emitted order.cancelled.v1 names stock.released.v1's own eventId as its causationId.
             Assert.Equal(releasedFactEventId, cancelledRow.CausationId);
+
+            // Id 71 bullet 3 — a saga-decided cancellation carries no note
+            // key on the wire at all. No operator RPC happened on this
+            // path, so nothing could ever have supplied one.
+            Assert.False(payloadDoc.RootElement.TryGetProperty("note", out _), "a saga-decided cancellation must carry no note key at all.");
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 }

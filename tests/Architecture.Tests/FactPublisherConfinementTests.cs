@@ -10,6 +10,18 @@ namespace OrderToCash.Architecture.Tests;
 /// features 17-22 inherit it the moment they add their own relays.
 /// </summary>
 /// <remarks>
+/// WIDENED AGAIN by <c>observability_reliability</c>'s A1 group (design.md
+/// §3.3, gate row 5). <c>Projector</c> and <c>Notifications</c> own no
+/// outbox at all, so their own <c>KafkaDeadLetterPublisher</c> (OR1's
+/// dead-letter republication) cannot live under
+/// <c>*.Infrastructure.Outbox</c> without lying about what that folder
+/// means. The namespace pattern is widened to
+/// <c>\.Infrastructure\.(Outbox|Messaging\.DeadLetter)(\.|$)</c>, and the
+/// widening is RE-ARMED below (a <c>ProducerBuilder&lt;string, byte[]&gt;</c>
+/// reference added under <c>Application/</c> must still fail this rule) —
+/// design.md §3.3's own instruction that an unarmed widening of a
+/// confinement rule is a rule that no longer guards.
+///
 /// AMENDED by <c>order_saga_orchestrator</c> (design.md §10, gate row 5,
 /// approved 2026-09-04). The rule as written forbade ANY type outside
 /// <c>*.Infrastructure.Outbox</c> from depending on <c>Confluent.Kafka</c> at
@@ -51,7 +63,7 @@ namespace OrderToCash.Architecture.Tests;
 /// </remarks>
 public sealed class FactPublisherConfinementTests
 {
-    private const string OutboxNamespacePattern = @"\.Infrastructure\.Outbox(\.|$)";
+    private const string OutboxNamespacePattern = @"\.Infrastructure\.(Outbox|Messaging\.DeadLetter)(\.|$)";
 
     private static readonly string[] _producerTypePrefixes =
     [

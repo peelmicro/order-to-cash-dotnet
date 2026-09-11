@@ -45,6 +45,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Infrastructure/Observability only — feature observability_reliability
+         (phase 14, group A3): the OTel SDK, its OTLP exporter, its hosting
+         registration extension, and the Gateway's inbound HTTP server span
+         (design.md §9.1 — the Gateway is the only service that consumes
+         OpenTelemetry.Instrumentation.AspNetCore). -->
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The copied OpenAPI contract, embedded so GET /docs and the contract
          test read the SAME bytes this repository ships under
          specs/shared/ — never a filesystem path that may not exist inside

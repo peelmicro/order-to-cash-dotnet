@@ -22,6 +22,19 @@ public sealed class MongoContainerFixture : IAsyncLifetime
 
     /// <summary>The raw connection string — <see cref="StreamProjectorEndToEndTests"/>'s own use: it needs to pass this straight into BOTH a real <c>ProjectorHost</c> and a real <c>GatewayTestHost</c>'s own <c>options.Mongo.ConnectionUri</c>, not merely open a collection through it directly.</summary>
     public string ConnectionString => _container.GetConnectionString();
+
+    /// <summary>
+    /// Review round 2, D7 — R60/OR6, design.md §8.3: a REAL <c>docker
+    /// pause</c>, never a faked failure. The SAME wrapper
+    /// <c>Projector.IntegrationTests/TestSupport/MongoContainerFixture.cs</c>
+    /// already carries — used by <c>HealthProbesTests</c> only; every other
+    /// test in this SHARED collection relies on the caller always
+    /// unpausing (a <c>try</c>/<c>finally</c>) before its own test method
+    /// returns.
+    /// </summary>
+    public Task PauseAsync() => _container.PauseAsync();
+
+    public Task UnpauseAsync() => _container.UnpauseAsync();
 }
 
 [CollectionDefinition(Name, DisableParallelization = true)]

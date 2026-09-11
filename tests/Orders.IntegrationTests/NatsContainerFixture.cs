@@ -43,6 +43,17 @@ public sealed class NatsContainerFixture : IAsyncLifetime
             await _container.DisposeAsync();
         }
     }
+
+    /// <summary>
+    /// R60/OR6, design.md §8.3 — a REAL <c>docker pause</c>, never a faked
+    /// failure: the stalled-but-open-socket case a closed connection cannot
+    /// reproduce. Used by <c>HealthProbesTests</c> only; every other test in
+    /// this SHARED collection relies on the caller always unpausing (a
+    /// <c>try</c>/<c>finally</c>) before its own test method returns.
+    /// </summary>
+    public Task PauseAsync() => _container!.PauseAsync();
+
+    public Task UnpauseAsync() => _container!.UnpauseAsync();
 }
 
 /// <summary>A test needing both real NATS and real MS-SQL joins this collection — the shape <see cref="KafkaCollection"/> already established for Kafka+MsSql.</summary>

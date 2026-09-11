@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using OrderToCash.Contracts.Envelopes;
 using OrderToCash.Contracts.Facts;
 using OrderToCash.Contracts.Facts.Payloads;
@@ -8,6 +10,7 @@ using OrderToCash.Contracts.Wire;
 using OrderToCash.Cqrs;
 using OrderToCash.Notifications.Application.Commands;
 using OrderToCash.Notifications.Application.Ports;
+using OrderToCash.Notifications.Infrastructure.Messaging;
 using OrderToCash.Notifications.Presentation;
 using Xunit;
 
@@ -143,13 +146,61 @@ public sealed class NotificationFactsConsumerTests
         var provider = services.BuildServiceProvider();
         scopeFactory ??= new CountingScopeFactory(dispatcher, provider);
 
-        var consumer = new NotificationFactsConsumer(subscriber, scopeFactory, NullLogger<NotificationFactsConsumer>.Instance);
+        var consumer = new NotificationFactsConsumer(subscriber, scopeFactory, BuildRealFactRetryDispatcher(), NullLogger<NotificationFactsConsumer>.Instance);
 
         await consumer.StartAsync(CancellationToken.None);
         await subscriber.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         // Give the handler a moment to complete after delivery.
         await Task.Delay(50);
         await consumer.StopAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A REAL <see cref="FactRetryDispatcher"/> over instant fakes — every
+    /// case in this file expects the wrapped process delegate to succeed on
+    /// its first attempt, so this dispatcher's own retry/backoff/DLQ
+    /// machinery is never exercised here (OR1's own behaviour lives in
+    /// <c>FactRetryDispatcherTests</c>).
+    /// </summary>
+    internal static FactRetryDispatcher BuildRealFactRetryDispatcher(
+        IFactRetryDelay? delay = null,
+        IDeadLetterPublisher? deadLetters = null,
+        FactRetryOptions? options = null) =>
+        new(
+            new FakeClock(),
+            delay ?? new InstantFactRetryDelay(),
+            deadLetters ?? new RecordingDeadLetterPublisher(),
+            Options.Create(options ?? new FactRetryOptions()),
+            NullLogger<FactRetryDispatcher>.Instance);
+
+    /// <summary>A no-wait <see cref="IFactRetryDelay"/> — unit tests run instantly, and every call is recorded so OR1's exact-backoff-sequence assertions can inspect it.</summary>
+    internal sealed class InstantFactRetryDelay : IFactRetryDelay
+    {
+        public List<int> Delays { get; } = [];
+
+        public Task DelayAsync(int milliseconds, CancellationToken cancellationToken)
+        {
+            Delays.Add(milliseconds);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Records every dead letter it was asked to publish — never touches a real broker.</summary>
+    internal sealed class RecordingDeadLetterPublisher : IDeadLetterPublisher
+    {
+        public List<DeadLetterPublication> Published { get; } = [];
+
+        public Task PublishAsync(DeadLetterPublication publication, CancellationToken cancellationToken)
+        {
+            Published.Add(publication);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A settable fake — matching this service's own <c>IClock</c> port.</summary>
+    internal sealed class FakeClock : IClock
+    {
+        public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UtcNow;
     }
 
     private static FactStreamMessage BuildMessage(

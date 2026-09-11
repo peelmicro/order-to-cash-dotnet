@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,7 @@ using OrderToCash.Fulfillment.Application.Ports;
 using OrderToCash.Fulfillment.Application.Queries;
 using OrderToCash.Fulfillment.Infrastructure;
 using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
+using OrderToCash.Fulfillment.Infrastructure.Observability;
 using OrderToCash.Fulfillment.Presentation.Rpc;
 
 namespace OrderToCash.Fulfillment.Presentation;
@@ -151,6 +153,23 @@ public sealed class StockRpcResponder(
     /// </summary>
     internal async Task<byte[]> ProcessRequestAsync(string subject, NatsMsg<byte[]> message, CancellationToken cancellationToken)
     {
+        // design.md §5.2, ledger L21/L24 — the ONE extraction site this
+        // responder's six subjects share: CONTINUES the caller's trace (a
+        // fresh span id, the SAME trace id) rather than starting an
+        // unrelated one.
+        var context = TraceContext.ExtractNats(message.Headers);
+        using var activity = context is { } parent
+            ? OtcActivity.Source.StartActivity($"rpc {subject}", ActivityKind.Server, parentContext: parent)
+            : OtcActivity.Source.StartActivity($"rpc {subject}", ActivityKind.Server);
+
+        // design.md §6's scope-push table, RPC responder row —
+        // x-correlation-id from the request headers, when present.
+        using var correlationScope = message.Headers is { } headers
+            && headers.TryGetLastValue("x-correlation-id", out var rawCorrelationId)
+            && Guid.TryParse(rawCorrelationId, out var correlationId)
+                ? logger.BeginScope(new Dictionary<string, object> { ["correlationId"] = correlationId })
+                : null;
+
         // ONE IServiceScope PER REQUEST — never one per responder (`FS18`).
         using var scope = scopeFactory.CreateScope();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();

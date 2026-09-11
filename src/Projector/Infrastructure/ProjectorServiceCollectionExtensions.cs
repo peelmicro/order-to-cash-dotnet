@@ -7,6 +7,7 @@ using OrderToCash.Projector.Application;
 using OrderToCash.Projector.Application.Ports;
 using OrderToCash.Projector.Infrastructure.Messaging;
 using OrderToCash.Projector.Infrastructure.Messaging.Consumers;
+using OrderToCash.Projector.Infrastructure.Messaging.DeadLetter;
 using OrderToCash.Projector.Infrastructure.Persistence;
 using OrderToCash.Projector.Infrastructure.Signal;
 using OrderToCash.Projector.Presentation;
@@ -32,6 +33,16 @@ public static class ProjectorServiceCollectionExtensions
         configure(options);
 
         services.AddSingleton<IOptions<ProjectorKafkaOptions>>(Options.Create(options.Kafka));
+
+        // OR1 — the retry-then-dead-letter wrapper (design.md §3). All
+        // singletons, matching this service's own "EVERYTHING is a
+        // singleton" convention stated in this class's own banner.
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IOptions<FactRetryOptions>>(Options.Create(options.FactRetry));
+        services.AddSingleton<IOptions<DeadLetterKafkaOptions>>(Options.Create(options.DeadLetter));
+        services.AddSingleton<IFactRetryDelay, TaskDelayFactRetryDelay>();
+        services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
+        services.AddSingleton<FactRetryDispatcher>();
 
         services.AddSingleton<IMongoClient>(_ => new MongoClient(options.Mongo.ConnectionUri));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoClient>()

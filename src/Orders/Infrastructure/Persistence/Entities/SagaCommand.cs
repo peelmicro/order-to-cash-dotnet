@@ -36,4 +36,25 @@ public sealed class SagaCommand
     public DateTime UpdatedAt { get; set; }
 
     public DateTime? SentAt { get; set; }
+
+    /// <summary>
+    /// Feature <c>observability_reliability</c> (design.md §4.1) — the raw
+    /// UTF-8 bytes of the fact that owed this command, decoded to a string
+    /// for the <c>nvarchar(max)</c> column and re-encoded on read
+    /// (<see cref="Saga.EfCoreSagaCommandStore"/>). <see langword="null"/>
+    /// for a row enqueued before this feature's columns existed, or for any
+    /// other enqueue site that genuinely supplies no envelope (none exists
+    /// today). An RPC-triggered compensation row (an operator cancel,
+    /// <c>CancelOrderCommandHandler</c>) is NOT such a row: since feature
+    /// <c>operator_note_survives_the_compensation_branches</c> (id 71) it
+    /// carries a synthetic <c>orders.cancel.requested</c> envelope here,
+    /// written exactly once, by the enqueue's own <c>INSERT</c>.
+    /// </summary>
+    public string? TriggeringEventEnvelope { get; set; }
+
+    /// <summary>The source topic <see cref="TriggeringEventEnvelope"/> was consumed from — never re-derived from <see cref="Command"/>.</summary>
+    public string? TriggeringEventTopic { get; set; }
+
+    /// <summary><c>OR3</c>'s at-most-once marker (design.md §4.3) — set exactly once, by <see cref="Saga.EfCoreSagaCommandStore.TryClaimDeadLetterAsync"/>'s single conditional <c>UPDATE</c>.</summary>
+    public DateTime? DeadLetteredAt { get; set; }
 }

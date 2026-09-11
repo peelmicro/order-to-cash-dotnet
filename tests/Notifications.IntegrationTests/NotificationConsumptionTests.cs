@@ -48,8 +48,7 @@ public sealed class NotificationConsumptionTests(MsSqlContainerFixture mssql, Ka
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await NotificationConsumptionTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -80,8 +79,7 @@ public sealed class NotificationConsumptionTests(MsSqlContainerFixture mssql, Ka
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await NotificationConsumptionTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -106,8 +104,15 @@ public sealed class NotificationConsumptionTests(MsSqlContainerFixture mssql, Ka
         await NotificationConsumptionTestSupport.WaitForSenderCallCountAsync(sender1, atLeast: 1, _wait);
         Assert.Equal(1, sender1.CallCount);
 
-        await host1.StopAsync();
-        host1.Dispose();
+        // Review round 3 fix (the zombie-member fix record) — CONFIRMS host1 has actually
+        // LEFT the group before host2 joins it, never merely that
+        // StopAsync/Dispose were called: this test's own "host2 resumes
+        // from host1's committed offset" claim (below) is only true if
+        // host1 is genuinely gone by the time host2 rebalances, and a
+        // stale host1 member left behind under load would otherwise block
+        // host2's own assignment for the SAME reason `StopHostAndWaitForGroupToClearAsync`'s
+        // own doc comment reproduces directly.
+        await NotificationConsumptionTestSupport.StopHostAndWaitForGroupToClearAsync(host1, kafka);
 
         // A fresh Notifications host, SAME database (the durable ledger),
         // SAME Kafka consumer group ("notifications") — a genuine process
@@ -152,8 +157,7 @@ public sealed class NotificationConsumptionTests(MsSqlContainerFixture mssql, Ka
         }
         finally
         {
-            await host2.StopAsync();
-            host2.Dispose();
+            await NotificationConsumptionTestSupport.StopHostAndWaitForGroupToClearAsync(host2, kafka);
         }
     }
 
@@ -210,8 +214,7 @@ public sealed class NotificationConsumptionTests(MsSqlContainerFixture mssql, Ka
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await NotificationConsumptionTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -262,8 +265,7 @@ public sealed class NotificationConsumptionTests(MsSqlContainerFixture mssql, Ka
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await NotificationConsumptionTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 

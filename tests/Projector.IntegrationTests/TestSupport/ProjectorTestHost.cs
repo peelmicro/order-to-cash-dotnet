@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using Microsoft.Extensions.Hosting;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -35,6 +36,62 @@ public static class ProjectorTestHost
         var host = builder.Build();
         await host.StartAsync();
         return host;
+    }
+
+    /// <summary>
+    /// Stops <paramref name="host"/> AND CONFIRMS its own consumer has
+    /// actually LEFT <paramref name="groupId"/> before returning — never
+    /// merely that <c>StopAsync</c>/<c>Dispose</c> were called and trusted.
+    /// Ported from the Notifications copy (feature <c>observability_reliability</c>,
+    /// review round 4), which proved directly, against the real
+    /// <c>KafkaFactStreamSubscriber</c>, that <c>host.StopAsync()</c> can
+    /// return successfully — matching .NET's own default
+    /// <c>HostOptions.ShutdownTimeout</c> (30s) — WHILE the broker is still
+    /// unreachable and the subscriber's own <c>finally { consumer.Close(); }</c>
+    /// has not completed, leaving a stale member in the group. Every host
+    /// built by <see cref="StartAsync"/> joins the SAME literal production
+    /// group (<c>"projector"</c>, this service's own
+    /// <c>KafkaFactStreamSubscriber.cs:111</c>), shared sequentially across
+    /// every <c>ProjectorInfraCollection</c> test — so a stale member left
+    /// by one test's teardown can block the NEXT test's own host from ever
+    /// being assigned a partition, exactly the mechanism the Notifications
+    /// copy's own `zombieprobe` reproduced directly (a silent member held a
+    /// fresh topic's partitions for the full 90s a DLQ test budgets).
+    /// </summary>
+    public static async Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = "projector", TimeSpan? timeout = null)
+    {
+        await host.StopAsync();
+        host.Dispose();
+
+        var budget = timeout ?? TimeSpan.FromSeconds(150);
+        var startedAt = DateTime.UtcNow;
+        var deadline = startedAt + budget;
+        using var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = kafka.BootstrapServers }).Build();
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var result = await admin.DescribeConsumerGroupsAsync([groupId], new DescribeConsumerGroupsOptions { RequestTimeout = TimeSpan.FromSeconds(10) });
+                var description = result.ConsumerGroupDescriptions.SingleOrDefault(g => g.GroupId == groupId);
+                if (description is null || description.Members.Count == 0)
+                {
+                    return;
+                }
+            }
+            catch (KafkaException)
+            {
+                // DescribeConsumerGroupsAsync itself can transiently fail
+                // under the SAME contention that motivates this wait —
+                // retry within the budget rather than surface a spurious
+                // failure from the PROBE itself.
+            }
+
+            await Task.Delay(300);
+        }
+
+        throw new TimeoutException(
+            $"Consumer group '{groupId}' still reported members {(DateTime.UtcNow - startedAt).TotalSeconds:F0}s after this test's own host was stopped — its teardown left a stale member that would otherwise block the NEXT test's rebalance (observed directly in the Notifications copy's own `zombieprobe` reproduction: a silent member can hold every partition of a topic for well over 90s).");
     }
 
     public static async Task PublishAsync<TPayload>(KafkaContainerFixture kafka, string topic, Envelope<TPayload> envelope)

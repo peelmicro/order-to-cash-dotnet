@@ -74,6 +74,11 @@ public sealed class SchemaColumnTypeTests(MsSqlContainerFixture fixture)
         // orders
         new("orders", "id", "uniqueidentifier"),
         new("orders", "order_reference", "nvarchar", MaxLength: 20),
+        // Feature observability_reliability, RI1 — the client's orders.create
+        // idempotency key, nullable, under a FILTERED unique index
+        // (uq_orders_request_id) so MS-SQL's "two NULLs are equal" behaviour
+        // does not collapse every requestId-omitting order into one (design.md §2.1).
+        new("orders", "request_id", "uniqueidentifier", Nullable: true),
         new("orders", "order_date", "datetime2", DatetimePrecision: 3),
         new("orders", "company_id", "uniqueidentifier"),
         new("orders", "retailer_id", "uniqueidentifier"),
@@ -137,6 +142,12 @@ public sealed class SchemaColumnTypeTests(MsSqlContainerFixture fixture)
         new("saga_commands", "created_at", "datetime2", DatetimePrecision: 3),
         new("saga_commands", "updated_at", "datetime2", DatetimePrecision: 3),
         new("saga_commands", "sent_at", "datetime2", DatetimePrecision: 3, Nullable: true),
+        // observability_reliability, OR3/R29's dead-letter clause (design.md
+        // §4.1) — nullable, since every row already in the table predates
+        // them.
+        new("saga_commands", "triggering_event_envelope", "nvarchar", MaxLength: -1, Nullable: true),
+        new("saga_commands", "triggering_event_topic", "nvarchar", MaxLength: 64, Nullable: true),
+        new("saga_commands", "dead_lettered_at", "datetime2", DatetimePrecision: 3, Nullable: true),
 
         // saga_ignored_facts
         new("saga_ignored_facts", "id", "uniqueidentifier"),

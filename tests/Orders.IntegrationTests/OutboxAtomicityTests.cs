@@ -48,7 +48,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
         await Assert.ThrowsAsync<SqlException>(() => unitOfWork.ExecuteAsync(
             async ct =>
             {
-                await repository.AddAsync(order, ct);
+                await repository.AddAsync(order, null, ct);
                 await repository.SaveChangesAsync(ct);
             },
             CancellationToken.None));
@@ -97,7 +97,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
             var seedOrder = OrderPersistenceTestSupport.Place(reference, clock.UtcNow, UniqueId.New());
             var seedRepository = new EfCoreOrderRepository(seedOrderDb, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var seedUnitOfWork = new EfCoreUnitOfWork(seedOrderDb);
-            await seedUnitOfWork.ExecuteAsync(async ct => { await seedRepository.AddAsync(seedOrder, ct); await seedRepository.SaveChangesAsync(ct); }, CancellationToken.None);
+            await seedUnitOfWork.ExecuteAsync(async ct => { await seedRepository.AddAsync(seedOrder, null, ct); await seedRepository.SaveChangesAsync(ct); }, CancellationToken.None);
         }
 
         // Second order collides on order_reference (unique index) — its own
@@ -112,7 +112,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
         await Assert.ThrowsAsync<DbUpdateException>(() => unitOfWork.ExecuteAsync(
             async ct =>
             {
-                await repository.AddAsync(colliding, ct);
+                await repository.AddAsync(colliding, null, ct);
                 await repository.SaveChangesAsync(ct);
             },
             CancellationToken.None));
@@ -161,7 +161,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
             await Assert.ThrowsAsync<SqlException>(() => unitOfWork.ExecuteAsync(
                 async ct =>
                 {
-                    await repository.AddAsync(order, ct);
+                    await repository.AddAsync(order, null, ct);
                     await repository.SaveChangesAsync(ct);
                 },
                 CancellationToken.None));
@@ -190,7 +190,7 @@ public sealed class OutboxAtomicityTests(MsSqlContainerFixture fixture)
             await unitOfWork.ExecuteAsync(
                 async ct =>
                 {
-                    await repository.AddAsync(order, ct);
+                    await repository.AddAsync(order, null, ct);
                     await repository.SaveChangesAsync(ct);
                 },
                 CancellationToken.None);

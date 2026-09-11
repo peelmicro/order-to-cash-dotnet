@@ -39,6 +39,16 @@ public sealed class MongoContainerFixture : IAsyncLifetime
     }
 
     public string ConnectionString => _mongo.GetConnectionString();
+
+    /// <summary>
+    /// R60/OR6, design.md §8.3 — a REAL <c>docker pause</c>, never a faked
+    /// failure. Used by <c>HealthProbesTests</c> only; every other test in
+    /// this SHARED collection relies on the caller always unpausing (a
+    /// <c>try</c>/<c>finally</c>) before its own test method returns.
+    /// </summary>
+    public Task PauseAsync() => _mongo.PauseAsync();
+
+    public Task UnpauseAsync() => _mongo.UnpauseAsync();
 }
 
 [CollectionDefinition(Name, DisableParallelization = true)]

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace OrderToCash.Gateway.IntegrationTests;
 
-/// <summary>Ported from #7's own <c>auth.integration.spec.ts</c> finding F8 — "exactly the four documented public routes reject nothing; every other registered route rejects an anonymous request with 401" (here: the two documented public routes this feature builds, <c>/auth/login</c> and <c>/docs</c> — <c>/health/live</c>/<c>/health/ready</c> are phase 14's).</summary>
+/// <summary>Ported from #7's own <c>auth.integration.spec.ts</c> finding F8 — "exactly the four documented public routes reject nothing; every other registered route rejects an anonymous request with 401" (here: the four documented public routes — <c>/auth/login</c> and <c>/docs</c> from feature <c>gateway_rest_auth</c>, plus <c>/health/live</c>/<c>/health/ready</c>, added by <c>observability_reliability</c>'s group A4, phase 14).</summary>
 public sealed class DocsAndAnonymousRouteHttpTests
 {
     private static Task<GatewayTestHost> StartAsync() => GatewayTestHost.StartAsync(options =>
@@ -30,21 +30,27 @@ public sealed class DocsAndAnonymousRouteHttpTests
     }
 
     /// <summary>
-    /// Fix round, review defect D2 — the public set is now a LITERAL (the
-    /// two routes this feature documents as public), and the protected set
-    /// is derived by SUBTRACTING that literal from every mapped operation,
-    /// never by filtering on the <c>IAllowAnonymous</c> metadata this test
-    /// exists to police. Before this rewrite, marking <c>GET /orders</c>
-    /// <c>.AllowAnonymous()</c> simply removed it from the candidate list
-    /// instead of failing the test — review probe P2, 141 tests green. A
-    /// SEPARATE assertion below also pins the <c>IAllowAnonymous</c> set
-    /// itself to exactly the same literal pair, so a route wrongly made
-    /// public fails on ONE of two independent checks: the literal-derived
-    /// loop (a real 200 where 401 is asserted) and the metadata-set
-    /// equality (the anonymous set no longer being exactly the pair).
+    /// Fix round, review defect D2 — the public set is now a LITERAL, and
+    /// the protected set is derived by SUBTRACTING that literal from every
+    /// mapped operation, never by filtering on the <c>IAllowAnonymous</c>
+    /// metadata this test exists to police. Before this rewrite, marking
+    /// <c>GET /orders</c> <c>.AllowAnonymous()</c> simply removed it from
+    /// the candidate list instead of failing the test — review probe P2,
+    /// 141 tests green. A SEPARATE assertion below also pins the
+    /// <c>IAllowAnonymous</c> set itself to exactly the same literal, so a
+    /// route wrongly made public fails on ONE of two independent checks:
+    /// the literal-derived loop (a real 200 where 401 is asserted) and the
+    /// metadata-set equality (the anonymous set no longer being exactly
+    /// the literal). WIDENED by <c>observability_reliability</c>'s group A4
+    /// (phase 14) to add <c>GET /health/live</c>/<c>GET /health/ready</c> —
+    /// per CLAUDE.md's own "widening a literal set is exactly when a guard
+    /// can quietly stop guarding" caution, this widening was confirmed
+    /// (see <c>progress/impl_observability_reliability.md</c>) still to
+    /// fail when an UNRELATED route is marked anonymous, never merely when
+    /// this test's own literal grows.
     /// </summary>
     [Fact]
-    public async Task EveryRegisteredRouteExceptTheTwoDocumentedPublicOnes_RejectsAnAnonymousRequestWith401()
+    public async Task EveryRegisteredRouteExceptTheFourDocumentedPublicOnes_RejectsAnAnonymousRequestWith401()
     {
         await using var gateway = await StartAsync();
 
@@ -68,9 +74,17 @@ public sealed class DocsAndAnonymousRouteHttpTests
 
         Assert.NotEmpty(allOperations);
 
-        // The literal — the two routes THIS feature documents as public.
-        // /health/live and /health/ready are phase 14's, never built here.
-        var publicRoutes = new HashSet<string>(StringComparer.Ordinal) { "POST /auth/login", "GET /docs" };
+        // The literal — every route documented as public across every
+        // feature that has shipped so far: /auth/login and /docs
+        // (gateway_rest_auth, id 25), /health/live and /health/ready
+        // (observability_reliability's group A4, phase 14).
+        var publicRoutes = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "POST /auth/login",
+            "GET /docs",
+            "GET /health/live",
+            "GET /health/ready",
+        };
 
         var anonymousRoutes = endpoints
             .Where(e => e.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>() is not null)

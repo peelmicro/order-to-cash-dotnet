@@ -33,7 +33,16 @@ public sealed class BillingConsumesNoFactsTests
 
         var hostedServiceTypes = host.Services.GetServices<IHostedService>().Select(s => s.GetType()).ToHashSet();
 
-        Assert.Equal(new HashSet<Type> { typeof(OutboxRelayBackgroundService), typeof(BillingRpcResponder) }, hostedServiceTypes);
+        // feature observability_reliability (phase 14, group A3b) — AddOpenTelemetry()
+        // registers OpenTelemetry.Extensions.Hosting.Implementation.TelemetryHostedService
+        // unconditionally (it flushes providers on host start/stop); it is
+        // neither a fact consumer nor a second RPC responder, so it is
+        // added to the expected set rather than narrowing this test's own
+        // claim.
+        var nonOtelHostedServiceTypes = hostedServiceTypes.Where(t => t.FullName != "OpenTelemetry.Extensions.Hosting.Implementation.TelemetryHostedService").ToHashSet();
+        Assert.Equal(new HashSet<Type> { typeof(OutboxRelayBackgroundService), typeof(BillingRpcResponder) }, nonOtelHostedServiceTypes);
+        Assert.Equal(3, hostedServiceTypes.Count);
+        Assert.Contains(hostedServiceTypes, t => t.FullName == "OpenTelemetry.Extensions.Hosting.Implementation.TelemetryHostedService");
 
         var (hits, scannedFiles) = ScanForKafkaConsumerTypes();
         Assert.Empty(hits);

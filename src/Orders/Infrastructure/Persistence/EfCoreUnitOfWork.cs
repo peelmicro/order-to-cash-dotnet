@@ -1,6 +1,8 @@
 using System.Data;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using OrderToCash.Orders.Application.Ports;
+using OrderToCash.Orders.Infrastructure.Observability;
 
 namespace OrderToCash.Orders.Infrastructure.Persistence;
 
@@ -34,6 +36,17 @@ public sealed class EfCoreUnitOfWork(OrdersDbContext db) : IUnitOfWork
 
         return await strategy.ExecuteAsync(async () =>
         {
+            // OR4/design.md §5.4, ledger L23 — the write-database hop of
+            // R56's trace: one hand-started Activity for the whole
+            // transaction (never an auto-instrumented per-statement span —
+            // EF Core instrumentation is deliberately not referenced, §5.4),
+            // nested under whatever span is Activity.Current at this point
+            // (the RPC responder's own span) so the exported ordering is
+            // RPC -> writemodel.transaction -> (later) outbox.publish.
+            using var activity = OtcActivity.Source.StartActivity("writemodel.transaction", ActivityKind.Internal);
+            activity?.SetTag("db.system", "mssql");
+            activity?.SetTag("db.name", db.Database.GetDbConnection().Database);
+
             // IsolationLevel.ReadCommitted stated explicitly, not inherited —
             // design.md §4.1 point 3: the relay's claim (§5.2) depends on it,
             // and an ambient TransactionScope opened by a future caller could

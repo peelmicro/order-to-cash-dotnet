@@ -1,4 +1,6 @@
 using OrderToCash.Notifications.Infrastructure;
+using OrderToCash.Notifications.Infrastructure.Health;
+using OrderToCash.Notifications.Infrastructure.Observability;
 
 namespace OrderToCash.Notifications;
 
@@ -17,8 +19,20 @@ public static class NotificationsProgramConfiguration
     public static void Configure(NotificationsOptions options)
     {
         options.ConnectionString = BuildMsSqlConnectionString();
-        options.Kafka.BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS")
+        var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS")
             ?? $"localhost:{Environment.GetEnvironmentVariable("KAFKA_HOST_PORT") ?? "9092"}";
+        options.Kafka.BootstrapServers = bootstrapServers;
+
+        // OR1 — the two-variable retry policy family (design.md §3.5). Each
+        // read is bound to its OWN variable name.
+        options.FactRetry.MaxAttempts = int.TryParse(Environment.GetEnvironmentVariable("FACT_RETRY_MAX_ATTEMPTS"), out var maxAttempts)
+            ? maxAttempts
+            : 3;
+        options.FactRetry.BackoffMs = int.TryParse(Environment.GetEnvironmentVariable("FACT_RETRY_BACKOFF_MS"), out var backoffMs)
+            ? backoffMs
+            : 500;
+
+        options.DeadLetter.BootstrapServers = bootstrapServers;
 
         // The real host always sends real mail — Mailpit locally, per the
         // brief's "MailKit → Mailpit" instruction. Every automated test
@@ -31,6 +45,23 @@ public static class NotificationsProgramConfiguration
             ? smtpPort
             : int.TryParse(Environment.GetEnvironmentVariable("MAILPIT_SMTP_HOST_PORT"), out var mailpitPort) ? mailpitPort : 1025;
         options.Smtp.FromAddress = Environment.GetEnvironmentVariable("NOTIFICATIONS_SMTP_FROM_ADDRESS") ?? "no-reply@order-to-cash.example";
+    }
+
+    // design.md §9.2 — OTEL_EXPORTER_OTLP_ENDPOINT, read on its own key
+    // exactly as every other env read in this class is.
+    public static void ConfigureTelemetry(TelemetryOptions options)
+    {
+        options.OtlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") ?? "http://localhost:4317";
+    }
+
+    // design.md §8.1/§9.2 — group A4. NOTIFICATIONS_HEALTH_PORT is bound to
+    // its OWN key (tasks.md A4b's substitution arming target).
+    public static void ConfigureHealth(HealthOptions options)
+    {
+        options.Port = int.TryParse(Environment.GetEnvironmentVariable("NOTIFICATIONS_HEALTH_PORT"), out var port) ? port : 3005;
+        options.ConnectionString = BuildMsSqlConnectionString();
+        options.KafkaBootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS")
+            ?? $"localhost:{Environment.GetEnvironmentVariable("KAFKA_HOST_PORT") ?? "9092"}";
     }
 
     // Mirrors NotificationsDbContextFactory's own reading of .env's variable

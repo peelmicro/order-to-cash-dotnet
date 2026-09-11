@@ -56,6 +56,7 @@ public sealed class SagaCommandDispatcher(
     ISagaCommandStore store,
     ISagaCommands sagaCommands,
     ISagaRetryDelay delay,
+    ISagaFirstParkDeadLetterHandler firstParkHandler,
     IOptions<OrdersSagaOptions> options,
     ILogger<SagaCommandDispatcher> logger) : ISagaCommandDispatcher
 {
@@ -75,6 +76,12 @@ public sealed class SagaCommandDispatcher(
 
     public async Task DispatchClaimedAsync(SagaCommandRecord claimed, CancellationToken cancellationToken)
     {
+        // design.md §6's scope-push table, SagaCommandDispatcher/
+        // SagaCommandSweeper row — the row's order_id. Covers BOTH call
+        // paths (DispatchAsync's fast path and the sweeper's direct claim),
+        // since both funnel through this one method.
+        using var correlationScope = logger.BeginScope(new Dictionary<string, object> { ["order_id"] = claimed.OrderId });
+
         var policy = options.Value.Command;
         Exception? lastFailure = null;
 
@@ -145,7 +152,7 @@ public sealed class SagaCommandDispatcher(
         // SO5 — exhausted: park durably with the accumulated attempts and
         // the last error, and log a structured saga-failure entry.
         var errorMessage = lastFailure?.Message ?? "unknown error";
-        await store.ParkAsync(claimed.Id, policy.MaxAttempts, errorMessage, cancellationToken).ConfigureAwait(false);
+        var wasParked = await store.ParkAsync(claimed.Id, policy.MaxAttempts, errorMessage, cancellationToken).ConfigureAwait(false);
 
         logger.LogError(
             lastFailure,
@@ -154,6 +161,21 @@ public sealed class SagaCommandDispatcher(
             claimed.OrderId,
             policy.MaxAttempts,
             errorMessage);
+
+        // OR3's first-park hook (design.md §4.4) — runs ONLY when THIS call
+        // actually performed the parked transition. `wasParked == false`
+        // means a racing dispatcher already reported the row `sent` (SO5's
+        // own race-safety, unrelated to dead-lettering) — dead-lettering a
+        // row that just turned out to have succeeded would be wrong
+        // regardless. `claimed.Attempts` is the row's attempts BEFORE this
+        // cycle (captured at claim time); `policy.MaxAttempts` is this
+        // cycle's own — their sum is the TOTAL accumulated attempts,
+        // matching what ParkAsync itself persists.
+        if (wasParked)
+        {
+            var totalAttempts = claimed.Attempts + policy.MaxAttempts;
+            await firstParkHandler.HandleAsync(claimed, totalAttempts, errorMessage, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private Task InvokeAsync(SagaCommandKind command, string payloadJson, SagaCommandMeta meta, CancellationToken cancellationToken) => command switch

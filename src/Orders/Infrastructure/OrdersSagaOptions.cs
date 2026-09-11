@@ -1,3 +1,6 @@
+using OrderToCash.Orders.Infrastructure.Messaging;
+using OrderToCash.Orders.Infrastructure.Messaging.DeadLetter;
+
 namespace OrderToCash.Orders.Infrastructure;
 
 /// <summary>Kafka consumer settings for the saga fact stream (design.md §3.2).</summary>
@@ -48,7 +51,7 @@ public sealed class OrdersSagaSweeperOptions
     public int BatchSize { get; set; } = 20;
 }
 
-/// <summary>The three nested settings groups <see cref="OrdersSagaServiceCollectionExtensions.AddOrdersSaga"/> needs (design.md §9).</summary>
+/// <summary>The five nested settings groups <see cref="OrdersSagaServiceCollectionExtensions.AddOrdersSaga"/> needs (design.md §9) — the last two added by <c>observability_reliability</c>'s A1 group (OR1, design.md §3.5).</summary>
 public sealed class OrdersSagaOptions
 {
     public OrdersSagaKafkaOptions Kafka { get; } = new();
@@ -56,4 +59,10 @@ public sealed class OrdersSagaOptions
     public OrdersSagaCommandOptions Command { get; } = new();
 
     public OrdersSagaSweeperOptions Sweeper { get; } = new();
+
+    /// <summary>OR1's retry policy for <see cref="FactRetryDispatcher"/> — <c>FACT_RETRY_MAX_ATTEMPTS</c>/<c>FACT_RETRY_BACKOFF_MS</c>.</summary>
+    public FactRetryOptions FactRetry { get; } = new();
+
+    /// <summary>The dedicated DLQ producer's connection — reuses the same broker as <see cref="Kafka"/>, a distinct client id.</summary>
+    public DeadLetterKafkaOptions DeadLetter { get; } = new();
 }

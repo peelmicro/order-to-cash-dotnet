@@ -66,6 +66,12 @@ public sealed class SagaCompensationStockRejectedTests(KafkaContainerFixture kaf
             {
                 var cancelledRow = await db.OutboxMessages.SingleAsync(m => m.AggregateId == orderId && m.EventType == "order.cancelled.v1");
                 Assert.Contains("\"compensationSteps\":[]", cancelledRow.Payload, StringComparison.Ordinal);
+
+                // Id 71 bullet 3 — a saga-decided cancellation carries no
+                // note key on the wire at all (JsonWire's own null-omission,
+                // never a present null). No operator RPC happened on this
+                // path, so nothing could ever have supplied one.
+                Assert.DoesNotContain("\"note\"", cancelledRow.Payload, StringComparison.Ordinal);
             }
 
             // No stock.release command was ever enqueued (R26's "SHALL NOT").
@@ -97,8 +103,7 @@ public sealed class SagaCompensationStockRejectedTests(KafkaContainerFixture kaf
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 }

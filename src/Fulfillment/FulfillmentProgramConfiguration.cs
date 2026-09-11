@@ -1,4 +1,6 @@
 using OrderToCash.Fulfillment.Infrastructure;
+using OrderToCash.Fulfillment.Infrastructure.Health;
+using OrderToCash.Fulfillment.Infrastructure.Observability;
 
 namespace OrderToCash.Fulfillment;
 
@@ -21,6 +23,22 @@ public static class FulfillmentProgramConfiguration
             ?? $"localhost:{Environment.GetEnvironmentVariable("KAFKA_HOST_PORT") ?? "9092"}";
         options.Kafka.ClientId = Environment.GetEnvironmentVariable("FULFILLMENT_KAFKA_CLIENT_ID") ?? "otc-fulfillment";
         options.Responder.MaxConcurrentRequests = int.TryParse(Environment.GetEnvironmentVariable("FULFILLMENT_MAX_CONCURRENT_REQUESTS"), out var max) ? max : 32;
+    }
+
+    // design.md §9.2 — OTEL_EXPORTER_OTLP_ENDPOINT, read on its own key
+    // exactly as every other env read in this class is.
+    public static void ConfigureTelemetry(TelemetryOptions options)
+    {
+        options.OtlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") ?? "http://localhost:4317";
+    }
+
+    // design.md §8.1/§9.2 — group A4. FULFILLMENT_HEALTH_PORT is bound to
+    // its OWN key (tasks.md A4b's substitution arming target — the five
+    // *_HEALTH_PORT variables are a sibling family).
+    public static void ConfigureHealth(HealthOptions options)
+    {
+        options.Port = int.TryParse(Environment.GetEnvironmentVariable("FULFILLMENT_HEALTH_PORT"), out var port) ? port : 3003;
+        options.ConnectionString = BuildMsSqlConnectionString();
     }
 
     // Mirrors FulfillmentDbContextFactory's own reading of .env's variable names

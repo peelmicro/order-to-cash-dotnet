@@ -32,9 +32,34 @@ internal sealed class FakeOrderRepository : IOrderRepository
 
     public int SaveChangesCallCount { get; private set; }
 
-    public Task AddAsync(Order order, CancellationToken cancellationToken)
+    /// <summary>Records the requestId AddAsync was called with, keyed by the aggregate's own id — feature observability_reliability, RI1.</summary>
+    public Dictionary<UniqueId, Guid?> RequestIdsByOrderId { get; } = [];
+
+    /// <summary>Every requestId lookup performed — feature observability_reliability, RI2/RI4: some cases assert this stays empty.</summary>
+    public List<Guid> FindByRequestIdCalls { get; } = [];
+
+    /// <summary>Answered by <see cref="FindByRequestIdAsync"/> instead of the usual by-requestId scan over <see cref="Added"/> — set by RI3 tests that need the "no lookup should have been performed" and "the winner's reply" cases to stay independent.</summary>
+    public Order? FindByRequestIdResult { get; set; }
+
+    /// <summary>
+    /// RI3's race has TWO distinct calls to <see cref="FindByRequestIdAsync"/>
+    /// in one <c>HandleAsync</c>: RI2's own fast-path check (which must see
+    /// NOTHING yet — the order is not-yet-committed at that point, which is
+    /// exactly what makes it a race) and, only on collision, the post-catch
+    /// re-read. When this queue is non-empty each call dequeues its own
+    /// answer; <see cref="FindByRequestIdResult"/> is the fallback once it is
+    /// drained (or was never set), so every OTHER test in this file — which
+    /// has only one meaningful call — needs no change.
+    /// </summary>
+    public Queue<Order?> FindByRequestIdResults { get; } = [];
+
+    /// <summary>Feature observability_reliability, RI3 — thrown from <see cref="SaveChangesAsync"/> exactly once, then cleared, so it models the ONE colliding attempt inside <c>unitOfWork.ExecuteAsync</c> without making every subsequent save fail too.</summary>
+    public Exception? ThrowFromNextSaveChanges { get; set; }
+
+    public Task AddAsync(Order order, Guid? requestId, CancellationToken cancellationToken)
     {
         Added.Add(order);
+        RequestIdsByOrderId[order.Id] = requestId;
         return Task.CompletedTask;
     }
 
@@ -42,8 +67,20 @@ internal sealed class FakeOrderRepository : IOrderRepository
 
     public Task<Order?> GetByReferenceAsync(OrderNumber reference, CancellationToken cancellationToken) => Task.FromResult<Order?>(Added.SingleOrDefault(o => o.OrderReference == reference));
 
+    public Task<Order?> FindByRequestIdAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        FindByRequestIdCalls.Add(requestId);
+        return Task.FromResult(FindByRequestIdResults.Count > 0 ? FindByRequestIdResults.Dequeue() : FindByRequestIdResult);
+    }
+
     public Task SaveChangesAsync(CancellationToken cancellationToken)
     {
+        if (ThrowFromNextSaveChanges is { } toThrow)
+        {
+            ThrowFromNextSaveChanges = null;
+            throw toThrow;
+        }
+
         SaveChangesCallCount++;
         return Task.CompletedTask;
     }
@@ -132,6 +169,34 @@ internal sealed class FakeOrderReferenceCatalog : IOrderReferenceCatalog
         ListCurrenciesCallCount++;
         return Task.FromResult<IReadOnlyList<CurrencyCatalogEntry>>(CurrencyEntries);
     }
+}
+
+/// <summary>
+/// Feature <c>observability_reliability</c>, <c>RI2</c>/design.md §2.3 — every
+/// member throws unconditionally, so a test can assert "the fast path
+/// performs NO reference-data lookup" the same way it asserts a count: by
+/// making a violation impossible to pass silently.
+/// </summary>
+internal sealed class ThrowingOrderReferenceCatalog : IOrderReferenceCatalog
+{
+    private static InvalidOperationException Unexpected([System.Runtime.CompilerServices.CallerMemberName] string member = "") =>
+        new($"RI2's fast path must not call IOrderReferenceCatalog.{member}.");
+
+    public Task<PartyReference?> FindRetailerAsync(string retailerCode, CancellationToken cancellationToken) => throw Unexpected();
+
+    public Task<PartyReference?> FindCompanyAsync(string companyCode, CancellationToken cancellationToken) => throw Unexpected();
+
+    public Task<bool> CurrencyExistsAsync(string currencyCode, CancellationToken cancellationToken) => throw Unexpected();
+
+    public Task<IReadOnlyDictionary<string, ProductReference>> FindProductsAsync(IReadOnlyCollection<string> productCodes, CancellationToken cancellationToken) => throw Unexpected();
+
+    public Task<IReadOnlyList<ProductCatalogEntry>> ListProductsAsync(bool includeDisabled, CancellationToken cancellationToken) => throw Unexpected();
+
+    public Task<IReadOnlyList<PartyCatalogEntry>> ListRetailersAsync(bool includeDisabled, CancellationToken cancellationToken) => throw Unexpected();
+
+    public Task<IReadOnlyList<PartyCatalogEntry>> ListCompaniesAsync(bool includeDisabled, CancellationToken cancellationToken) => throw Unexpected();
+
+    public Task<IReadOnlyList<CurrencyCatalogEntry>> ListCurrenciesAsync(CancellationToken cancellationToken) => throw Unexpected();
 }
 
 /// <summary>Answers a fixed <see cref="StockAvailabilityResult"/> or throws a fixed transport exception — never both — recording every call's arguments for the "checked BEFORE anything is persisted" assertions.</summary>

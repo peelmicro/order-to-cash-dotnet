@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -22,7 +23,7 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
     private const int MaxLastErrorLength = 4_000;
 
     /// <summary>Inserts a <c>pending</c> row through the AMBIENT <see cref="OrdersDbContext"/> — no <c>tx</c> parameter, matching <see cref="Persistence.EfCoreOrderRepository"/>'s own shape. A duplicate-key hit on <c>(order_id, command)</c> means the command is already owed or already sent (SO3) — caught exactly as <c>ProcessedEventLedger</c> catches its own, detached, and reported as <see cref="EnqueueOutcome.AlreadyEnqueued"/> rather than propagated.</summary>
-    public async Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, CancellationToken cancellationToken)
+    public async Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, byte[]? triggeringEventEnvelope, string? triggeringEventTopic, CancellationToken cancellationToken)
     {
         var now = clock.UtcNow.UtcDateTime;
         var row = new SagaCommand
@@ -33,6 +34,16 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
             Command = SagaCommandKinds.ToToken(command),
             Payload = payload,
             TriggeringEventId = triggeringEventId,
+            // observability_reliability, OR3/R29's dead-letter clause
+            // (design.md §4.2) — the column is nvarchar(max), so the raw
+            // bytes are decoded UTF-8 here, at the LAST possible moment
+            // before storage, and re-encoded UTF-8 on the way out
+            // (ToRecord below). Every fact envelope on this wire is
+            // producer-emitted valid UTF-8 JSON, so the round trip is a
+            // bijection — never a re-serialisation through Envelope<T>,
+            // which would reorder keys and drop unknown fields (ledger L15).
+            TriggeringEventEnvelope = triggeringEventEnvelope is null ? null : System.Text.Encoding.UTF8.GetString(triggeringEventEnvelope),
+            TriggeringEventTopic = triggeringEventTopic,
             Status = "pending",
             Attempts = 0,
             CreatedAt = now,
@@ -123,7 +134,8 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
                 .FromSqlInterpolated($@"
                     SELECT TOP ({batchSize})
                            id, order_id, order_reference, command, payload, triggering_event_id,
-                           status, attempts, last_error, next_attempt_at, created_at, updated_at, sent_at
+                           status, attempts, last_error, next_attempt_at, created_at, updated_at, sent_at,
+                           triggering_event_envelope, triggering_event_topic, dead_lettered_at
                     FROM   dbo.saga_commands WITH (UPDLOCK, READPAST, ROWLOCK)
                     WHERE  (status = 'pending' AND created_at <= {pendingCutoff} AND (next_attempt_at IS NULL OR next_attempt_at <= {now}))
                         OR (status = 'parked' AND next_attempt_at <= {now})
@@ -185,7 +197,7 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
     /// every caller of this method (the dispatch worker, the sweeper) drives
     /// the SAME <c>SagaCommandDispatcher</c> with the SAME policy.
     /// </summary>
-    public async Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
+    public async Task<bool> ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
     {
         var now = clock.UtcNow.UtcDateTime;
         var current = await db.SagaCommands.AsNoTracking().SingleAsync(c => c.Id == commandId, cancellationToken).ConfigureAwait(false);
@@ -195,8 +207,14 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
         var backoffMs = Math.Min(30_000d * Math.Pow(2, parkCycles), options.Value.Sweeper.ParkRetryCapMs);
         var truncatedError = lastError.Length > MaxLastErrorLength ? lastError[..MaxLastErrorLength] : lastError;
 
-        await db.SagaCommands
-            .Where(c => c.Id == commandId)
+        // Conditional on status <> 'sent' — mirrors #7's own notAlreadySent()
+        // guard (drizzle-saga-command-store.ts:116-124): a row a concurrent
+        // dispatcher has already reported `sent` is never overwritten
+        // `parked`. The affected-row count is the "did this call actually
+        // transition the row" answer OR3's first-park hook (observability_
+        // reliability, design.md §4.4) gates on.
+        var affected = await db.SagaCommands
+            .Where(c => c.Id == commandId && c.Status != "sent")
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(c => c.Status, "parked")
@@ -206,6 +224,8 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
                     .SetProperty(c => c.UpdatedAt, now),
                 cancellationToken)
             .ConfigureAwait(false);
+
+        return affected == 1;
     }
 
     /// <summary>
@@ -238,6 +258,109 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// <c>OR3</c>'s "at most once per row" claim (design.md §4.3) — ONE
+    /// <c>UPDATE ... WHERE dead_lettered_at IS NULL</c>, never a
+    /// <c>SELECT</c> then an <c>UPDATE</c>/<c>INSERT</c>. The affected-row
+    /// count is the answer: exactly one caller can ever see
+    /// <see langword="true"/> for a given row, no matter how many callers
+    /// race it — a check-then-act rewrite (read the column, then decide
+    /// whether to write) lets two racing callers both observe <c>NULL</c>
+    /// and both win, which is exactly the defect shape <c>CLAUDE.md</c>
+    /// records as shipped once already in this repository.
+    /// </summary>
+    public async Task<bool> TryClaimDeadLetterAsync(Guid commandId, CancellationToken cancellationToken)
+    {
+        var now = clock.UtcNow.UtcDateTime;
+
+        var affected = await db.SagaCommands
+            .Where(c => c.Id == commandId && c.DeadLetteredAt == null)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(c => c.DeadLetteredAt, now),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return affected == 1;
+    }
+
+    /// <summary>
+    /// Feature <c>operator_note_survives_the_compensation_branches</c> (id
+    /// 71) — see <see cref="ISagaCommandStore.FindOperatorCancelNoteAsync"/>
+    /// for why <c>credit.release</c> is checked first. A bare
+    /// <c>AsNoTracking</c> read, never a claim/lease, so it never contends
+    /// with <see cref="TryClaimAsync"/>/<see cref="ClaimDueAsync"/>.
+    /// </summary>
+    public async Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        const string CreditReleaseToken = "credit.release";
+        const string StockReleaseToken = "stock.release";
+
+        var rows = await db.SagaCommands
+            .AsNoTracking()
+            .Where(c => c.OrderId == orderId && (c.Command == CreditReleaseToken || c.Command == StockReleaseToken))
+            .Select(c => new { c.Command, c.TriggeringEventEnvelope })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var creditReleaseEnvelope = rows.FirstOrDefault(r => r.Command == CreditReleaseToken)?.TriggeringEventEnvelope;
+        var stockReleaseEnvelope = rows.FirstOrDefault(r => r.Command == StockReleaseToken)?.TriggeringEventEnvelope;
+
+        return ExtractOperatorCancelNote(creditReleaseEnvelope) ?? ExtractOperatorCancelNote(stockReleaseEnvelope);
+    }
+
+    /// <summary>
+    /// <see langword="null"/> for anything that is not the synthetic
+    /// <c>orders.cancel.requested</c> envelope — a <see langword="null"/>
+    /// column (a row enqueued before this feature, or a saga-decided
+    /// <c>credit.rejected.v1</c>/<c>stock.rejected.v1</c> row whose
+    /// envelope is a REAL fact), a real fact envelope of any other
+    /// <c>eventType</c>, or the synthetic envelope with no <c>note</c> key
+    /// (JsonWire's own null-omission — the operator supplied none).
+    /// </summary>
+    private static string? ExtractOperatorCancelNote(string? envelopeJson)
+    {
+        if (envelopeJson is null)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(envelopeJson);
+        var root = document.RootElement;
+
+        if (!root.TryGetProperty("eventType", out var eventType) || eventType.GetString() != "orders.cancel.requested")
+        {
+            return null;
+        }
+
+        return root.TryGetProperty("payload", out var payload) && payload.TryGetProperty("note", out var note)
+            ? note.GetString()
+            : null;
+    }
+
+    /// <summary>
+    /// Id 62 — a plain <c>EXISTS</c>-shaped <c>AnyAsync</c>, no status
+    /// filter (see the port's own remarks for why: a <c>sent</c> or even
+    /// <c>rejected</c> row still means "a compensation was requested for
+    /// this order", which is all <see cref="SagaFactHandler"/> needs
+    /// to know before applying an UNRELATED forward-progress fact). Reads
+    /// through the SAME ambient <see cref="OrdersDbContext"/> every other
+    /// method here uses — under this database's <c>READ_COMMITTED_SNAPSHOT
+    /// ON</c>, executed AFTER the caller's own <c>UPDLOCK</c> read of the
+    /// order row (<see cref="Persistence.EfCoreOrderRepository.GetByIdAsync"/>)
+    /// has already waited out any concurrent enqueue for the SAME order, so
+    /// this statement's own snapshot is guaranteed fresh relative to it.
+    /// </summary>
+    public async Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        const string CreditReleaseToken = "credit.release";
+        const string StockReleaseToken = "stock.release";
+
+        return await db.SagaCommands
+            .AsNoTracking()
+            .AnyAsync(c => c.OrderId == orderId && (c.Command == CreditReleaseToken || c.Command == StockReleaseToken), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static SagaCommandRecord ToRecord(SagaCommand row) => new(
         row.Id,
         row.OrderId,
@@ -245,5 +368,7 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
         SagaCommandKinds.Parse(row.Command),
         row.Payload,
         row.TriggeringEventId,
-        row.Attempts);
+        row.Attempts,
+        row.TriggeringEventEnvelope is null ? null : System.Text.Encoding.UTF8.GetBytes(row.TriggeringEventEnvelope),
+        row.TriggeringEventTopic);
 }

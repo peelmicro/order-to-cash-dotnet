@@ -38,10 +38,16 @@ public sealed partial class OutboxRelayParityTests
     // design.md §8.4 case 2 — the two additions this guard's widened scope
     // needed over IdempotentConsumerParityTests' own whitelist:
     // System.Text.Json (OutboxWriter's payload serialisation) and
-    // .Domain.Events (OutboxWriter's FactEvent parameter).
+    // .Domain.Events (OutboxWriter's FactEvent parameter). Feature
+    // observability_reliability (phase 14, group A3d) adds two more:
+    // System.Diagnostics (Activity/ActivityContext — OR4's trace
+    // propagation, design.md §5.3) and .Infrastructure.Observability
+    // (TraceContext/OtcActivity, each service's own copy under the SAME
+    // namespace-suffix shape .Infrastructure.Outbox already establishes).
     private static readonly string[] _usingWhitelistSuffixes =
     [
         "System.Data",
+        "System.Diagnostics",
         "System.Text.Json",
         "Microsoft.EntityFrameworkCore",
         "Microsoft.Extensions",
@@ -50,6 +56,7 @@ public sealed partial class OutboxRelayParityTests
         "OrderToCash.Contracts",
         ".Application.Ports",
         ".Domain.Events",
+        ".Infrastructure.Observability",
         ".Infrastructure.Persistence",
         ".Infrastructure.Persistence.Entities",
         ".Infrastructure.Outbox",

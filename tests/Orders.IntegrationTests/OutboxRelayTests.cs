@@ -3,6 +3,7 @@ using Confluent.Kafka;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Outbox;
 using OrderToCash.Orders.Infrastructure.Persistence;
 using OrderToCash.Orders.Infrastructure.Persistence.Entities;
@@ -32,7 +33,7 @@ public sealed class OutboxRelayTests(KafkaContainerFixture kafka, MsSqlContainer
         {
             var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
             var unitOfWork = new EfCoreUnitOfWork(db);
-            await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+            await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, null, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
         }
 
         // First cycle, a publisher that throws: nothing is stamped, and the
@@ -48,7 +49,7 @@ public sealed class OutboxRelayTests(KafkaContainerFixture kafka, MsSqlContainer
         }).Build()))
         {
             await using var db = mssql.CreateDbContext(connectionString);
-            var relay = new OutboxRelay(db, unreachablePublisher, clock, unreachablePublisherOptions, NullLogger<OutboxRelay>.Instance);
+            var relay = new OutboxRelay(db, unreachablePublisher, clock, unreachablePublisherOptions, new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
             await relay.RunOnceAsync(CancellationToken.None);
         }
 
@@ -64,7 +65,7 @@ public sealed class OutboxRelayTests(KafkaContainerFixture kafka, MsSqlContainer
         using (var realPublisher = new KafkaFactPublisher(new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build()))
         {
             await using var db = mssql.CreateDbContext(connectionString);
-            var relay = new OutboxRelay(db, realPublisher, clock, realOptions, NullLogger<OutboxRelay>.Instance);
+            var relay = new OutboxRelay(db, realPublisher, clock, realOptions, new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
             var result = await relay.RunOnceAsync(CancellationToken.None);
 
             Assert.Equal(1, result.Claimed);
@@ -100,6 +101,41 @@ public sealed class OutboxRelayTests(KafkaContainerFixture kafka, MsSqlContainer
 
         Assert.NotNull(consumed);
         Assert.Equal(order.Id.Value.ToString(), consumed!.Message.Key);
+    }
+
+    /// <summary>
+    /// OR5/design.md §7 — <c>otc_dlq_depth</c>'s WIRING, not its arithmetic:
+    /// coordinator round 2 found that <c>MetricsExposureTests</c>'
+    /// <c>otc_dlq_depth</c> cases call <see cref="IDlqDepthGauge.RecordAsync"/>
+    /// on a real <c>KafkaDlqDepthGauge</c> directly and never drive
+    /// <see cref="OutboxRelay.RunOnceAsync"/> at all, so deleting the
+    /// relay's own call to the gauge left both green. This test drives the
+    /// relay itself and asserts the gauge was called EXACTLY once per
+    /// cycle — <see cref="FakeDlqDepthGauge.CallCount"/> existed for
+    /// exactly this purpose and was previously asserted nowhere.
+    /// </summary>
+    [Fact]
+    public async Task OtcDlqDepth_OneRunOnceAsyncCycle_CallsTheGaugeExactlyOnce()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_dlqcallcount_{Guid.NewGuid():N}");
+        await using var db = mssql.CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+
+        var gauge = new FakeDlqDepthGauge();
+        var relay = new OutboxRelay(
+            db,
+            new FakeFactPublisher(),
+            new FakeClock(FakeClock.UtcNowToTheMillisecond()),
+            Options.Create(new OutboxRelayOptions { BatchSize = 10 }),
+            gauge,
+            NullLogger<OutboxRelay>.Instance);
+
+        // No outbox rows at all — RunOnceAsync still calls the gauge once,
+        // unconditionally, before the (empty) claim (design.md §7: "recorded
+        // ONCE per cycle ... before the claim transaction opens").
+        await relay.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(1, gauge.CallCount);
     }
 
     [Fact]
@@ -332,7 +368,7 @@ public sealed class OutboxRelayTests(KafkaContainerFixture kafka, MsSqlContainer
     }
 
     private static OutboxRelay BuildRelay(OrdersDbContext db, FakeFactPublisher publisher, int batchSize, int publishTimeoutMs = 5000) =>
-        new(db, publisher, new FakeClock(FakeClock.UtcNowToTheMillisecond()), Options.Create(new OutboxRelayOptions { BatchSize = batchSize, PublishTimeoutMs = publishTimeoutMs }), NullLogger<OutboxRelay>.Instance);
+        new(db, publisher, new FakeClock(FakeClock.UtcNowToTheMillisecond()), Options.Create(new OutboxRelayOptions { BatchSize = batchSize, PublishTimeoutMs = publishTimeoutMs }), new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
 
     private static OutboxMessage NewRow(string eventType, DateTime occurredAt) => new()
     {

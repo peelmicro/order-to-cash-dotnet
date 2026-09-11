@@ -38,11 +38,28 @@
     <!-- Infrastructure/Notification only — MailKit → Mailpit (feature
          23's brief). -->
     <PackageReference Include="MailKit" />
-    <!-- Program.cs, NotificationsHost and every BackgroundService/IOptions<T>
-         site. -->
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Observability only — feature observability_reliability
+         (phase 14, group A3): the OTel SDK, its OTLP exporter and its
+         hosting registration extension (design.md §9.1). -->
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Health only — feature observability_reliability
+         (phase 14, group A4): design.md §8.1's HealthProbeService. A
+         FrameworkReference, NOT a NuGet package. Its shared framework
+         already carries Microsoft.Extensions.Hosting/Options/Logging.Abstractions
+         (previously used for Program.cs, NotificationsHost and every
+         BackgroundService/IOptions&lt;T&gt; site), which is why those three
+         PackageReferences were REMOVED above rather than kept alongside
+         this FrameworkReference — NuGet's package-pruning warning (NU1510,
+         an error under TreatWarningsAsErrors) fails the build otherwise. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>

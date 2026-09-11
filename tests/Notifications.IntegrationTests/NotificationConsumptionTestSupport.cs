@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -189,6 +190,72 @@ internal static class NotificationConsumptionTestSupport
     {
         await using var db = mssql.CreateDbContext(connectionString);
         return await db.ProcessedEvents.CountAsync(p => p.EventId == eventId && p.Consumer == "notifications");
+    }
+
+    /// <summary>
+    /// Stops <paramref name="host"/> AND CONFIRMS its own consumer has
+    /// actually LEFT <paramref name="groupId"/> before returning — never
+    /// merely that <c>StopAsync</c>/<c>Dispose</c> were called and trusted.
+    /// Every Notifications integration test host joins the SAME LITERAL
+    /// production group ("notifications",
+    /// <see cref="OrderToCash.Notifications.Infrastructure.Messaging.Consumers.KafkaFactStreamSubscriber"/>'s
+    /// own hardcoded <c>GroupId</c>) — under load, the generic host's own
+    /// default shutdown budget can expire while
+    /// <c>KafkaFactStreamSubscriber.ConsumeAsync</c>'s own
+    /// <c>finally { consumer.Close(); }</c> is still blocked on a slow
+    /// broker round trip, orphaning that task on its own thread-pool thread
+    /// with the consumer object never disposed. A member in that state
+    /// keeps sending heartbeats independently of the abandoned managed
+    /// <see cref="Task"/>, so it stays "alive" from the broker's own point
+    /// of view — reproduced directly and DETERMINISTICALLY by a standalone
+    /// member that stops polling and is never <c>Close()</c>'d/disposed: a
+    /// second, otherwise healthy member joining the SAME group was
+    /// assigned ZERO of the topic's SIX partitions after the full 90s
+    /// budget this suite's own DLQ tests use (`zombieprobe` scratch
+    /// reproduction, review round 3 fix record). Left unconfirmed, that
+    /// zombie silently blocks the NEXT test's own host — a DIFFERENT test
+    /// method, so the failure surfaces on an unrelated assertion with no
+    /// trace back to the test whose teardown actually caused it. This
+    /// converts that silent, mislocated failure into either a clean pass
+    /// (the group genuinely cleared) or a loud, correctly-attributed
+    /// failure (the test whose own teardown never released its
+    /// membership), and closes the class at its cause rather than at one
+    /// symptom.
+    /// </summary>
+    public static async Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = "notifications", TimeSpan? timeout = null)
+    {
+        await host.StopAsync();
+        host.Dispose();
+
+        var budget = timeout ?? TimeSpan.FromSeconds(150);
+        var startedAt = DateTime.UtcNow;
+        var deadline = startedAt + budget;
+        using var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = kafka.BootstrapServers }).Build();
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var result = await admin.DescribeConsumerGroupsAsync([groupId], new DescribeConsumerGroupsOptions { RequestTimeout = TimeSpan.FromSeconds(10) });
+                var description = result.ConsumerGroupDescriptions.SingleOrDefault(g => g.GroupId == groupId);
+                if (description is null || description.Members.Count == 0)
+                {
+                    return;
+                }
+            }
+            catch (KafkaException)
+            {
+                // DescribeConsumerGroupsAsync itself can transiently fail
+                // under the SAME contention that motivates this wait —
+                // retry within the budget rather than surface a spurious
+                // failure from the PROBE itself.
+            }
+
+            await Task.Delay(300);
+        }
+
+        throw new TimeoutException(
+            $"Consumer group '{groupId}' still reported members {(DateTime.UtcNow - startedAt).TotalSeconds:F0}s after this test's own host was stopped — its teardown left a stale member that would otherwise block the NEXT test's rebalance (observed directly: a silent member can hold every partition of a topic for well over 90s, `zombieprobe` reproduction).");
     }
 
     public static async Task<int> WaitForLedgerRowCountAsync(MsSqlContainerFixture mssql, string connectionString, Guid eventId, int atLeast, TimeSpan timeout)

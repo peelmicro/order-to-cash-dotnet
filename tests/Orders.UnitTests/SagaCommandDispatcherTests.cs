@@ -202,8 +202,8 @@ public sealed class SagaCommandDispatcherTests
         Assert.Empty(store.ParkCalls);
     }
 
-    private static SagaCommandDispatcher BuildDispatcher(FakeSagaCommandStore store, FakeSagaCommands sagaCommands, FakeSagaRetryDelay delay) =>
-        new(store, sagaCommands, delay, Options.Create(new OrdersSagaOptions()), NullLogger<SagaCommandDispatcher>.Instance);
+    private static SagaCommandDispatcher BuildDispatcher(FakeSagaCommandStore store, FakeSagaCommands sagaCommands, FakeSagaRetryDelay delay, ISagaFirstParkDeadLetterHandler? firstParkHandler = null) =>
+        new(store, sagaCommands, delay, firstParkHandler ?? new NoOpFirstParkDeadLetterHandler(), Options.Create(new OrdersSagaOptions()), NullLogger<SagaCommandDispatcher>.Instance);
 
     private static SagaCommandRecord BuildClaimed()
     {
@@ -238,7 +238,10 @@ public sealed class SagaCommandDispatcherTests
 
         public List<(Guid Id, int AttemptsMade, string LastError)> RejectCalls { get; } = [];
 
-        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        /// <summary>Every case in THIS file drives the retry/park/reject paths, never the first-park hook — <c>true</c> on every call keeps ParkAsync's own callers unaffected. <c>SagaCommandDispatcherFirstParkTests</c> exercises the <c>false</c> branch.</summary>
+        public bool ParkReturns { get; set; } = true;
+
+        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, byte[]? triggeringEventEnvelope, string? triggeringEventTopic, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<SagaCommandRecord?> TryClaimAsync(Guid orderId, SagaCommandKind command, CancellationToken cancellationToken) => Task.FromResult(ClaimResult);
 
@@ -250,10 +253,10 @@ public sealed class SagaCommandDispatcherTests
             return Task.CompletedTask;
         }
 
-        public Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
+        public Task<bool> ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
         {
             ParkCalls.Add((commandId, attemptsMade, lastError));
-            return Task.CompletedTask;
+            return Task.FromResult(ParkReturns);
         }
 
         public Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken)
@@ -261,6 +264,18 @@ public sealed class SagaCommandDispatcherTests
             RejectCalls.Add((commandId, attemptsMade, lastError));
             return Task.CompletedTask;
         }
+
+        public Task<bool> TryClaimDeadLetterAsync(Guid commandId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    /// <summary>The no-op fake every case in THIS file uses — none of them exercises OR3's first-park hook, which has its own dedicated test class (<c>SagaCommandDispatcherFirstParkTests</c>).</summary>
+    private sealed class NoOpFirstParkDeadLetterHandler : ISagaFirstParkDeadLetterHandler
+    {
+        public Task HandleAsync(SagaCommandRecord claimed, int attempts, string lastError, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class FakeSagaCommands(Func<int, Task<StockReserveReplyPayload>> reserveStock) : ISagaCommands

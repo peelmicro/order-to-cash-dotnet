@@ -1,3 +1,6 @@
+using OrderToCash.Notifications.Infrastructure.Messaging;
+using OrderToCash.Notifications.Infrastructure.Messaging.DeadLetter;
+
 namespace OrderToCash.Notifications.Infrastructure;
 
 /// <summary>Kafka consumer settings for the fact stream (mirrors <c>OrdersSagaKafkaOptions</c>'s shape).</summary>
@@ -54,4 +57,10 @@ public sealed class NotificationsOptions
     /// this to <see cref="NotificationSenderKind.Smtp"/>.
     /// </summary>
     public NotificationSenderKind SenderKind { get; set; } = NotificationSenderKind.Console;
+
+    /// <summary>OR1's retry policy for <see cref="Messaging.FactRetryDispatcher"/> — <c>FACT_RETRY_MAX_ATTEMPTS</c>/<c>FACT_RETRY_BACKOFF_MS</c>.</summary>
+    public FactRetryOptions FactRetry { get; } = new();
+
+    /// <summary>The dedicated DLQ producer's connection — reuses the same broker as <see cref="Kafka"/>, a distinct client id.</summary>
+    public DeadLetterKafkaOptions DeadLetter { get; } = new();
 }

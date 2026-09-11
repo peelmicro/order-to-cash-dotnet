@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using OrderToCash.Contracts.Envelopes;
 using OrderToCash.Contracts.Facts.Payloads;
 using OrderToCash.Contracts.Wire;
@@ -8,6 +10,7 @@ using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
+using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Presentation;
 using Xunit;
 
@@ -93,6 +96,40 @@ public sealed class SagaFactsConsumerTests
         Assert.Equal(correlationId, fact.CorrelationId);
         Assert.Equal(causationId, fact.CausationId);
         Assert.Equal(occurredAt, fact.OccurredAt);
+
+        // observability_reliability, OR3/R29's dead-letter clause (design.md
+        // §4.2, ledger L15) — the RAW message bytes, byte-for-byte, never a
+        // re-serialised Envelope<T> (which would reorder keys and drop
+        // unknown fields), and the source topic they were consumed from.
+        Assert.Equal(message.Value.ToArray(), fact.TriggeringEventEnvelope);
+        Assert.Equal(message.Topic, fact.TriggeringEventTopic);
+    }
+
+    /// <summary>
+    /// <c>observability_reliability</c>, design.md §4.2 (ledger L15) — the
+    /// SAME proof as <c>EachConsumedFact_DispatchedFactCopiesEveryEnvelopeFieldFromTheSource</c>,
+    /// but against bytes whose key ORDER a re-serialisation through
+    /// <c>Envelope&lt;JsonElement&gt;</c> could never reproduce (the
+    /// declared field order is <c>eventId, eventType, aggregateId,
+    /// correlationId, causationId, occurredAt, payload</c>; this message's
+    /// bytes are hand-written in the reverse order). A re-serialising
+    /// implementation still parses and dispatches correctly — every OTHER
+    /// assertion in this file would stay green — so only a genuine
+    /// byte-for-byte comparison against these exact bytes can catch it.
+    /// </summary>
+    [Fact]
+    public async Task OR3_TheTriggeringFactCarriedIntoSagaFactIsTheExactRawBytes_NeverAReSerialisedEnvelope()
+    {
+        var scrambledOrderBytes = """{"payload":{},"occurredAt":"2026-01-02T03:04:05.678Z","causationId":"11111111-1111-1111-1111-111111111111","correlationId":"22222222-2222-2222-2222-222222222222","aggregateId":"33333333-3333-3333-3333-333333333333","eventType":"order.placed.v1","eventId":"44444444-4444-4444-4444-444444444444"}"""u8.ToArray();
+        var message = new FactStreamMessage("otc.orders.facts.v1", 0, 0, scrambledOrderBytes);
+        var dispatcher = new RecordingDispatcher();
+
+        await RunOneMessageAsync(message, dispatcher);
+
+        var sent = Assert.Single(dispatcher.SentCommands);
+        var fact = (SagaFact)sent.GetType().GetProperty("Fact")!.GetValue(sent)!;
+
+        Assert.Equal(scrambledOrderBytes, fact.TriggeringEventEnvelope);
     }
 
     [Theory]
@@ -134,6 +171,108 @@ public sealed class SagaFactsConsumerTests
         Assert.Empty(dispatcher.SentCommands);
     }
 
+    /// <summary>
+    /// OR1 — the wrapped delegate's failure must actually be observed by
+    /// the INJECTED <see cref="FactRetryDispatcher"/>, not merely swallowed
+    /// or handled some other way. A poison <see cref="IDispatcher"/> makes
+    /// the wrapped process fail on every attempt; with <c>MaxAttempts = 1</c>
+    /// the real dispatcher exhausts on its first attempt and publishes to
+    /// the (recording, fake) DLQ — a side effect that can only happen if
+    /// <c>SagaFactsConsumer</c> genuinely routed the call THROUGH
+    /// <see cref="FactRetryDispatcher.DispatchAsync"/>.
+    /// </summary>
+    [Fact]
+    public async Task OR1_TheDispatchGenuinelyGoesThroughTheInjectedRetryDispatcher_NotAroundIt()
+    {
+        var message = BuildMessage("order.placed.v1", BuildPayload("order.placed.v1"));
+        var poisonDispatcher = new ThrowingDispatcher();
+        var deadLetters = new RecordingDeadLetterPublisher();
+        var factRetryDispatcher = BuildRealFactRetryDispatcher(deadLetters: deadLetters, options: new FactRetryOptions { MaxAttempts = 1, BackoffMs = 500 });
+
+        var subscriber = new FakeFactStreamSubscriber([message]);
+        var services = new ServiceCollection();
+        services.AddSingleton<IDispatcher>(poisonDispatcher);
+        var provider = services.BuildServiceProvider();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+        var consumer = new SagaFactsConsumer(subscriber, scopeFactory, factRetryDispatcher, NullLogger<SagaFactsConsumer>.Instance);
+
+        await consumer.StartAsync(CancellationToken.None);
+
+        // Poll DIRECTLY for the dead letter the REAL FactRetryDispatcher's
+        // own exhaustion path publishes — never `subscriber.Delivered`,
+        // whose TaskCompletionSource is set only once `handler(...)`
+        // (HandleMessageAsync) RETURNS (see FakeFactStreamSubscriber below).
+        // A bypass that calls the wrapped delegate directly lets the poison
+        // exception propagate OUT of HandleMessageAsync uncaught, so
+        // Delivered is never set and a wait gated behind it degrades to an
+        // uninformative TimeoutException that cannot distinguish "the
+        // dispatcher hung" from "the dispatch went around it entirely."
+        // Paced, bounded, and its own failure NAMES the reason.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (deadLetters.Published.Count == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        await consumer.StopAsync(CancellationToken.None);
+
+        Assert.True(
+            deadLetters.Published.Count > 0,
+            "No dead letter was published within 5s. The dispatch appears to have gone AROUND FactRetryDispatcher: an unhandled exception from the wrapped delegate would escape HandleMessageAsync directly — bypassing DispatchAsync's own retry-then-exhaust-then-publish logic — rather than being caught, retried and dead-lettered by it.");
+
+        var published = Assert.Single(deadLetters.Published);
+        Assert.Equal("order.placed.v1", published.EventType);
+        Assert.Equal(1, published.Attempts);
+        Assert.Equal(1, poisonDispatcher.Invocations);
+    }
+
+    /// <summary>
+    /// OR1 (design.md §3.1's own table) — the envelope guard, the
+    /// unrouted-eventType branch and SO2's self-produced skip must NEVER
+    /// reach <see cref="FactRetryDispatcher.DispatchAsync"/> at all. Proven
+    /// with <c>MaxAttempts = 0</c>: if the dispatcher were EVER invoked —
+    /// regardless of what the wrapped delegate would have done — the loop
+    /// condition (<c>1 &lt;= 0</c>) is false immediately, so it falls
+    /// straight through to the dead-letter publish with zero real
+    /// attempts. A dead letter appearing here can only mean one of these
+    /// three branches was wrongly routed through the dispatcher.
+    /// </summary>
+    [Theory]
+    [InlineData("order.confirmed.v1")]
+    [InlineData("order.completed.v1")]
+    [InlineData("order.cancelled.v1")]
+    [InlineData("order.saga_failed.v1")]
+    public async Task OR1_TheEnvelopeGuardUnroutedEventTypeAndSO2BranchesAreNotWrapped_TheDispatcherIsNeverInvoked(string selfProducedEventType)
+    {
+        var malformed = new FactStreamMessage("otc.orders.facts.v1", 0, 0, "{ not valid json"u8.ToArray());
+        var unrouted = BuildMessage("future.fact.v1", new { });
+        var selfProduced = BuildMessage(selfProducedEventType, BuildSelfProducedPayload(selfProducedEventType));
+
+        var deadLetters = new RecordingDeadLetterPublisher();
+        var poisonOptions = new FactRetryOptions { MaxAttempts = 0, BackoffMs = 500 };
+
+        foreach (var message in new[] { malformed, unrouted, selfProduced })
+        {
+            var dispatcher = new RecordingDispatcher();
+            var factRetryDispatcher = BuildRealFactRetryDispatcher(deadLetters: deadLetters, options: poisonOptions);
+            var subscriber = new FakeFactStreamSubscriber([message]);
+            var services = new ServiceCollection();
+            services.AddSingleton<IDispatcher>(dispatcher);
+            var provider = services.BuildServiceProvider();
+            var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+            var consumer = new SagaFactsConsumer(subscriber, scopeFactory, factRetryDispatcher, NullLogger<SagaFactsConsumer>.Instance);
+
+            await consumer.StartAsync(CancellationToken.None);
+            await subscriber.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Delay(50);
+            await consumer.StopAsync(CancellationToken.None);
+        }
+
+        Assert.Empty(deadLetters.Published);
+    }
+
     private static async Task RunOneMessageAsync(FactStreamMessage message, RecordingDispatcher dispatcher, CountingScopeFactory? scopeFactory = null)
     {
         var subscriber = new FakeFactStreamSubscriber([message]);
@@ -142,7 +281,7 @@ public sealed class SagaFactsConsumerTests
         var provider = services.BuildServiceProvider();
         scopeFactory ??= new CountingScopeFactory(dispatcher, provider);
 
-        var consumer = new SagaFactsConsumer(subscriber, scopeFactory, NullLogger<SagaFactsConsumer>.Instance);
+        var consumer = new SagaFactsConsumer(subscriber, scopeFactory, BuildRealFactRetryDispatcher(), NullLogger<SagaFactsConsumer>.Instance);
 
         await consumer.StartAsync(CancellationToken.None);
         await subscriber.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -176,6 +315,25 @@ public sealed class SagaFactsConsumerTests
         var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonWire.Options);
         return new FactStreamMessage("otc.orders.facts.v1", 0, 0, bytes);
     }
+
+    /// <summary>
+    /// A REAL <see cref="FactRetryDispatcher"/> over instant fakes — every
+    /// case in this file expects the wrapped process delegate to succeed on
+    /// its first attempt, so this dispatcher's own retry/backoff/DLQ
+    /// machinery is never exercised here (OR1's own behaviour is proven in
+    /// <c>FactRetryDispatcherTests</c> and <c>SagaFactsConsumerTests</c>'
+    /// own OR1 cases below).
+    /// </summary>
+    private static FactRetryDispatcher BuildRealFactRetryDispatcher(
+        IFactRetryDelay? delay = null,
+        IDeadLetterPublisher? deadLetters = null,
+        FactRetryOptions? options = null) =>
+        new(
+            new FakeClock(DateTimeOffset.UtcNow),
+            delay ?? new InstantFactRetryDelay(),
+            deadLetters ?? new RecordingDeadLetterPublisher(),
+            Options.Create(options ?? new FactRetryOptions()),
+            NullLogger<FactRetryDispatcher>.Instance);
 
     private static object BuildPayload(string eventType) => eventType switch
     {
@@ -225,6 +383,24 @@ public sealed class SagaFactsConsumerTests
         }
     }
 
+    /// <summary>Throws on every <see cref="SendAsync{TCommand}"/> call — the wrapped process's failure, for OR1's "genuinely through" case.</summary>
+    private sealed class ThrowingDispatcher : IDispatcher
+    {
+        public int Invocations { get; private set; }
+
+        public Task SendAsync<TCommand>(TCommand command, CancellationToken cancellationToken) where TCommand : ICommand
+        {
+            Invocations++;
+            throw new InvalidOperationException("simulated handler failure");
+        }
+
+        public Task<TResult> SendAsync<TCommand, TResult>(TCommand command, CancellationToken cancellationToken) where TCommand : ICommand<TResult> => throw new NotSupportedException();
+
+        public Task<TResult> QueryAsync<TQuery, TResult>(TQuery query, CancellationToken cancellationToken) where TQuery : IQuery<TResult> => throw new NotSupportedException();
+
+        public Task PublishAsync(object @event, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
     private sealed class RecordingDispatcher : IDispatcher
     {
         public List<object> SentCommands { get; } = [];
@@ -240,6 +416,30 @@ public sealed class SagaFactsConsumerTests
         public Task<TResult> QueryAsync<TQuery, TResult>(TQuery query, CancellationToken cancellationToken) where TQuery : IQuery<TResult> => throw new NotSupportedException();
 
         public Task PublishAsync(object @event, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    /// <summary>A no-wait <see cref="IFactRetryDelay"/> — unit tests run instantly, and every call is recorded so OR1's exact-backoff-sequence assertions can inspect it.</summary>
+    internal sealed class InstantFactRetryDelay : IFactRetryDelay
+    {
+        public List<int> Delays { get; } = [];
+
+        public Task DelayAsync(int milliseconds, CancellationToken cancellationToken)
+        {
+            Delays.Add(milliseconds);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Records every dead letter it was asked to publish — never touches a real broker.</summary>
+    internal sealed class RecordingDeadLetterPublisher : IDeadLetterPublisher
+    {
+        public List<DeadLetterPublication> Published { get; } = [];
+
+        public Task PublishAsync(DeadLetterPublication publication, CancellationToken cancellationToken)
+        {
+            Published.Add(publication);
+            return Task.CompletedTask;
+        }
     }
 
     /// <summary>Counts how many scopes were opened — SO2's "opens no scope" assertion.</summary>

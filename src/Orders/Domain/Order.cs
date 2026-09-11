@@ -260,6 +260,37 @@ public sealed class Order : AggregateRoot
             cancellationReason: reason);
     }
 
+    /// <summary>
+    /// <c>OR3</c>'s diagnostic fact (feature <c>observability_reliability</c>,
+    /// design.md §4.4) — a saga command was retried to exhaustion (SO4) and
+    /// parked (SO5) without ever completing. Raises exactly ONE
+    /// <see cref="Events.OrderSagaFailed"/> and mutates NO other field: no
+    /// <see cref="Status"/>, no <see cref="Lines"/>, no totals, no
+    /// <see cref="UpdatedAt"/>. Deliberately bypasses <see cref="TransitionTo"/>
+    /// — this is not a T-1 transition, the order stays in its last legal
+    /// status. <paramref name="command"/> is the wire token
+    /// (<c>SagaCommandKinds.ToToken</c>'s output, e.g. <c>"stock.reserve"</c>)
+    /// rather than the Application-layer <c>SagaCommandKind</c> enum itself —
+    /// referencing that type here would violate Domain purity (CLAUDE.md:
+    /// "Domain purity ... ZERO framework references", and more generally
+    /// dependencies point inwards only; Application must never be reachable
+    /// from Domain). The token carries no domain-level branching here (unlike
+    /// <see cref="CancellationReason"/>, which the state machine inspects),
+    /// so a raw string loses nothing.
+    /// </summary>
+    public void RecordSagaFailure(string command, int attempts, string lastError, DateTimeOffset occurredAt, UniqueId causationId) =>
+        Raise(new Events.OrderSagaFailed(
+            UniqueId.New(),
+            Id,
+            Id,
+            causationId,
+            occurredAt,
+            OrderReference,
+            command,
+            attempts,
+            lastError,
+            FailedAt: occurredAt));
+
     /// <summary>Appends a line. Candidate-then-commit: the freeze is checked first, then currency, then O1/O3 against a candidate list — a rejected call leaves every field untouched (design.md §4.3, §5.1).</summary>
     public UniqueId AddLine(string productCode, string? description, Quantity quantity, Money unitPrice, Money lineDiscount, DateTimeOffset occurredAt)
     {

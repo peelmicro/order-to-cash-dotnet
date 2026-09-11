@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Messaging;
+using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
 using OrderToCash.Orders.Infrastructure.Outbox;
 using OrderToCash.Orders.Infrastructure.Persistence;
 
@@ -44,6 +45,13 @@ public static class OrdersOutboxServiceCollectionExtensions
 
         services.AddScoped<ProcessedEventLedger>();
         services.AddScoped<IdempotentConsumer>();
+
+        // OR5/design.md §7 — otc_dlq_depth's real implementation, a
+        // dedicated AdminClient + a dedicated, never-subscribing Consumer
+        // (ledger L27's sibling concern). Singleton so the two Kafka
+        // clients it owns are built once, not per relay cycle; disposed by
+        // the container (CA2213).
+        services.AddSingleton<IDlqDepthGauge, KafkaDlqDepthGauge>();
 
         // KafkaFactPublisher: singleton, disposed by the container
         // (design.md §5.3 — one producer, IDisposable, CA2213 is an error

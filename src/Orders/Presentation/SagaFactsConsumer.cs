@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -9,7 +10,9 @@ using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
+using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
+using OrderToCash.Orders.Infrastructure.Observability;
 
 namespace OrderToCash.Orders.Presentation;
 
@@ -24,6 +27,7 @@ namespace OrderToCash.Orders.Presentation;
 public sealed class SagaFactsConsumer(
     IFactStreamSubscriber subscriber,
     IServiceScopeFactory scopeFactory,
+    FactRetryDispatcher factRetryDispatcher,
     ILogger<SagaFactsConsumer> logger) : BackgroundService
 {
     /// <summary>The four facts the orchestrator produces itself (SO2) — consuming them would be a loop (saga.md §5).</summary>
@@ -120,9 +124,51 @@ public sealed class SagaFactsConsumer(
             return;
         }
 
+        // OR1 (design.md §3.1's own table): everything from the payload
+        // deserialisation onward is wrapped by the retry-then-dead-letter
+        // dispatcher — the envelope guard, the SO2 self-produced skip and
+        // the unrouted-eventType branch above are NOT, since none of them
+        // is a failure a redelivery could ever fix.
+        Task Process(CancellationToken ct) => ProcessFactAsync(message, envelope, payloadType, factCommand, ct);
+
+        // OR4/design.md §5.3, ledger L22/L24 — extracted ONCE, wrapping the
+        // WHOLE DispatchAsync call (every retry attempt AND the eventual
+        // DLQ publish), not each individual attempt.
+        var context = TraceContext.ExtractKafka(message.HeaderMap);
+        using var activity = context is { } parent
+            ? OtcActivity.Source.StartActivity($"consume {envelope.EventType}", ActivityKind.Consumer, parentContext: parent)
+            : OtcActivity.Source.StartActivity($"consume {envelope.EventType}", ActivityKind.Consumer);
+
+        // design.md §6's scope-push table, fact consumer row —
+        // envelope.correlationId.
+        using var correlationScope = logger.BeginScope(new Dictionary<string, object> { ["correlationId"] = envelope.CorrelationId });
+
+        await factRetryDispatcher.DispatchAsync(
+            message.Topic,
+            message,
+            envelope.EventId,
+            envelope.EventType,
+            envelope.CorrelationId,
+            ConsumerName.OrdersSaga,
+            Process,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ProcessFactAsync(
+        FactStreamMessage message,
+        Envelope<JsonElement> envelope,
+        Type payloadType,
+        Func<IDispatcher, SagaFact, CancellationToken, Task> factCommand,
+        CancellationToken cancellationToken)
+    {
         var payload = JsonSerializer.Deserialize(envelope.Payload, payloadType, JsonWire.Options)
             ?? throw new JsonException($"Fact payload for '{envelope.EventType}' deserialised to null.");
 
+        // OR3/R29's dead-letter clause (design.md §4.2, ledger L15) — the
+        // RAW message bytes, unmodified, never a re-serialised Envelope<T>
+        // (which would reorder keys and drop unknown fields). Threaded
+        // through SagaFact -> ISagaCommandStore.EnqueueAsync so a later
+        // first-park can republish this exact byte sequence.
         var fact = new SagaFact(
             envelope.EventId,
             envelope.EventType,
@@ -130,7 +176,9 @@ public sealed class SagaFactsConsumer(
             envelope.CorrelationId,
             envelope.CausationId,
             envelope.OccurredAt,
-            payload);
+            payload,
+            message.Value.ToArray(),
+            message.Topic);
 
         // ONE scope per message (design.md §5.1's "Scope discipline") — the
         // shape OrdersCreateResponder already established, and the reason

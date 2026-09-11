@@ -54,7 +54,7 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
         using var publisher = new KafkaFactPublisher(producer);
 
         await using var relayDb = mssql.CreateDbContext(connectionString);
-        var relay = new OutboxRelay(relayDb, publisher, new FixedClock(), Microsoft.Extensions.Options.Options.Create(new OutboxRelayOptions()), Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxRelay>.Instance);
+        var relay = new OutboxRelay(relayDb, publisher, new FixedClock(), Microsoft.Extensions.Options.Options.Create(new OutboxRelayOptions()), new NoOpDlqDepthGauge(), Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxRelay>.Instance);
 
         var result = await relay.RunOnceAsync(CancellationToken.None);
         Assert.Equal(1, result.Claimed);

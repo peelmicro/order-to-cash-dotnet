@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using OrderToCash.Contracts.Envelopes;
 using OrderToCash.Contracts.Facts;
 using OrderToCash.Contracts.Facts.Payloads;
@@ -8,6 +10,8 @@ using OrderToCash.Contracts.Wire;
 using OrderToCash.Cqrs;
 using OrderToCash.Projector.Application.Commands;
 using OrderToCash.Projector.Application.Ports;
+using OrderToCash.Projector.Domain;
+using OrderToCash.Projector.Infrastructure.Messaging;
 using OrderToCash.Projector.Presentation;
 using Xunit;
 
@@ -113,6 +117,40 @@ public sealed class ProjectorFactsConsumerTests
         Assert.Contains(logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Error && e.Message.Contains("Unknown eventType", StringComparison.Ordinal)); // N10: proves the LOG branch was actually taken, not a bare return.
     }
 
+    /// <summary>
+    /// Ledger L11 (design.md §3.1's own table) — <see cref="UnknownFactTypeError"/>
+    /// must be caught INSIDE the wrapped delegate, never reaching
+    /// <see cref="FactRetryDispatcher"/>'s retry/DLQ path: it is a
+    /// deliberate acknowledge (should be unreachable given PR2's
+    /// completeness guard), not a failure. Simulated via a poison
+    /// <c>IDispatcher</c> that throws it — the exact shape the deeper
+    /// domain call would produce if it ever did.
+    /// </summary>
+    [Fact]
+    public async Task OR1_TheUnknownFactTypeIgnoreIsSwallowedInsideProcess_NeverReachingTheRetryPath()
+    {
+        var message = BuildMessage("order.placed.v1", BuildPayload("order.placed.v1"));
+        var poisonDispatcher = new ThrowingUnknownFactTypeDispatcher();
+        var deadLetters = new RecordingDeadLetterPublisher();
+        var factRetryDispatcher = BuildRealFactRetryDispatcher(deadLetters: deadLetters, options: new FactRetryOptions { MaxAttempts = 1, BackoffMs = 500 });
+
+        var subscriber = new FakeFactStreamSubscriber([message]);
+        var services = new ServiceCollection();
+        services.AddSingleton<IDispatcher>(poisonDispatcher);
+        var provider = services.BuildServiceProvider();
+        var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
+
+        var consumer = new ProjectorFactsConsumer(subscriber, scopeFactory, factRetryDispatcher, NullLogger<ProjectorFactsConsumer>.Instance);
+
+        await consumer.StartAsync(CancellationToken.None);
+        await subscriber.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(50);
+        await consumer.StopAsync(CancellationToken.None);
+
+        Assert.Empty(deadLetters.Published); // never reached the retry/DLQ path.
+        Assert.Equal(1, poisonDispatcher.Invocations); // the attempt genuinely happened, and was swallowed.
+    }
+
     /// <summary><c>PR37</c> — one sentinel per copied field, at the wire→dispatched-fact hop.</summary>
     [Fact]
     public async Task PR37_EveryEnvelopeFieldReachesTheDispatchedFactVerbatim_SentinelPerField()
@@ -206,12 +244,61 @@ public sealed class ProjectorFactsConsumerTests
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
 
-        var consumer = new ProjectorFactsConsumer(subscriber, scopeFactory, logger);
+        var consumer = new ProjectorFactsConsumer(subscriber, scopeFactory, BuildRealFactRetryDispatcher(), logger);
 
         await consumer.StartAsync(CancellationToken.None);
         await subscriber.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await Task.Delay(50);
         await consumer.StopAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A REAL <see cref="FactRetryDispatcher"/> over instant fakes — every
+    /// case in this file expects the wrapped process delegate to succeed
+    /// (or to swallow <see cref="UnknownFactTypeError"/>) on its first
+    /// attempt, so this dispatcher's own retry/backoff/DLQ machinery is
+    /// never exercised here (OR1's own behaviour lives in
+    /// <c>FactRetryDispatcherTests</c>; ledger L11's own case is below).
+    /// </summary>
+    internal static FactRetryDispatcher BuildRealFactRetryDispatcher(
+        IFactRetryDelay? delay = null,
+        IDeadLetterPublisher? deadLetters = null,
+        FactRetryOptions? options = null) =>
+        new(
+            new FakeClock(),
+            delay ?? new InstantFactRetryDelay(),
+            deadLetters ?? new RecordingDeadLetterPublisher(),
+            Options.Create(options ?? new FactRetryOptions()),
+            NullLogger<FactRetryDispatcher>.Instance);
+
+    /// <summary>A no-wait <see cref="IFactRetryDelay"/> — unit tests run instantly, and every call is recorded so OR1's exact-backoff-sequence assertions can inspect it.</summary>
+    internal sealed class InstantFactRetryDelay : IFactRetryDelay
+    {
+        public List<int> Delays { get; } = [];
+
+        public Task DelayAsync(int milliseconds, CancellationToken cancellationToken)
+        {
+            Delays.Add(milliseconds);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Records every dead letter it was asked to publish — never touches a real broker.</summary>
+    internal sealed class RecordingDeadLetterPublisher : IDeadLetterPublisher
+    {
+        public List<DeadLetterPublication> Published { get; } = [];
+
+        public Task PublishAsync(DeadLetterPublication publication, CancellationToken cancellationToken)
+        {
+            Published.Add(publication);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A settable fake — no dependency on <c>SharedKernel</c>, matching this service's own <c>IClock</c> port.</summary>
+    internal sealed class FakeClock : IClock
+    {
+        public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UtcNow;
     }
 
     /// <summary>Records every log CALL — not merely a residue — so <c>PR3</c>/<c>PR4</c> can assert the ATTEMPT (<c>N10</c>), not just the dispatcher's silence.</summary>
@@ -249,6 +336,24 @@ public sealed class ProjectorFactsConsumerTests
                 // Expected on shutdown.
             }
         }
+    }
+
+    /// <summary>Throws <see cref="UnknownFactTypeError"/> on every call — simulates the deep domain throw ledger row L11 is about.</summary>
+    private sealed class ThrowingUnknownFactTypeDispatcher : IDispatcher
+    {
+        public int Invocations { get; private set; }
+
+        public Task SendAsync<TCommand>(TCommand command, CancellationToken cancellationToken) where TCommand : ICommand
+        {
+            Invocations++;
+            throw new UnknownFactTypeError("order.placed.v1");
+        }
+
+        public Task<TResult> SendAsync<TCommand, TResult>(TCommand command, CancellationToken cancellationToken) where TCommand : ICommand<TResult> => throw new NotSupportedException();
+
+        public Task<TResult> QueryAsync<TQuery, TResult>(TQuery query, CancellationToken cancellationToken) where TQuery : IQuery<TResult> => throw new NotSupportedException();
+
+        public Task PublishAsync(object @event, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class RecordingDispatcher : IDispatcher

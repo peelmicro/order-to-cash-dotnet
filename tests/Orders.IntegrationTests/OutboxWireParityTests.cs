@@ -67,7 +67,7 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
 
         using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
         using var publisher = new KafkaFactPublisher(producer);
-        var relay = new OutboxRelay(db, publisher, new FakeClock(FakeClock.UtcNowToTheMillisecond()), Options.Create(new OutboxRelayOptions { BatchSize = 10 }), NullLogger<OutboxRelay>.Instance);
+        var relay = new OutboxRelay(db, publisher, new FakeClock(FakeClock.UtcNowToTheMillisecond()), Options.Create(new OutboxRelayOptions { BatchSize = 10 }), new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
 
         var result = await relay.RunOnceAsync(CancellationToken.None);
         Assert.Equal(1, result.Published);
@@ -124,7 +124,7 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
 
         var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
-        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, null, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 
         var storedPayload = await db.OutboxMessages.Select(o => o.Payload).SingleAsync();
         using var storedDocument = JsonDocument.Parse(storedPayload);
@@ -147,11 +147,11 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
 
         var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
-        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, null, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 
         using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
         using var publisher = new KafkaFactPublisher(producer);
-        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), NullLogger<OutboxRelay>.Instance);
+        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
         await relay.RunOnceAsync(CancellationToken.None);
 
         using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
@@ -220,11 +220,11 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
 
         var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
-        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, null, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 
         using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
         using var publisher = new KafkaFactPublisher(producer);
-        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), NullLogger<OutboxRelay>.Instance);
+        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
         await relay.RunOnceAsync(CancellationToken.None);
 
         using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
@@ -279,11 +279,11 @@ public sealed class OutboxWireParityTests(KafkaContainerFixture kafka, MsSqlCont
 
         var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
-        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, null, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 
         using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
         using var publisher = new KafkaFactPublisher(producer);
-        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), NullLogger<OutboxRelay>.Instance);
+        var relay = new OutboxRelay(db, publisher, clock, Options.Create(new OutboxRelayOptions { BatchSize = 10 }), new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
         await relay.RunOnceAsync(CancellationToken.None);
 
         using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig

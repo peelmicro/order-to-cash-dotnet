@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Orders.Infrastructure.Observability;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Infrastructure.Messaging;
@@ -24,12 +25,21 @@ public sealed class NatsStockAvailabilityChecker(INatsConnection connection, IOp
             companyCode,
             lines.Select(line => new StockCheckRequestLine(line.ProductCode, line.Quantity.Value)).ToList());
 
+        // OR4/design.md §5.2, ledger L21 — a FRESH NatsHeaders per call,
+        // exactly like the two other outbound sites (NatsSagaCommandsAdapter,
+        // NatsRpcClient); this site sent NO headers at all before this
+        // feature (FS3 exempts fulfillment.stock.check from RequireMeta —
+        // that exemption is unchanged, only trace propagation is added).
+        var headers = new NatsHeaders();
+        TraceContext.InjectNats(headers);
+
         NatsMsg<byte[]> reply;
         try
         {
             reply = await connection.RequestAsync<byte[], byte[]>(
                 RpcSubjects.StockCheck,
                 RpcJson.Serialize(request),
+                headers: headers,
                 replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(options.Value.StockCheckTimeoutMs) },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }

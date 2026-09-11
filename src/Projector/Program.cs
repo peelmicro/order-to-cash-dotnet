@@ -9,7 +9,11 @@ using OrderToCash.Projector;
 // ProjectorProgramConfiguration.Configure (feature
 // composition_root_env_reads_are_unguarded) so a test can call the exact
 // method this file calls.
-var builder = ProjectorHost.CreateBuilder(args, configure: ProjectorProgramConfiguration.Configure);
+var builder = ProjectorHost.CreateBuilder(
+    args,
+    configure: ProjectorProgramConfiguration.Configure,
+    configureTelemetry: ProjectorProgramConfiguration.ConfigureTelemetry,
+    configureHealth: ProjectorProgramConfiguration.ConfigureHealth);
 
 var host = builder.Build();
 await host.RunAsync().ConfigureAwait(false);

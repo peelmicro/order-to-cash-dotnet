@@ -40,15 +40,39 @@ public sealed class ProjectorConsumesOnlyTests
         Assert.DoesNotContain(allSourceText, line => line.Contains("replyTo:", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// REWORDED — observability_reliability's group A4 (phase 14) gave
+    /// Projector a deliberate, narrow HTTP surface: <c>HealthProbeService</c>
+    /// (design.md §8.1) maps ONLY <c>GET /health/live</c>/<c>GET /health/ready</c>
+    /// on <c>PROJECTOR_HEALTH_PORT</c>, via a bare
+    /// <c>&lt;FrameworkReference Include="Microsoft.AspNetCore.App" /&gt;</c>
+    /// — no NuGet package, no web-app SDK switch. The ORIGINAL claim ("no
+    /// HTTP surface at all") is no longer true and this test now proves the
+    /// NARROWER one that still matters: the only
+    /// <c>Microsoft.AspNetCore</c>-mentioning line in the whole csproj is
+    /// exactly that one FrameworkReference — never a
+    /// <c>PackageReference</c>, never <c>Sdk="Microsoft.NET.Sdk.Web"</c>,
+    /// never a second, wider web surface creeping in unnoticed.
+    /// </summary>
     [Fact]
-    public void PR21_DeclaresNoWriteModelPackage_NoProcessedEventsConfiguration_NoHttpSurface_AndIssuesNoNatsRequest()
+    public void PR21_DeclaresNoWriteModelPackage_NoProcessedEventsConfiguration_AndIssuesNoNatsRequest_TheOnlyAspNetCoreMentionIsTheHealthProbeFrameworkReference()
     {
         var root = RepositoryPaths.Find(string.Empty);
         var csprojText = File.ReadAllText(Path.Combine(root, "src", "Projector", "Projector.csproj"));
 
         Assert.DoesNotContain("Microsoft.EntityFrameworkCore", csprojText, StringComparison.Ordinal);
         Assert.DoesNotContain("Microsoft.Data.SqlClient", csprojText, StringComparison.Ordinal);
-        Assert.DoesNotContain("Microsoft.AspNetCore", csprojText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sdk=\"Microsoft.NET.Sdk.Web\"", csprojText, StringComparison.Ordinal);
+
+        var aspNetCoreLines = csprojText
+            .Split('\n')
+            .Where(line => line.Contains("Microsoft.AspNetCore", StringComparison.Ordinal))
+            .ToList();
+
+        var aspNetCoreLine = Assert.Single(aspNetCoreLines);
+        Assert.Contains("<FrameworkReference", aspNetCoreLine, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.AspNetCore.App", aspNetCoreLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("PackageReference", aspNetCoreLine, StringComparison.Ordinal);
 
         Assert.False(File.Exists(Path.Combine(root, "src", "Projector", "Infrastructure", "Persistence", "Configurations", "ProcessedEventConfiguration.cs")));
     }

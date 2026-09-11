@@ -27,18 +27,85 @@ public sealed class EfCoreOrderRepository(OrdersDbContext db, OutboxWriter outbo
 {
     private readonly Dictionary<UniqueId, (Domain.Order Aggregate, RowOrder Row)> _tracked = [];
 
-    public async Task AddAsync(Domain.Order order, CancellationToken cancellationToken)
+    public async Task AddAsync(Domain.Order order, Guid? requestId, CancellationToken cancellationToken)
     {
         var row = await OrderRowMapper.ToNewRowAsync(db, order, cancellationToken);
+        row.RequestId = requestId;
         db.Orders.Add(row);
         _tracked[order.Id] = (order, row);
     }
 
+    /// <summary>
+    /// Feature <c>observability_reliability</c>, ledger L4. Clears the
+    /// scoped <see cref="OrdersDbContext"/>'s <c>ChangeTracker</c> FIRST —
+    /// on the RI2 fast path (the very first thing the handler does) this is
+    /// a no-op, but on the RI3 re-read (called from inside the handler's
+    /// catch, after <c>IUnitOfWork.ExecuteAsync</c> has rolled back) it
+    /// detaches the losing attempt's still-tracked row so nothing in this
+    /// scope can accidentally re-write it — and it is why this read never
+    /// needs a second, EF-specific port on <see cref="IUnitOfWork"/>, which
+    /// design.md §1.1 does not list among Half B's touched files. The query
+    /// itself is <c>AsNoTracking</c>, so it never re-enters <see cref="_tracked"/>
+    /// either.
+    /// </summary>
+    public async Task<Domain.Order?> FindByRequestIdAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        db.ChangeTracker.Clear();
+
+        var row = await db.Orders.AsNoTracking().Include(o => o.Items)
+            .SingleOrDefaultAsync(o => o.RequestId == requestId, cancellationToken);
+
+        return row is null ? null : await OrderRowMapper.ToDomainAsync(db, row, cancellationToken);
+    }
+
+    /// <summary>
+    /// Feature <c>operator_cancel_races_saga_forward_progress</c> (id 62) —
+    /// takes <see cref="LockOrderRowAsync"/>'s <c>UPDLOCK, ROWLOCK</c> point
+    /// read FIRST, on EVERY call. Every caller of this method in this
+    /// codebase (<c>CancelOrderCommandHandler</c>, <c>SagaFactHandler</c>,
+    /// <c>SagaFirstParkDeadLetterHandler</c>) loads the order to MUTATE it
+    /// inside the SAME ambient transaction — never a pure display read, that
+    /// is the Mongo read model's job — so locking unconditionally here is
+    /// never a wider lock than the existing call sites already imply.
+    /// </summary>
     public async Task<Domain.Order?> GetByIdAsync(UniqueId id, CancellationToken cancellationToken)
     {
+        await LockOrderRowAsync(id.Value, cancellationToken).ConfigureAwait(false);
+
         var row = await db.Orders.Include(o => o.Items).SingleOrDefaultAsync(o => o.Id == id.Value, cancellationToken);
         return row is null ? null : await TrackAndMapAsync(row, cancellationToken);
     }
+
+    /// <summary>
+    /// Id 62's chosen defence: an explicit <c>UPDLOCK, ROWLOCK</c> point
+    /// read on <c>dbo.orders</c>, held until the CALLER's ambient
+    /// transaction (<c>IUnitOfWork.ExecuteAsync</c>) commits or rolls back.
+    /// Under this database's <c>READ_COMMITTED_SNAPSHOT ON</c>, a PLAIN
+    /// <c>SELECT</c> reads a row-versioned snapshot and never blocks on
+    /// another writer's held locks — precisely the gap
+    /// <c>CancelOrderCommandHandler</c>'s own remarks name: two independent
+    /// transactions could each read a CONSISTENT-BUT-DIFFERENT-FROM-THE-OTHER
+    /// snapshot of the SAME order row and both proceed, unaware of each
+    /// other. A locking hint always takes precedence over RCSI's
+    /// row-versioning for THAT statement (it is not overridden by the
+    /// ambient <c>ReadCommitted</c> isolation level <see cref="EfCoreUnitOfWork"/>
+    /// opens), so a concurrent caller requesting the SAME row's
+    /// <c>UPDLOCK</c>/<c>X</c> lock WAITS rather than reading ahead, and
+    /// reads the FRESH, post-commit row once the lock is granted — the
+    /// second writer waits, it does not deadlock (both callers here only
+    /// ever acquire ONE lock, on this ONE row, so no cross-resource cycle
+    /// can form). <c>ROWLOCK</c> keeps the cost scoped to THIS order — no
+    /// other order's throughput is affected. Deliberately no
+    /// <c>READPAST</c> here, unlike <c>EfCoreSagaCommandStore.ClaimDueAsync</c>'s
+    /// own <c>UPDLOCK</c> (measured there to skip rather than block): a
+    /// losing writer on the SAME order must wait for the truth, never
+    /// silently skip its own order's row.
+    /// </summary>
+    private async Task LockOrderRowAsync(Guid id, CancellationToken cancellationToken) =>
+        await db.Database
+            .SqlQuery<int>($"SELECT TOP (1) 1 AS Value FROM dbo.orders WITH (UPDLOCK, ROWLOCK) WHERE id = {id}")
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
 
     public async Task<Domain.Order?> GetByReferenceAsync(OrderNumber reference, CancellationToken cancellationToken)
     {

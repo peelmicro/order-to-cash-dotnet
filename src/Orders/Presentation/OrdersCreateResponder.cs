@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,7 @@ using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Queries;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Orders.Infrastructure.Observability;
 using OrderToCash.Orders.Presentation.Rpc;
 using OrderToCash.SharedKernel;
 
@@ -85,8 +87,36 @@ public sealed class OrdersCreateResponder(
         }
     }
 
+    /// <summary>
+    /// design.md §5.2, ledger L21/L24 — the ONE extraction site this
+    /// responder's three subjects share: called at the top of each
+    /// <c>Handle*Async</c> body, wrapping everything after it in an
+    /// Activity CONTINUING the caller's trace (a fresh span id, the SAME
+    /// trace id) rather than starting an unrelated one.
+    /// </summary>
+    private static Activity? StartResponderActivity(string subject, NatsHeaders? headers)
+    {
+        var context = TraceContext.ExtractNats(headers);
+        return context is { } parent
+            ? OtcActivity.Source.StartActivity($"rpc {subject}", ActivityKind.Server, parentContext: parent)
+            : OtcActivity.Source.StartActivity($"rpc {subject}", ActivityKind.Server);
+    }
+
+    /// <summary>design.md §6's scope-push table, RPC responder row — <c>x-correlation-id</c> from the request headers, when present.</summary>
+    private IDisposable? PushCorrelationScope(NatsHeaders? headers)
+    {
+        if (headers is null || !headers.TryGetLastValue("x-correlation-id", out var raw) || !Guid.TryParse(raw, out var correlationId))
+        {
+            return null;
+        }
+
+        return logger.BeginScope(new Dictionary<string, object> { ["correlationId"] = correlationId });
+    }
+
     private async Task HandleOrdersCreateAsync(NatsMsg<byte[]> message, CancellationToken stoppingToken)
     {
+        using var activity = StartResponderActivity(RpcSubjects.OrdersCreate, message.Headers);
+        using var correlationScope = PushCorrelationScope(message.Headers);
         using var scope = scopeFactory.CreateScope();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
 
@@ -117,6 +147,8 @@ public sealed class OrdersCreateResponder(
 
     private async Task HandleCatalogReferenceListAsync(NatsMsg<byte[]> message, CancellationToken stoppingToken)
     {
+        using var activity = StartResponderActivity(RpcSubjects.CatalogReferenceList, message.Headers);
+        using var correlationScope = PushCorrelationScope(message.Headers);
         using var scope = scopeFactory.CreateScope();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
 
@@ -151,6 +183,8 @@ public sealed class OrdersCreateResponder(
 
     private async Task HandleOrdersCancelAsync(NatsMsg<byte[]> message, CancellationToken stoppingToken)
     {
+        using var activity = StartResponderActivity(RpcSubjects.OrdersCancel, message.Headers);
+        using var correlationScope = PushCorrelationScope(message.Headers);
         using var scope = scopeFactory.CreateScope();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
 

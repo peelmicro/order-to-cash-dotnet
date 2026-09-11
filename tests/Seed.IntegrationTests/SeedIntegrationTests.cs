@@ -451,6 +451,7 @@ public sealed class SeedIntegrationTests(SeedContainersFixture fixture)
             publisher,
             new FixedClock(DateTimeOffset.UtcNow),
             Options.Create(new OutboxRelayOptions { BatchSize = 100 }),
+            new NoOpDlqDepthGauge(),
             NullLogger<OutboxRelay>.Instance);
 
         var result = await relay.RunOnceAsync(CancellationToken.None);
@@ -479,5 +480,10 @@ public sealed class SeedIntegrationTests(SeedContainersFixture fixture)
             CallCount++;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class NoOpDlqDepthGauge : IDlqDepthGauge
+    {
+        public Task RecordAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

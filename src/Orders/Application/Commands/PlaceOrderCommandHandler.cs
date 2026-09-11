@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Domain;
@@ -16,9 +17,10 @@ namespace OrderToCash.Orders.Application.Commands;
 /// stock-check failure (business rejection OR transport failure/timeout)
 /// nothing is persisted and no fact is emitted — the unit of work is never
 /// even opened. Mirrors #7's
-/// <c>apps/orders/src/application/place-order.handler.ts</c> shape, minus
-/// its <c>requestId</c> fast path (out of scope here — see
-/// <see cref="PlaceOrderCommand"/>'s remarks).
+/// <c>apps/orders/src/application/place-order.handler.ts</c> shape,
+/// including feature <c>observability_reliability</c>'s <c>requestId</c>
+/// idempotent-replay fast path (<c>RI1</c>–<c>RI5</c>, design.md §2) — no
+/// longer out of scope, see <see cref="PlaceOrderCommand"/>'s remarks.
 /// </summary>
 public sealed class PlaceOrderCommandHandler(
     IUnitOfWork unitOfWork,
@@ -30,6 +32,19 @@ public sealed class PlaceOrderCommandHandler(
 {
     public async Task<PlaceOrderResult> HandleAsync(PlaceOrderCommand command, CancellationToken cancellationToken)
     {
+        // RI2 — the fast path, BEFORE reference-data resolution and the
+        // stock check: a repeated requestId for which a committed order
+        // already exists performs NO reference-data lookup and NO stock
+        // check, and returns that order's ORIGINAL reply (design.md §2.3).
+        if (command.RequestId is { } requestId)
+        {
+            var existing = await orders.FindByRequestIdAsync(requestId, cancellationToken).ConfigureAwait(false);
+            if (existing is not null)
+            {
+                return ToResult(existing);
+            }
+        }
+
         if (command.OrderDiscountMinorUnits is { } orderDiscount && orderDiscount != 0)
         {
             throw new OrderDiscountNotSupportedError(orderDiscount);
@@ -77,44 +92,70 @@ public sealed class PlaceOrderCommandHandler(
         // INSIDE it, so a rollback here also rolls back the allocation
         // rather than burning a sequence number (matching #7's own
         // design note in order-number-allocator.ts, D7 in its review).
-        return await unitOfWork.ExecuteAsync(
-            async ct =>
+        try
+        {
+            return await unitOfWork.ExecuteAsync(
+                async ct =>
+                {
+                    var orderReference = await orderNumbers.AllocateNextAsync(ct).ConfigureAwait(false);
+                    var now = clock.UtcNow;
+
+                    // RI5 — seed causationId from the client's own
+                    // requestId when supplied (already a validated,
+                    // non-empty Guid off the wire — no parse can fail
+                    // here), so the causal chain is reconstructible from
+                    // the client's own idempotency key; mint fresh when
+                    // omitted, as before this feature.
+                    var causationId = command.RequestId is { } seedId ? UniqueId.From(seedId) : UniqueId.New();
+
+                    var orderLines = command.Lines
+                        .Select(line => ToOrderLineRequest(line, command.Currency, products[line.ProductCode]))
+                        .ToList();
+
+                    var order = Order.Place(
+                        orderReference,
+                        orderDate: now,
+                        retailerCode: command.RetailerCode,
+                        buyerGln: retailer.Gln,
+                        companyCode: command.CompanyCode,
+                        supplierGln: company.Gln,
+                        currency: command.Currency,
+                        lines: orderLines,
+                        notes: command.Notes,
+                        occurredAt: now,
+                        causationId: causationId);
+
+                    await orders.AddAsync(order, command.RequestId, ct).ConfigureAwait(false);
+                    await orders.SaveChangesAsync(ct).ConfigureAwait(false);
+
+                    return ToResult(order);
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException ex) when (command.RequestId is not null && RequestIdCollision.Matches(ex))
+        {
+            // RI3 — two requests carrying the same, not-yet-committed
+            // requestId raced; this one lost. The transaction has ALREADY
+            // rolled back by the time this catch runs (design.md §2.4):
+            // EfCoreOrderRepository.SaveChangesAsync writes the
+            // order.placed.v1 outbox row FIRST, so catching INSIDE
+            // unitOfWork.ExecuteAsync and committing would persist a fact
+            // for an order that will never exist (ledger L2) — the catch
+            // MUST sit outside it, as it does here. Re-read the winner and
+            // resolve to ITS reply; never a silent null, never a second
+            // order, never an error surfaced to the caller.
+            var winner = await orders.FindByRequestIdAsync(command.RequestId.Value, cancellationToken).ConfigureAwait(false);
+            if (winner is not null)
             {
-                var orderReference = await orderNumbers.AllocateNextAsync(ct).ConfigureAwait(false);
-                var now = clock.UtcNow;
-                var causationId = UniqueId.New();
+                return ToResult(winner);
+            }
 
-                var orderLines = command.Lines
-                    .Select(line => ToOrderLineRequest(line, command.Currency, products[line.ProductCode]))
-                    .ToList();
-
-                var order = Order.Place(
-                    orderReference,
-                    orderDate: now,
-                    retailerCode: command.RetailerCode,
-                    buyerGln: retailer.Gln,
-                    companyCode: command.CompanyCode,
-                    supplierGln: company.Gln,
-                    currency: command.Currency,
-                    lines: orderLines,
-                    notes: command.Notes,
-                    occurredAt: now,
-                    causationId: causationId);
-
-                await orders.AddAsync(order, ct).ConfigureAwait(false);
-                await orders.SaveChangesAsync(ct).ConfigureAwait(false);
-
-                return new PlaceOrderResult(
-                    order.Id,
-                    order.OrderReference,
-                    order.Status,
-                    order.Currency,
-                    order.InitialAmount,
-                    order.InitialDiscount,
-                    order.TotalAmount,
-                    order.OrderDate);
-            },
-            cancellationToken).ConfigureAwait(false);
+            // Never a silent null — the collision was real but no winner is
+            // readable (e.g. the winner's own transaction has not yet
+            // committed as seen from this snapshot). `throw;` rather than
+            // `throw ex;` preserves the original stack trace (CA2200).
+            throw;
+        }
     }
 
     private static OrderLineRequest ToOrderLineRequest(PlaceOrderRequestLine line, string currency, ProductReference product)
@@ -124,4 +165,21 @@ public sealed class PlaceOrderCommandHandler(
 
         return new OrderLineRequest(line.ProductCode, product.Description, line.Quantity, unitPrice, lineDiscount);
     }
+
+    /// <summary>
+    /// The ONE mapping from a persisted <see cref="Order"/> to the reply
+    /// shape — used by the normal placement path, the RI2 fast path and the
+    /// RI3 re-read, so a repeated request and a first-time request render
+    /// identically (ledger L7: no second projection is written for the
+    /// replay path).
+    /// </summary>
+    private static PlaceOrderResult ToResult(Order order) => new(
+        order.Id,
+        order.OrderReference,
+        order.Status,
+        order.Currency,
+        order.InitialAmount,
+        order.InitialDiscount,
+        order.TotalAmount,
+        order.OrderDate);
 }

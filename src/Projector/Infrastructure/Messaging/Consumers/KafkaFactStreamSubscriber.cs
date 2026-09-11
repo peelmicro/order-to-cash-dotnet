@@ -53,7 +53,8 @@ public sealed class KafkaFactStreamSubscriber(IOptions<ProjectorKafkaOptions> op
                     consumeResult.Topic,
                     consumeResult.Partition.Value,
                     consumeResult.Offset.Value,
-                    consumeResult.Message.Value);
+                    consumeResult.Message.Value,
+                    DecodeHeaders(consumeResult.Message.Headers));
 
                 // The offset is stored ONLY after the handler has run to
                 // completion. A throwing handler propagates unchanged —
@@ -87,6 +88,23 @@ public sealed class KafkaFactStreamSubscriber(IOptions<ProjectorKafkaOptions> op
     /// fact either applies once or is suppressed, and either way the
     /// document converges to the same bytes.
     /// </summary>
+    /// <summary>OR4/design.md §5.3 — decodes the raw Kafka header bytes to the string map <see cref="FactStreamMessage.HeaderMap"/> carries, so the consumer can extract <c>traceparent</c>/<c>tracestate</c> without ever referencing <c>Confluent.Kafka</c> outside this class.</summary>
+    private static IReadOnlyDictionary<string, string> DecodeHeaders(Headers? headers)
+    {
+        if (headers is null || headers.Count == 0)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        var decoded = new Dictionary<string, string>(headers.Count, StringComparer.Ordinal);
+        foreach (var header in headers)
+        {
+            decoded[header.Key] = System.Text.Encoding.UTF8.GetString(header.GetValueBytes());
+        }
+
+        return decoded;
+    }
+
     private static ConsumerConfig BuildConsumerConfig(ProjectorKafkaOptions options) => new()
     {
         BootstrapServers = options.BootstrapServers,

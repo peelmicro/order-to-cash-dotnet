@@ -4,6 +4,8 @@ using NATS.Client.Core;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
+using OrderToCash.Orders.Infrastructure.Messaging.DeadLetter;
+using OrderToCash.Orders.Infrastructure.Observability;
 using OrderToCash.Orders.Infrastructure.Saga;
 using OrderToCash.Orders.Presentation;
 
@@ -55,9 +57,28 @@ public static class OrdersSagaServiceCollectionExtensions
 
         services.AddSingleton<ISagaRetryDelay, TaskDelaySagaRetryDelay>();
 
+        // OR1 — the retry-then-dead-letter wrapper (design.md §3). All
+        // singletons: FactRetryDispatcher holds no scoped state of its own,
+        // matching IdempotentConsumer's precedent one line above SagaFactsConsumer's
+        // own registration below (a singleton BackgroundService may not
+        // directly depend on a scoped service).
+        services.AddSingleton<IOptions<FactRetryOptions>>(Options.Create(options.FactRetry));
+        services.AddSingleton<IOptions<DeadLetterKafkaOptions>>(Options.Create(options.DeadLetter));
+        services.AddSingleton<IFactRetryDelay, TaskDelayFactRetryDelay>();
+        services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
+        services.AddSingleton<FactRetryDispatcher>();
+
         // The fakeable seam over the existing, unmodified IdempotentConsumer
         // (design.md §5.1) — resolves ConsumerName.OrdersSaga internally.
         services.AddScoped<IIdempotentSagaRunner, IdempotentConsumerSagaRunner>();
+
+        // OR3's first-park hook (design.md §4.4) — scoped, since it depends
+        // on the ambient scoped IUnitOfWork/IOrderRepository, exactly as
+        // SagaCommandDispatcher itself is.
+        services.AddScoped<ISagaFirstParkDeadLetterHandler, SagaFirstParkDeadLetterHandler>();
+
+        // OR5/design.md §7 — otc_saga_completion_ms.
+        services.AddSingleton<ISagaCompletionRecorder, SagaCompletionRecorder>();
 
         // The transactional unit and the RPC issuer.
         services.AddScoped<Application.Sagas.SagaFactHandler>();

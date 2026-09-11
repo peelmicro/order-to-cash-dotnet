@@ -10,7 +10,11 @@ using OrderToCash.Billing;
 // composition_root_env_reads_are_unguarded) so a test can call the exact
 // method this file calls — a lambda written inline here would be unreachable
 // from any test project.
-var builder = BillingHost.CreateBuilder(args, configure: BillingProgramConfiguration.Configure);
+var builder = BillingHost.CreateBuilder(
+    args,
+    configure: BillingProgramConfiguration.Configure,
+    configureTelemetry: BillingProgramConfiguration.ConfigureTelemetry,
+    configureHealth: BillingProgramConfiguration.ConfigureHealth);
 
 var host = builder.Build();
 await host.RunAsync().ConfigureAwait(false);

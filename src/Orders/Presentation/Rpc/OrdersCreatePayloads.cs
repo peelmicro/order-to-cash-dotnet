@@ -6,9 +6,9 @@ public sealed record OrdersCreateRequestLine(string ProductCode, int Quantity, l
 /// <summary>
 /// <c>asyncapi.yaml</c> <c>OrdersCreateRequestPayload</c> — the
 /// <c>orders.create</c> request body. <see cref="RequestId"/> is read here
-/// because the wire schema declares it, but this feature carries it no
-/// further than the responder's own log line — idempotent replay is out of
-/// scope (see <c>PlaceOrderCommand</c>'s remarks).
+/// and carried through to <c>PlaceOrderCommand</c>, whose handler realises
+/// feature <c>observability_reliability</c>'s <c>RI1</c>–<c>RI5</c>
+/// idempotent-replay behaviour (design.md §2).
 /// </summary>
 public sealed record OrdersCreateRequestPayload(
     Guid? RequestId,

@@ -1,5 +1,7 @@
 using OrderToCash.Billing.Infrastructure;
 using OrderToCash.Billing.Infrastructure.CreditDecisions;
+using OrderToCash.Billing.Infrastructure.Health;
+using OrderToCash.Billing.Infrastructure.Observability;
 
 namespace OrderToCash.Billing;
 
@@ -32,6 +34,21 @@ public static class BillingProgramConfiguration
         // CREDIT_FAILURE_RATE throws before BillingHost.CreateBuilder ever
         // returns and the process never reaches host.RunAsync().
         options.CreditFailureRate = CreditSimulatorOptionsLoader.Load(Environment.GetEnvironmentVariable("CREDIT_FAILURE_RATE"));
+    }
+
+    // design.md §9.2 — OTEL_EXPORTER_OTLP_ENDPOINT, read on its own key
+    // exactly as every other env read in this class is.
+    public static void ConfigureTelemetry(TelemetryOptions options)
+    {
+        options.OtlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") ?? "http://localhost:4317";
+    }
+
+    // design.md §8.1/§9.2 — group A4. BILLING_HEALTH_PORT is bound to its
+    // OWN key (tasks.md A4b's substitution arming target).
+    public static void ConfigureHealth(HealthOptions options)
+    {
+        options.Port = int.TryParse(Environment.GetEnvironmentVariable("BILLING_HEALTH_PORT"), out var port) ? port : 3004;
+        options.ConnectionString = BuildMsSqlConnectionString();
     }
 
     // Mirrors BillingDbContextFactory's own reading of .env's variable names —

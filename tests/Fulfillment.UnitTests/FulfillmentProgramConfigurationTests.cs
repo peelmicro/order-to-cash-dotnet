@@ -1,5 +1,6 @@
 using OrderToCash.Fulfillment;
 using OrderToCash.Fulfillment.Infrastructure;
+using OrderToCash.Fulfillment.Infrastructure.Health;
 using Xunit;
 
 namespace OrderToCash.Fulfillment.UnitTests;
@@ -20,6 +21,7 @@ public sealed class FulfillmentProgramConfigurationTests
         "NATS_URL", "NATS_CLIENT_HOST_PORT",
         "KAFKA_BOOTSTRAP_SERVERS", "KAFKA_HOST_PORT",
         "FULFILLMENT_KAFKA_CLIENT_ID", "FULFILLMENT_MAX_CONCURRENT_REQUESTS",
+        "ORDERS_HEALTH_PORT", "FULFILLMENT_HEALTH_PORT", "BILLING_HEALTH_PORT", "NOTIFICATIONS_HEALTH_PORT", "PROJECTOR_HEALTH_PORT",
     ];
 
     private static void ClearAll()
@@ -137,6 +139,55 @@ public sealed class FulfillmentProgramConfigurationTests
 
             Assert.IsType<InvalidOperationException>(exception);
             Assert.Contains("MSSQL_APP_PASSWORD", exception!.Message);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    /// <summary>design.md §8.1/§9.2, group A4 — FULFILLMENT_HEALTH_PORT defaults to 3003 when unset.</summary>
+    [Fact]
+    public void ConfigureHealth_DefaultsPortTo3003_WhenNoEnvVarIsSet()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "dev-password");
+        try
+        {
+            var options = new HealthOptions();
+            FulfillmentProgramConfiguration.ConfigureHealth(options);
+
+            Assert.Equal(3003, options.Port);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    /// <summary>
+    /// ⚑ARM — substitution (tasks.md A4b, ledger L28): every sibling
+    /// <c>*_HEALTH_PORT</c> is set to a distinct, non-default value before
+    /// asserting, so a read repointed at a sibling's key fails on the
+    /// WRONG VALUE this assertion names, never on the fallback-to-default
+    /// reason.
+    /// </summary>
+    [Fact]
+    public void ConfigureHealth_ReadsFulfillmentHealthPort_FromItsOwnDistinctVariableName_NeverASiblingsKey()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "dev-password");
+        Environment.SetEnvironmentVariable("ORDERS_HEALTH_PORT", "23002");
+        Environment.SetEnvironmentVariable("FULFILLMENT_HEALTH_PORT", "13003");
+        Environment.SetEnvironmentVariable("BILLING_HEALTH_PORT", "23004");
+        Environment.SetEnvironmentVariable("NOTIFICATIONS_HEALTH_PORT", "23005");
+        Environment.SetEnvironmentVariable("PROJECTOR_HEALTH_PORT", "23006");
+        try
+        {
+            var options = new HealthOptions();
+            FulfillmentProgramConfiguration.ConfigureHealth(options);
+
+            Assert.Equal(13003, options.Port);
         }
         finally
         {

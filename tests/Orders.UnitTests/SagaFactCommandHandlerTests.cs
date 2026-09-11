@@ -74,7 +74,7 @@ public sealed class SagaFactCommandHandlerTests
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var store = new FakeSagaCommandStore();
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
         var handler = new HandleInvoiceIssuedFactCommandHandler(sagaHandler);
 
         await handler.HandleAsync(new HandleInvoiceIssuedFactCommand(BuildFact("invoice.issued.v1", order.Id.Value)), CancellationToken.None);
@@ -94,7 +94,7 @@ public sealed class SagaFactCommandHandlerTests
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var store = new FakeSagaCommandStore();
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
         var dispatcher = new RecordingDispatcher();
         var handler = new HandleCreditReleasedFactCommandHandler(sagaHandler, dispatcher);
 
@@ -122,7 +122,7 @@ public sealed class SagaFactCommandHandlerTests
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var store = new FakeSagaCommandStore();
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
         var dispatcher = new RecordingDispatcher();
         var handler = new HandleCreditReleasedFactCommandHandler(sagaHandler, dispatcher);
 
@@ -141,7 +141,7 @@ public sealed class SagaFactCommandHandlerTests
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner { ReturnDuplicate = duplicate };
         var store = new FakeSagaCommandStore { OutcomeToReturn = alreadyEnqueued ? EnqueueOutcome.AlreadyEnqueued : EnqueueOutcome.Enqueued };
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
         var dispatcher = new RecordingDispatcher();
 
         return (new HandleOrderPlacedFactCommandHandler(sagaHandler, dispatcher), dispatcher);
@@ -155,6 +155,13 @@ public sealed class SagaFactCommandHandlerTests
         CausationId: Guid.NewGuid(),
         OccurredAt: OrderTestData.Now.AddMinutes(5),
         Payload: new object());
+
+    private sealed class FakeSagaCompletionRecorder : ISagaCompletionRecorder
+    {
+        public List<(string Outcome, TimeSpan Duration)> Recorded { get; } = [];
+
+        public void Record(string outcome, TimeSpan duration) => Recorded.Add((outcome, duration));
+    }
 
     private sealed class RecordingDispatcher : IDispatcher
     {
@@ -193,7 +200,9 @@ public sealed class SagaFactCommandHandlerTests
     {
         public Order? OrderToReturn { get; set; }
 
-        public Task AddAsync(Order order, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task AddAsync(Order order, Guid? requestId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<Order?> FindByRequestIdAsync(Guid requestId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<Order?> GetByIdAsync(UniqueId id, CancellationToken cancellationToken) => Task.FromResult(OrderToReturn);
 
@@ -213,7 +222,7 @@ public sealed class SagaFactCommandHandlerTests
 
         public EnqueueOutcome OutcomeToReturn { get; set; } = EnqueueOutcome.Enqueued;
 
-        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, CancellationToken cancellationToken)
+        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, byte[]? triggeringEventEnvelope, string? triggeringEventTopic, CancellationToken cancellationToken)
         {
             Enqueued.Add((orderId, command));
             return Task.FromResult(OutcomeToReturn);
@@ -225,8 +234,15 @@ public sealed class SagaFactCommandHandlerTests
 
         public Task MarkSentAsync(Guid commandId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<bool> ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<bool> TryClaimDeadLetterAsync(Guid commandId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
+        /// <summary>Id 62 — always "no compensation pending"; none of this file's cases is about the supersede guard.</summary>
+        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => Task.FromResult(false);
     }
 }

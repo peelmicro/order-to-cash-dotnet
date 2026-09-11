@@ -17,7 +17,9 @@ var builder = OrdersHost.CreateBuilder(
     args,
     configureOutbox: OrdersProgramConfiguration.ConfigureOutbox,
     configureAcceptance: OrdersProgramConfiguration.ConfigureAcceptance,
-    configureSaga: OrdersProgramConfiguration.ConfigureSaga);
+    configureSaga: OrdersProgramConfiguration.ConfigureSaga,
+    configureTelemetry: OrdersProgramConfiguration.ConfigureTelemetry,
+    configureHealth: OrdersProgramConfiguration.ConfigureHealth);
 
 var host = builder.Build();
 await host.RunAsync().ConfigureAwait(false);

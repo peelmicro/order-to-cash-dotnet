@@ -49,7 +49,7 @@ public sealed class FactPartitioningTests(KafkaContainerFixture kafka, MsSqlCont
         using var publisher = new KafkaFactPublisher(producer);
         var relayOptions = Options.Create(new OutboxRelayOptions { BatchSize = 10 });
         var clock = new FakeClock(FakeClock.UtcNowToTheMillisecond());
-        var relay = new OutboxRelay(db, publisher, clock, relayOptions, NullLogger<OutboxRelay>.Instance);
+        var relay = new OutboxRelay(db, publisher, clock, relayOptions, new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
 
         var result = await relay.RunOnceAsync(CancellationToken.None);
         Assert.Equal(5, result.Published);

@@ -1,7 +1,10 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using OrderToCash.Billing.Infrastructure;
+using OrderToCash.Billing.Infrastructure.Health;
+using OrderToCash.Billing.Infrastructure.Observability;
 using OrderToCash.Cqrs;
 
 namespace OrderToCash.Billing;
@@ -13,9 +16,36 @@ namespace OrderToCash.Billing;
 /// </summary>
 public static class BillingHost
 {
-    public static HostApplicationBuilder CreateBuilder(string[] args, Action<BillingOptions> configure)
+    public static HostApplicationBuilder CreateBuilder(
+        string[] args,
+        Action<BillingOptions> configure,
+        Action<TelemetryOptions>? configureTelemetry = null,
+        Action<HealthOptions>? configureHealth = null)
     {
         var builder = Host.CreateApplicationBuilder(args);
+
+        // design.md §5.1 — registered BEFORE anything else. Optional so
+        // every pre-existing test driving this method for an unrelated
+        // reason is undisturbed; Program.cs always passes the real
+        // BillingProgramConfiguration.ConfigureTelemetry delegate.
+        builder.Services.AddBillingTelemetry(configureTelemetry ?? (_ => { }));
+
+        // design.md §6 — R58/OR7: AddJsonConsole + IncludeScopes make
+        // the trace fields render at all. D11 (review round 3) — the
+        // explicit ActivityTrackingOptions setting below is NOT what turns
+        // TraceId on: the generic host enables
+        // ActivityTrackingOptions.TraceId by DEFAULT, so deleting this line
+        // alone leaves TraceId on every log line unchanged. Setting it
+        // explicitly to None is what removes the field — measured by a
+        // deletion probe against this runtime (round 2, probes 3-4), never
+        // read from framework source (ledger L25).
+        builder.Logging.ClearProviders();
+        builder.Logging.AddJsonConsole(o =>
+        {
+            o.IncludeScopes = true;
+            o.UseUtcTimestamp = true;
+        });
+        builder.Logging.Configure(o => o.ActivityTrackingOptions = ActivityTrackingOptions.TraceId | ActivityTrackingOptions.SpanId);
 
         // ValidateOnBuild/ValidateScopes forced ON in EVERY environment —
         // Host.CreateApplicationBuilder only turns them on when the
@@ -28,6 +58,13 @@ public static class BillingHost
         }));
 
         builder.Services.AddBilling(configure);
+
+        // design.md §8 (group A4) — OPT-IN, the same reasoning as Orders'
+        // own copy: only registered when a real delegate is supplied.
+        if (configureHealth is not null)
+        {
+            builder.Services.AddBillingHealth(configureHealth);
+        }
 
         // AddDispatcher runs LAST, so a missing or duplicated command/query
         // handler is a boot failure, never a first-dispatch surprise.

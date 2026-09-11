@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using Microsoft.EntityFrameworkCore;
@@ -8,10 +9,15 @@ using Microsoft.Extensions.Hosting;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using NATS.Client.Core;
+using OrderToCash.Contracts.Envelopes;
+using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Wire;
 using OrderToCash.Orders;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Domain;
+using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Orders.Infrastructure.Outbox;
 using OrderToCash.Orders.Infrastructure.Persistence;
 using OrderToCash.Orders.Infrastructure.Persistence.Entities;
 using OrderToCash.Orders.Presentation.Rpc;
@@ -175,7 +181,7 @@ public sealed class OperatorNoteReachesTimelineEndToEndTests(
         await unitOfWork.ExecuteAsync(
             async ct =>
             {
-                await repository.AddAsync(order, ct).ConfigureAwait(false);
+                await repository.AddAsync(order, requestId: null, ct).ConfigureAwait(false);
                 await repository.SaveChangesAsync(ct).ConfigureAwait(false);
                 return 0;
             },
@@ -271,6 +277,156 @@ public sealed class OperatorNoteReachesTimelineEndToEndTests(
             await ordersHost.StopAsync();
             ordersHost.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Review round 1, D1 — the literal reading of bullets 1–2: the note on
+    /// the READ-MODEL TIMELINE (never the outbox row), per compensation
+    /// branch, real Gateway → real NATS → real Orders → real Kafka → real
+    /// Projector → real Mongo, all four hops exactly as
+    /// <see cref="PostOrdersCancelWithANote_ThroughTheRealFourServiceChain_LandsOnTheRealMongoTimelineEntry"/>
+    /// already proves for the immediate branch. The starting status is
+    /// seeded directly via EF (same precedent as the Terminal-status
+    /// fixture pattern elsewhere in this suite) — the branch under test is
+    /// the CANCEL path, not how the order arrived at its starting status.
+    /// <paramref name="expectedCompensationStepCount"/> is asserted
+    /// alongside <c>detail.note</c> because the note alone does not
+    /// distinguish this branch from a regression into the immediate one:
+    /// that branch carries the note too, with an empty compensation list.
+    /// </summary>
+    [Theory(Timeout = 180_000)]
+    [InlineData("stock_reserved", 1)]
+    [InlineData("credit_approved", 2)]
+    [InlineData("confirmed", 2)]
+    public async Task PostOrdersCancelWithANote_ThroughTheRealCompensationChain_LandsOnTheRealMongoTimelineEntryWithTheBranchsCompensationSteps(string startingStatus, int expectedCompensationStepCount)
+    {
+        await CreateTopicIfMissingAsync(ProjectorFactTopics.OrdersFacts);
+        await CreateTopicIfMissingAsync(ProjectorFactTopics.FulfillmentFacts);
+        await CreateTopicIfMissingAsync(ProjectorFactTopics.BillingFacts);
+
+        var (ordersHost, connectionString) = await StartOrdersAsync($"branch-e2e-{startingStatus}");
+        // Short, deliberately — Mongo caps database names at 63 characters,
+        // and "otc_read_model_branch_e2e_<status>_<32-hex>" overflows it for
+        // "credit_approved"/"confirmed".
+        var mongoDatabase = $"otc_rm_{startingStatus}_{Guid.NewGuid():N}";
+        var projectorHost = await StartProjectorAsync(mongoDatabase);
+
+        var needsCreditRelease = startingStatus is "credit_approved" or "confirmed";
+        await using var stockReleaseResponder = await StartStockReleaseResponderAsync();
+        await using var creditReleaseResponder = needsCreditRelease ? await StartCreditReleaseResponderAsync() : null;
+        try
+        {
+            var orderId = await SeedPlacedOrderAsync(ordersHost, orderSequence: 600001);
+            await SetOrderStatusAsync(connectionString, orderId, startingStatus);
+
+            await using var gateway = await GatewayTestHost.StartAsync(options =>
+            {
+                options.Nats.Url = nats.Url;
+                options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+                options.Mongo.Database = "otc_read_model_branch_e2e_gateway_unused";
+            });
+
+            var token = await LoginAsync(gateway);
+            gateway.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var note = $"Cancelled from {startingStatus}, end to end through the real compensation chain.";
+            var response = await gateway.Client.PostAsJsonAsync($"/orders/{orderId}/cancel", new { note });
+            Assert.Equal((System.Net.HttpStatusCode)202, response.StatusCode);
+
+            if (needsCreditRelease)
+            {
+                await WaitForSagaCommandSentAsync(connectionString, orderId, "credit.release", TimeSpan.FromSeconds(30));
+                await PublishFactAsync(
+                    SagaFactTopics.BillingFacts, "credit.released.v1", orderId,
+                    new CreditReleasedPayload("ORD-BRANCH", RetailerCode, CompanyCode, "EUR", 2_450, 100_000, "order_cancelled", "CR-000001"));
+            }
+
+            await WaitForSagaCommandSentAsync(connectionString, orderId, "stock.release", TimeSpan.FromSeconds(30));
+            await PublishFactAsync(
+                SagaFactTopics.FulfillmentFacts, "stock.released.v1", orderId,
+                new StockReleasedPayload("ORD-BRANCH", CompanyCode, [], "order_cancelled"));
+
+            var collection = mongo.FreshCollection(mongoDatabase);
+            var doc = await PollForCancelledDocumentAsync(collection, orderId, TimeSpan.FromSeconds(60));
+
+            var events = doc["events"].AsBsonArray;
+            var cancelledEntry = events.Select(e => e.AsBsonDocument).Single(e => e["eventType"].AsString == "order.cancelled.v1");
+            var detail = cancelledEntry["detail"].AsBsonDocument;
+
+            // A2 — a message naming the missing note, never a bare
+            // GetElement/["note"] KeyNotFoundException.
+            Assert.True(
+                detail.TryGetElement("note", out var noteElement),
+                $"branch '{startingStatus}': expected detail.note to equal \"{note}\", but the timeline entry carries no note key at all. detail: {detail.ToJson()}");
+            Assert.True(
+                noteElement.Value.IsString && noteElement.Value.AsString == note,
+                $"branch '{startingStatus}': expected detail.note to equal \"{note}\", got \"{noteElement.Value}\". detail: {detail.ToJson()}");
+
+            var compensationSteps = detail["compensationSteps"].AsBsonArray;
+            Assert.Equal(expectedCompensationStepCount, compensationSteps.Count);
+        }
+        finally
+        {
+            await projectorHost.StopAsync();
+            projectorHost.Dispose();
+            await ordersHost.StopAsync();
+            ordersHost.Dispose();
+        }
+    }
+
+    private Task<StandInResponder> StartStockReleaseResponderAsync() =>
+        StandInResponder.StartAsync(nats.Url, RpcSubjects.StockRelease, data =>
+        {
+            var request = RpcJson.Deserialize<StockReleaseRequestPayload>(data);
+            return RpcJson.Serialize(new StockReleaseReplyPayload("released", request.OrderReference, Released: []));
+        }, CancellationToken.None);
+
+    private Task<StandInResponder> StartCreditReleaseResponderAsync() =>
+        StandInResponder.StartAsync(nats.Url, RpcSubjects.CreditRelease, data =>
+        {
+            var request = RpcJson.Deserialize<CreditReleaseRequestPayload>(data);
+            return RpcJson.Serialize(new CreditReleaseReplyPayload(true, request.OrderReference, AvailableCreditAfter: 500_00, CreditCode: "CR-000001", Currency: "EUR", ReleasedAmount: 2_450));
+        }, CancellationToken.None);
+
+    private static async Task SetOrderStatusAsync(string connectionString, Guid orderId, string status)
+    {
+        var options = new DbContextOptionsBuilder<OrdersDbContext>().UseSqlServer(connectionString).Options;
+        await using var db = new OrdersDbContext(options);
+        var row = await db.Orders.SingleAsync(o => o.Id == orderId);
+        row.Status = status;
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Polls the real <c>saga_commands</c> row directly — the same "poll the condition the assertion depends on" discipline <c>Orders.IntegrationTests</c> uses, never a fixed delay.</summary>
+    private async Task WaitForSagaCommandSentAsync(string connectionString, Guid orderId, string command, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        var options = new DbContextOptionsBuilder<OrdersDbContext>().UseSqlServer(connectionString).Options;
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var db = new OrdersDbContext(options);
+            var count = await db.SagaCommands.CountAsync(c => c.OrderId == orderId && c.Command == command && c.Status == "sent");
+            if (count >= 1)
+            {
+                return;
+            }
+
+            await Task.Delay(150);
+        }
+
+        throw new TimeoutException($"saga_commands row for '{command}' (order {orderId}) never reached 'sent' within {timeout}.");
+    }
+
+    /// <summary>Publishes a fact envelope directly to the real Kafka topic, keyed by <paramref name="orderId"/> — standing in for the real Fulfillment/Billing outbox relay, the same discipline <c>Orders.IntegrationTests.StandInSagaResponders.PublishFactAsync</c> establishes (not visible from this assembly, so re-implemented locally).</summary>
+    private async Task PublishFactAsync<TPayload>(string topic, string eventType, Guid orderId, TPayload payload)
+    {
+        using var producer = new ProducerBuilder<string, byte[]>(KafkaFactPublisher.BuildProducerConfig(new KafkaOptions { BootstrapServers = kafka.BootstrapServers, ClientId = "otc-gateway-branch-e2e-standin" })).Build();
+
+        var envelope = new Envelope<TPayload>(Guid.NewGuid(), eventType, orderId, orderId, Guid.NewGuid(), DateTimeOffset.UtcNow, payload);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonWire.Options);
+
+        await producer.ProduceAsync(topic, new Message<string, byte[]> { Key = orderId.ToString(), Value = bytes }).ConfigureAwait(false);
+        producer.Flush(TimeSpan.FromSeconds(5));
     }
 
     private static async Task<BsonDocument> PollForCancelledDocumentAsync(IMongoCollection<BsonDocument> collection, Guid orderId, TimeSpan timeout)

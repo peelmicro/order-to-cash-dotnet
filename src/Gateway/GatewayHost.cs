@@ -2,9 +2,11 @@ using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Cqrs;
 using OrderToCash.Gateway.Infrastructure;
+using OrderToCash.Gateway.Infrastructure.Observability;
 using OrderToCash.Gateway.Presentation;
 using OrderToCash.Gateway.Presentation.Endpoints;
 using OrderToCash.Gateway.Presentation.Problem;
@@ -23,9 +25,32 @@ namespace OrderToCash.Gateway;
 public static class GatewayHost
 {
     /// <summary>Registers every service and returns the builder WITHOUT calling <see cref="WebApplicationBuilder.Build"/> — the seam <c>GatewayDispatcherRegistrationTests</c> uses to prove the DI graph fails loudly (never only on first dispatch) when a port is removed, the same shape every other service's own <c>*Host.CreateBuilder</c> establishes.</summary>
-    public static WebApplicationBuilder CreateBuilder(string[] args, Action<GatewayOptions> configure)
+    public static WebApplicationBuilder CreateBuilder(string[] args, Action<GatewayOptions> configure, Action<TelemetryOptions>? configureTelemetry = null)
     {
         var builder = WebApplication.CreateBuilder(args);
+
+        // design.md §5.1 — registered BEFORE anything else. Optional so
+        // every pre-existing test driving this method for an unrelated
+        // reason is undisturbed; Program.cs always passes the real
+        // GatewayProgramConfiguration.ConfigureTelemetry delegate.
+        builder.Services.AddGatewayTelemetry(configureTelemetry ?? (_ => { }));
+
+        // design.md §6 — R58/OR7: AddJsonConsole + IncludeScopes make
+        // the trace fields render at all. D11 (review round 3) — the
+        // explicit ActivityTrackingOptions setting below is NOT what turns
+        // TraceId on: the generic host enables
+        // ActivityTrackingOptions.TraceId by DEFAULT, so deleting this line
+        // alone leaves TraceId on every log line unchanged. Setting it
+        // explicitly to None is what removes the field — measured by a
+        // deletion probe against this runtime (round 2, probes 3-4), never
+        // read from framework source (ledger L25).
+        builder.Logging.ClearProviders();
+        builder.Logging.AddJsonConsole(o =>
+        {
+            o.IncludeScopes = true;
+            o.UseUtcTimestamp = true;
+        });
+        builder.Logging.Configure(o => o.ActivityTrackingOptions = ActivityTrackingOptions.TraceId | ActivityTrackingOptions.SpanId);
 
         // ValidateOnBuild/ValidateScopes forced ON in EVERY environment —
         // the same non-negotiable every other service's *Host class
@@ -85,10 +110,23 @@ public static class GatewayHost
         // short-circuits before auth for the one route it guards), THEN
         // the bearer-auth check, THEN endpoint execution.
         app.UseMiddleware<CorrelationIdMiddleware>();
+        app.UseMiddleware<CorrelationLoggingScopeMiddleware>();
         app.UseMiddleware<ProblemJsonMiddleware>();
         app.UseRouting();
+        // otc_request_latency_ms (OR5/design.md §7) — AFTER UseRouting() so
+        // the endpoint tag is populated, and OUTSIDE (before) rate limiting
+        // and auth so it measures the whole remaining pipeline, error path
+        // included (a rethrow is still timed in its own `finally`, then
+        // translated by ProblemJsonMiddleware, which sits further out).
+        app.UseMiddleware<Presentation.RequestLatencyMiddleware>();
         app.UseRateLimiter();
         app.UseMiddleware<Presentation.Auth.BearerAuthenticationMiddleware>();
+
+        // R60/OR6, design.md §8.1 — mapped before BearerAuthenticationMiddleware's
+        // protection is reachable (both routes are .AllowAnonymous(), the
+        // same mechanism /docs and /auth/login already use), matching
+        // openapi.yaml's security: [] on both /health/live and /health/ready.
+        app.MapHealthEndpoints();
 
         app.MapAuthEndpoints();
         app.MapOrdersEndpoints();
@@ -109,6 +147,6 @@ public static class GatewayHost
     }
 
     /// <summary><see cref="CreateBuilder"/> + <see cref="WebApplicationBuilder.Build"/> + <see cref="Configure"/> in one call — what <c>Program.cs</c> uses; a test that needs to intervene between registration and <c>Build()</c> (or between <c>Build()</c> and pipeline wiring) calls the two steps directly instead.</summary>
-    public static WebApplication Build(string[] args, Action<GatewayOptions> configure) =>
-        Configure(CreateBuilder(args, configure).Build());
+    public static WebApplication Build(string[] args, Action<GatewayOptions> configure, Action<TelemetryOptions>? configureTelemetry = null) =>
+        Configure(CreateBuilder(args, configure, configureTelemetry).Build());
 }

@@ -1,5 +1,6 @@
 using OrderToCash.Billing;
 using OrderToCash.Billing.Infrastructure;
+using OrderToCash.Billing.Infrastructure.Health;
 using Xunit;
 
 namespace OrderToCash.Billing.UnitTests;
@@ -22,6 +23,7 @@ public sealed class BillingProgramConfigurationTests
         "NATS_URL", "NATS_CLIENT_HOST_PORT",
         "KAFKA_BOOTSTRAP_SERVERS", "KAFKA_HOST_PORT",
         "BILLING_KAFKA_CLIENT_ID", "BILLING_MAX_CONCURRENT_REQUESTS", "CREDIT_FAILURE_RATE",
+        "ORDERS_HEALTH_PORT", "FULFILLMENT_HEALTH_PORT", "BILLING_HEALTH_PORT", "NOTIFICATIONS_HEALTH_PORT", "PROJECTOR_HEALTH_PORT",
     ];
 
     private static void ClearAll()
@@ -162,6 +164,53 @@ public sealed class BillingProgramConfigurationTests
 
             Assert.IsType<InvalidOperationException>(exception);
             Assert.Contains("CREDIT_FAILURE_RATE", exception!.Message);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    /// <summary>design.md §8.1/§9.2, group A4 — BILLING_HEALTH_PORT defaults to 3004 when unset.</summary>
+    [Fact]
+    public void ConfigureHealth_DefaultsPortTo3004_WhenNoEnvVarIsSet()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "dev-password");
+        try
+        {
+            var options = new HealthOptions();
+            BillingProgramConfiguration.ConfigureHealth(options);
+
+            Assert.Equal(3004, options.Port);
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    /// <summary>
+    /// ⚑ARM — substitution (tasks.md A4b, ledger L28): every sibling
+    /// <c>*_HEALTH_PORT</c> is set to a distinct, non-default value before
+    /// asserting.
+    /// </summary>
+    [Fact]
+    public void ConfigureHealth_ReadsBillingHealthPort_FromItsOwnDistinctVariableName_NeverASiblingsKey()
+    {
+        ClearAll();
+        Environment.SetEnvironmentVariable("MSSQL_APP_PASSWORD", "dev-password");
+        Environment.SetEnvironmentVariable("ORDERS_HEALTH_PORT", "23002");
+        Environment.SetEnvironmentVariable("FULFILLMENT_HEALTH_PORT", "23003");
+        Environment.SetEnvironmentVariable("BILLING_HEALTH_PORT", "13004");
+        Environment.SetEnvironmentVariable("NOTIFICATIONS_HEALTH_PORT", "23005");
+        Environment.SetEnvironmentVariable("PROJECTOR_HEALTH_PORT", "23006");
+        try
+        {
+            var options = new HealthOptions();
+            BillingProgramConfiguration.ConfigureHealth(options);
+
+            Assert.Equal(13004, options.Port);
         }
         finally
         {

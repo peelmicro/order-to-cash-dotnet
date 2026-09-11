@@ -193,7 +193,7 @@ public sealed class IdempotentConsumerTests(MsSqlContainerFixture fixture)
 
         var repository = new EfCoreOrderRepository(db, new OutboxWriter(clock, new OrderFactPayloadMapper()));
         var unitOfWork = new EfCoreUnitOfWork(db);
-        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
+        await unitOfWork.ExecuteAsync(async ct => { await repository.AddAsync(order, null, ct); await repository.SaveChangesAsync(ct); }, CancellationToken.None);
 
         return connectionString;
     }

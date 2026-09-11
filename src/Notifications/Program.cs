@@ -9,7 +9,11 @@ using OrderToCash.Notifications;
 // delegate itself lives in NotificationsProgramConfiguration.Configure
 // (feature composition_root_env_reads_are_unguarded) so a test can call the
 // exact method this file calls.
-var builder = NotificationsHost.CreateBuilder(args, configure: NotificationsProgramConfiguration.Configure);
+var builder = NotificationsHost.CreateBuilder(
+    args,
+    configure: NotificationsProgramConfiguration.Configure,
+    configureTelemetry: NotificationsProgramConfiguration.ConfigureTelemetry,
+    configureHealth: NotificationsProgramConfiguration.ConfigureHealth);
 
 var host = builder.Build();
 await host.RunAsync().ConfigureAwait(false);

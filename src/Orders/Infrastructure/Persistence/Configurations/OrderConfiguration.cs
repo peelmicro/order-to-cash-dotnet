@@ -23,6 +23,19 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(o => o.OrderReference).HasColumnName("order_reference").HasMaxLength(20).IsRequired();
         builder.HasIndex(o => o.OrderReference).IsUnique();
 
+        // observability_reliability, RI1/RI4, ledger L1: a FILTERED unique
+        // index — EF Core's SQL Server provider emits `WHERE [request_id]
+        // IS NOT NULL` by convention for a unique index over a nullable
+        // column (verified against the generated migration; see
+        // progress/impl_observability_reliability.md for the quoted
+        // `filter:` argument). Unfiltered, MS-SQL treats two NULLs as equal
+        // and admits only ONE order with no requestId — a total break of
+        // RI4, since almost no order supplies one.
+        builder.Property(o => o.RequestId).HasColumnName("request_id");
+        builder.HasIndex(o => o.RequestId)
+            .IsUnique()
+            .HasDatabaseName("uq_orders_request_id");
+
         builder.Property(o => o.OrderDate).HasColumnName("order_date").HasColumnType("datetime2(3)");
         builder.Property(o => o.CompanyId).HasColumnName("company_id");
         builder.Property(o => o.RetailerId).HasColumnName("retailer_id");

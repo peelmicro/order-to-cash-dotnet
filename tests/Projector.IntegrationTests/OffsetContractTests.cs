@@ -126,6 +126,13 @@ public sealed class OffsetContractTests : IAsyncLifetime
             var doc = await ProjectorTestHost.PollUntilAsync(collection, envelope.CorrelationId, _ => true, TimeSpan.FromSeconds(15));
             Assert.NotNull(doc);
         }
+        // Mechanism-2 classification: does NOT need the group-clearance
+        // wait — this test class owns a PRIVATE, per-test-method
+        // KafkaContainerFixture (`_kafka = new()`, no [Collection]
+        // sharing; xUnit builds a fresh class instance per [Fact], so
+        // InitializeAsync spins up a brand-new broker each time) never
+        // touched by any other test — mechanism 2 needs a broker SHARED
+        // across tests to cross a test boundary, which cannot happen here.
         finally
         {
             await host.StopAsync();
@@ -152,6 +159,13 @@ public sealed class OffsetContractTests : IAsyncLifetime
             Assert.NotNull(doc);
             Assert.Equal("order.placed.v1", doc!["events"].AsBsonArray[0]["eventType"].AsString);
         }
+        // Mechanism-2 classification: does NOT need the group-clearance
+        // wait — this test class owns a PRIVATE, per-test-method
+        // KafkaContainerFixture (`_kafka = new()`, no [Collection]
+        // sharing; xUnit builds a fresh class instance per [Fact], so
+        // InitializeAsync spins up a brand-new broker each time) never
+        // touched by any other test — mechanism 2 needs a broker SHARED
+        // across tests to cross a test boundary, which cannot happen here.
         finally
         {
             await host.StopAsync();

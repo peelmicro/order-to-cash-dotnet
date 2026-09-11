@@ -62,8 +62,7 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -137,8 +136,7 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -193,8 +191,7 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -278,21 +275,20 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
     private sealed class ThrowingOnCreditHoldSagaCommandStore(ISagaCommandStore inner) : ISagaCommandStore
     {
-        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, CancellationToken cancellationToken)
+        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, byte[]? triggeringEventEnvelope, string? triggeringEventTopic, CancellationToken cancellationToken)
         {
             if (command == SagaCommandKind.CreditHold)
             {
                 throw new InvalidOperationException("SO3 atomicity test seam: simulated enqueue failure.");
             }
 
-            return inner.EnqueueAsync(orderId, orderReference, command, payload, triggeringEventId, cancellationToken);
+            return inner.EnqueueAsync(orderId, orderReference, command, payload, triggeringEventId, triggeringEventEnvelope, triggeringEventTopic, cancellationToken);
         }
 
         public Task<SagaCommandRecord?> TryClaimAsync(Guid orderId, SagaCommandKind command, CancellationToken cancellationToken) => inner.TryClaimAsync(orderId, command, cancellationToken);
@@ -301,8 +297,14 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
 
         public Task MarkSentAsync(Guid commandId, CancellationToken cancellationToken) => inner.MarkSentAsync(commandId, cancellationToken);
 
-        public Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => inner.ParkAsync(commandId, attemptsMade, lastError, cancellationToken);
+        public Task<bool> ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => inner.ParkAsync(commandId, attemptsMade, lastError, cancellationToken);
 
         public Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => inner.RejectAsync(commandId, attemptsMade, lastError, cancellationToken);
+
+        public Task<bool> TryClaimDeadLetterAsync(Guid commandId, CancellationToken cancellationToken) => inner.TryClaimDeadLetterAsync(commandId, cancellationToken);
+
+        public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => inner.FindOperatorCancelNoteAsync(orderId, cancellationToken);
+
+        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => inner.HasPendingCompensationAsync(orderId, cancellationToken);
     }
 }

@@ -125,8 +125,7 @@ public sealed class SagaPreconditionTests(KafkaContainerFixture kafka, NatsConta
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -165,8 +164,7 @@ public sealed class SagaPreconditionTests(KafkaContainerFixture kafka, NatsConta
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 }

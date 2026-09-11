@@ -2118,3 +2118,155 @@ Three things follow, and they are the phase's transferable results.
 - **Enumerate #7's tests, not only its source, when porting a mechanism.** Three of this phase's six rejections were guards that existed in a checkout on this machine, in files named after the thing being ported.
 - **A sweep must not filter by the property it tests**, and a fix's completeness claim must be enumerated **on the wording of the claim being retired**, not the one being written.
 - **`specs/shared/` is read-only, and that is why the note gap was findable.** A disclosure whose root cause is the shared spec leaves a numbered entry or an `SA-n` — never a sentence. Phase 13 is where that rule was written, and id 66 is where it was first honoured.
+
+## observability_reliability (id 27, phase 14) — 2026-09-11 — **four review rounds, three rejected, ≈3.1× #7 on a feature #7 approved first time — and a review loop that alone outlasted #7's whole feature**
+
+**Effort:** **1 spec session + 1 human gate + 14 implementer passes + 1 suite runner before the first review; then 3 rejections, 5 fix/diagnosis transcripts (7 passes) and approval at review round 4.** Wall-clock from subagent transcript first/last timestamps (UTC converted to CEST), bracketed at the start by `909394f` (2026-09-10 06:04:29):
+
+| Stretch | Window (CEST) | Duration |
+|---|---|---|
+| Spec | 06:15 → 06:39 (2026-09-10), gate the same morning | ≈24 min |
+| Implementation: Group B, A1, A2 (VS Code restart 11:33 → 11:41), A3 ×3 rounds, A4, A4e ×2 rounds, Group N ×3 rounds; one `suite_runner` 08:01 → 08:11 | 07:10 → 22:04 (spans overlap, so not additive) | ≈14 h 46 min |
+| Review round 1 — REJECTED (D1–D4, R1–R3) | 22:05 → 22:34 | ≈29 min |
+| Fix round 1 + addendum | 22:36 → 00:23 | ≈1 h 47 min |
+| Review round 2 — REJECTED (D5–D7, R4–R9) | 00:24 → 00:48 | ≈24 min |
+| Fix round 2, then part 2 (the complete §11 walk) | 00:51 → 02:27, 02:29 → 03:24 | ≈2 h 31 min |
+| Review round 3 — REJECTED (D8–D11) | 03:26 → 03:47 | ≈21 min |
+| Fix round 4 | 03:48 → 04:36 | ≈48 min |
+| Red `quality.sh` diagnosis + class closure (one transcript, resumed once) | 04:39 → 06:35 | ≈1 h 56 min |
+| Review round 4 — **APPROVED** | 06:38 → ≈07:05 (2026-09-11) | ≈27 min |
+
+**≈24 h 10 min of near-continuous agent time** (excluding the 06:39 → 07:10 gate gap) against **#7's ≈7 h 45 min**, which was 1 spec + 1 gate + 6 implementer passes + 1 review, approved first time (`order-to-cash-nestjs/progress/history.md:1057`). **≈3.1×.**
+- **The split is the finding.** Implementation alone was ≈14 h 46 min against #7's ≈7 h (≈2.1×), which is in line with the phase-13 pattern for a feature this wide.
+- **The review/fix loop was ≈9 h**, and #7 spent under an hour on review. **The loop by itself cost more than #7's entire feature.**
+
+**Suite at close: 1799 tests, 0 failed** — the leader's `./quality.sh` at 06:34, re-summed by the reviewer from its 18 per-project lines; not re-run by the reviewer. **Packages:** `OpenTelemetry`, `OpenTelemetry.Exporter.OpenTelemetryProtocol` and `OpenTelemetry.Instrumentation.AspNetCore`, added to `Directory.Packages.props` at 1.18.0. `OpenTelemetry.Extensions.Hosting` is newly referenced from the service projects, and `FrameworkReference Microsoft.AspNetCore.App` is added to five services for their health endpoints.
+
+**What it bought.** The feature spans R56–R60 and R62 across six services:
+- **Trace propagation** across HTTP → NATS → the write-model transaction → Kafka → consumers.
+- **Trace ids in logs** from host settings, not per call site.
+- **Retry-then-dead-letter** in the three fact consumers, as byte-parity copies of one dispatcher.
+- **`order.saga_failed.v1` on first park.**
+- **Five metric instruments**, including a broker-counted DLQ depth.
+- **Bounded readiness probes** proven against paused real containers.
+- **`orders.create` idempotent replay.**
+- **A 29-row ported-idiom ledger** and a complete 41-group walk of #7's guards.
+
+### Why it was slow — eleven blocking defects, and what they had in common
+
+Rounds 1–3 raised **D1–D11**. Most were not wrong behaviour; they were **guards that could not see their own defect**, or records that said they could:
+- **Round 1:** a responder trace-continuation guard that drove a stand-in rather than the real responder (L24).
+- **Round 2:** five §11 row groups marked "exists" with no assertion anywhere, found because the walk classified **class files instead of cases**.
+- **Round 3:** three armed guards.
+  - **The latency value** was guarded only by `>= 0`, after `Stopwatch` replaced #7's injected clock. #7 asserted `240` exactly; a ported guard dropped in translation.
+  - **The NATS concurrency guard** passed a plain `NatsHeaders` hoist, because the "deterministic" delay lived **in the mutation, not in the test**.
+  - **Row 44's server span** existed because the test's own `ActivityListener` subscribed, not because the host registered instrumentation.
+
+Each was found by a reviewer mutation, and none by reading. Round 4's probes all killed on value.
+
+**And one red run that was not code.** The final class-closure run lost 28 Gateway tests to `DockerUnavailableException`. The red log's inner exception was a `FileNotFoundException` for `System.Net.Requests`: unattended apt replaced the .NET host, hostfxr and runtime (06:20:28–30), then the SDK (06:20:31–34), under a running `dotnet test`. The Docker daemon never restarted. It was first attributed to a Docker stall, which was corrected at review. The green re-run on identical code was accepted because the cause had machine evidence and a mechanism in the log itself.
+
+### Open at approval, each routed
+
+- **Id 75** (`dead_letter_first_failed_at_semantics`). `asyncapi.yaml:2240-2243` never defines `x-first-failed-at`: #7 renders the dispatch entry instant, #8 the first failure. It is a human-gated SA-3 recommendation, not a feature-27 blocker.
+- **Id 74**, two added bullets:
+  - the `Assert.Single`-over-a-shared-capture class (nine sites);
+  - making the new consumer-group clearance wait structural, since today it closes an enumerated population rather than the class.
+- **Record, design and test-comment corrections RC1–RC4:**
+  - the environment attribution;
+  - two §11 cells naming classes that do not exist;
+  - one row-72 comment that under-claims its bound;
+  - enumeration commands in the forbidden post-filter form.
+
+  All are listed in `progress/review_observability_reliability.md`'s Round 4 section, with owners.
+
+### Notes for #9
+
+- **Put determinism in the test, never in the mutation.** A mutation widened until the test fails proves the assertion can read a defect the test never produces. A test-owned barrier around the real connection is what made the hoist lose every time.
+- **A test-owned listener can manufacture the property the production registration exists to supply.** Assert on what the host's own pipeline exports.
+- **When porting a clock-driven measurement, port the exact-value spec with it.** `>= 0` cannot fail; #7's `toBe(240)` could.
+- **`host.StopAsync()` returning is not a consumer leaving its group.** It returns at the 30 s shutdown timeout while the broker is unreachable. Tests sharing a production group on one broker must confirm the group cleared.
+- **Before diagnosing a red full run, read the inner exception and `/var/log/dpkg.log`.** "Docker unavailable" was the wrapper around a missing framework assembly.
+
+---
+
+## operator_note_survives_the_compensation_branches (id 71, phase 14) — 2026-09-11 — **APPROVED at review round 3 (rounds 1 and 2 REJECTED)**
+
+**Effort: 4 implementer passes + 3 review passes. Closed at review round 3.** No spec session and no human gate (`sdd: false`). The specification of record is id 71's seven acceptance bullets plus its notes. Wall-clock is taken from the subagent transcripts' first and last timestamps (local CEST, 2026-09-11):
+
+| Pass | Window | Duration |
+|---|---|---|
+| Implementation — one transcript, including a red full `quality.sh` (Docker port-allocation, 08:02) and a green re-run (08:19) | 07:03:48 → 08:21:01 | ≈1 h 17 min |
+| Leader verification | 08:21 → 08:24 | ≈3 min |
+| Review round 1 — **REJECTED** | 08:24:29 → ≈08:50 | ≈26 min |
+| Fix round for review round 1 — the implementation transcript, resumed; paused cleanly for a reboot | 08:51:41 → 09:45:10 | ≈53 min |
+| Close-out after the reboot — A2's second half, the inotify harness change, the clean full run (1820) | 10:03:33 → 10:41:32 | ≈38 min |
+| Review round 2 — **REJECTED** (six probes, six killed; one text defect of D2's class, D6) | 10:43:08 → 11:05:24 | ≈22 min |
+| Fix round for review round 2 — text only: five D6 comment blocks, D7's totals, A6's byte assertion, A1's count | 11:06:49 → 11:21:17 | ≈14 min |
+| Review round 3 — **APPROVED** (one probe, killed; three enumerations and a comment-block sweep; a doc-enabled build; two non-blocking findings) | 11:22:36 → ≈11:36 | ≈13 min |
+
+**7 subagent sessions plus the leader's verification row, ≈4 h 08 min wall-clock** — the sum of the rows. Every window is read from the subagent transcripts' first and last timestamps, except review round 3's end. Review round 2's end was corrected at close from the estimated ≈11:08 to its transcript's 11:05:24 (≈25 → ≈22 min). The reboot gap (09:45 → 10:03) and leader time between passes are not counted. **Zero new packages.** **Suite: 1815 passed, 0 failed.** That is the implementer's second full `quality.sh` (08:19), re-summed by the reviewer from its 18 `Passed!` lines. It reconciles to 1799 + 16: `Orders.UnitTests` 437 → 443, `Orders.IntegrationTests` 124 → 134. Not re-run by the reviewer.
+
+**#7 has no counterpart, so there is no ratio.** `grep -n "operator_note" order-to-cash-nestjs/feature_list.json` prints nothing. #7 writes the note into its synthetic envelope (`cancel-order.handler.ts:175`, `:234`, `:283`) but never reads it back. The only consumer of that column is the dead-letter publish (`saga-first-park-dead-letter-handler.ts:44`), and #7's `Order.cancel` (`order.ts:397-401`) takes no note. **#8-only.**
+
+**Why rejected, in two lines.**
+- **D1:** the note was proved on the `order.cancelled.v1` outbox row, not on the read-model timeline the bullets name. The stated reason was that a real Billing host would be needed, and feature 66's own Gateway harness disproves it: real Orders and Projector hosts, a public NATS stand-in, and Kafka to publish the compensating facts.
+- **D2:** ledger row 3 describes an envelope overwrite that no code performs (the only write is an INSERT; a duplicate leaves the row untouched), and that wording reached a production doc comment and two test files. Its named guard stayed green when the precedence it is named for was reversed.
+
+**Round 2 suite: 1820 passed, 0 failed.** That is `quality_full_clean.log` (10:39), re-summed by the reviewer from its 18 `Passed!` lines, and it reconciles to 1815 + the fix round's 5 new tests: `Orders.UnitTests` 443 → 444, `Orders.IntegrationTests` 134 → 135, `Gateway.IntegrationTests` 56 → 59. Not re-run by the reviewer. **Zero new packages**; the harness change (`test.runsettings` + one `Directory.Build.props` line) adds none.
+
+**Why rejected again, in two lines.**
+- **D6:** the claim id 71 exists to retire — an operator-cancel compensation row carries no triggering envelope — is still asserted in five comment blocks, two on the port whose nullability D5 accepted on an honest disclosure; `ISagaCommandStore.cs:53-55` tells the next caller to pass `null`. Round 1 missed it too: both sweeps searched the citation and one exact phrase, not the claim.
+- **D7:** the record's D4 totals sum to 19 by mixing lines with assertions.
+
+**What was not the problem:** D1's timeline `[Theory]` (all three branches killed by deleting the read-back, and a corruption at the `credit.release` site killed its branch), D2's precedence and duplicate-enqueue guards (M7 now killed; a duplicate UPDATE killed), and A1's topic guard (killed by a real sibling). **The inotify harness change is out of id 71's scope** and is recommended as its own backlog entry, with a guard.
+
+Full record: `progress/review_operator_note_survives_the_compensation_branches.md`.
+
+**Round 3 suite: 1820, unchanged, not re-run.** The round-2 fix round changed comments and one assertion and added no test: `[Fact]`/`[Theory]` counts are 12 in `SagaCommandStoreTests.cs` and 4 in `SagaFirstParkDeadLetterHandlerTests.cs`, matching its filtered 12/12 and the 4 inside its 18/18. The reviewer re-summed `quality_full_clean.log` at 1820 and ran one probe with its confirming green. **Zero new packages.**
+
+**Why approved, in two lines.**
+- **D6/D3 closed:** the two retired-wording enumerations (9 and 13 lines), the leader's pattern (0) and a comment-block sweep (15 blocks) find no live site claiming operator-cancel rows carry no envelope. A6's byte assertion was killed by a same-note, different-`eventId` overwrite, failing at the byte line after the note assertion passed.
+- **A1 and D7 verified:** A1's count (4) by search; D7's per-line totals (2 + 1 + 1 + 15 = 19) by arithmetic against the 19-line output.
+
+**What was left, and where it went.**
+- **R3-F1:** one unresolved `cref` inside a rewritten block (`ISagaCommandStore.cs:26`) and one from round 1 (`SagaFactHandler.cs:183`). Both are invisible to the build, because `GenerateDocumentationFile` is `false`. The record's *"every rewritten cref resolves"* was proved by a build that cannot fail on it. A doc-enabled build of Orders alone reports 12 unresolved `cref`s, so the class is recommended to the leader as backlog entry `doc_comment_crefs_are_never_compiler_checked`, rather than fixed at two lines.
+- **R3-F2:** record `:160` and `:233-236` still carry the superseded D4 figures, with no pointer to the correction.
+- **Leader, at close:** `init.sh` exits 1 on its §4 lockstep until `progress/current.md` is reset.
+
+**Of three review rounds, one rejected on substance** (round 1: D1's wrong surface, D2's invented mechanism). **One rejected on text alone** (round 2: D6), and that text was findable only by enumerating on the retired claim's wording: both earlier sweeps searched the correction's.
+
+**For #9:** the property this feature adds, reading the operator's note back from the compensation row, has no #7 counterpart, so it is carried by this record's ledger rather than by parity.
+
+---
+
+## test_hosts_exhaust_the_per_user_inotify_limit (id 77, phase 14) — 2026-09-11 — **APPROVED at review round 1**
+
+**Effort: 1 implementer pass + 1 review pass. No fix round.** No spec session and no human gate (`sdd: false`). The specification of record is id 77's five acceptance bullets plus its notes, which carry id 71 review round 2's rulings (a)–(d). Wall-clock is taken from the subagent transcripts' first and last timestamps (local CEST, 2026-09-11):
+
+| Pass | Window | Duration |
+|---|---|---|
+| Implementation — one guard test, both arms, the quality-flags run, two enumerations, one full `quality.sh` (log born 11:44:46, closed 11:57:07) | 11:38:19 → 11:59:45 | ≈21 min |
+| Leader verification — read the full log, summed 1821 | 11:59:45 → 12:00:52 | ≈1 min |
+| Review round 1 — **APPROVED** (three mutations under the full protocol plus one quality-flags arm, one masking probe, nine enumerations) | 12:00:52 → 12:13:09 | see review |
+
+**2 subagent sessions plus the leader's read.** Most of this entry's cost is not in this table. The fix was built, measured and verified inside id 71's close-out (10:03:33 → 10:41:32, ≈38 min, already counted there) and ruled on by id 71's review round 2. This entry adds only the guard those rulings said was missing. **Zero new packages.** **Suite: 1821 passed, 0 failed.** That is the implementer's full `quality.sh`, summed from its 18 `Passed!` lines by the leader and re-summed by the reviewer, and it reconciles to id 71's 1820 + 1: `Orders.UnitTests` 444 → 445. Not re-run by the reviewer.
+
+**#7 has no counterpart, so there is no ratio.** A search of #7's checkout for `inotify|max_user_instances|reloadConfigOnChange|runsettings` returns nothing (exit 123). NestJS test processes build no .NET generic host, so the defect cannot arise there. **#8-only.**
+
+**Why approved, in two lines.**
+- **The guard reads the host, and it reads the value.** Deleting `RunSettingsFilePath` and deleting the runsettings entry each fail it with `"<null>"`, and changing `false` to `true` fails it with `"true"`. It builds through `OrdersHost.CreateBuilder` and reads the built host's `IConfiguration`, never the environment.
+- **The coverage path was armed, not just observed.** Under `quality.sh`'s exact `--collect`/`--results-directory` flags, with the collector demonstrably writing cobertura, deleting the entry turns the guard red and restoring it turns it green. A green observation alone could not have told delivery from an ambient variable.
+
+**What was left, and where it went.**
+- **N1:** the record's hot-reload re-run is narrower than id 71's search: `tests` only, 2 of 11 terms, file writers replaced by an `appsettings` grep. The review's wider search is the search of record, and it is clean.
+- **N2:** the record's "unchanged" per-project list gives 16 values for 17 projects, omitting `Billing.IntegrationTests` = 90.
+- **A1:** one guard sees the one global delivery path, which the enumeration shows is the only path today. It cannot see a future per-project escape (`RunSettingsFilePath`, `ImportDirectoryBuildProps`, `--settings`). The leader should file a structural sweep as its own entry or accept the limit.
+- **A3:** `test.runsettings` and the guard file are untracked and must be committed with the `Directory.Build.props` change.
+- **Leader, at close:** `init.sh` exits 1 on its §4 lockstep until `progress/current.md` is reset.
+
+**For #9:** FastAPI test processes build no .NET host, so the mechanism does not port. The lesson does: a guard for a harness setting must read the setting as the thing under test receives it, and must be armed on every invocation path the claim names. Observing green on a path is not arming it.
+
+Full record: `progress/review_test_hosts_exhaust_the_per_user_inotify_limit.md`.
+
+---

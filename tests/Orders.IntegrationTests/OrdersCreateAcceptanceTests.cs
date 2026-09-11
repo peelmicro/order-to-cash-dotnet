@@ -586,9 +586,16 @@ public sealed class OrdersCreateAcceptanceTests(NatsContainerFixture nats, MsSql
         }
     }
 
-    /// <summary><c>requestId</c> is on the wire because <c>asyncapi.yaml</c> declares it — carried and ignored (idempotent replay is the reliability feature's own acceptance criterion, out of scope here). Proves it does not break a normal placement.</summary>
+    /// <summary>
+    /// <c>requestId</c> is on the wire because <c>asyncapi.yaml</c> declares
+    /// it. Feature <c>observability_reliability</c> gives it real
+    /// idempotent-replay behaviour (design.md §2,
+    /// <c>OrdersCreateIdempotentReplayTests</c>) — this case only proves a
+    /// FIRST-TIME requestId does not break a normal placement; it is not
+    /// itself a replay case.
+    /// </summary>
     [Fact]
-    public async Task OrdersCreate_ARequestIdOnTheWireIsCarriedButHasNoEffectOnThisFeaturesBehaviour()
+    public async Task OrdersCreate_AFirstTimeRequestIdOnTheWirePlacesAnOrderNormally()
     {
         var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_accept4_{Guid.NewGuid():N}");
         await using (var seedDb = mssql.CreateDbContext(connectionString))
@@ -682,6 +689,12 @@ public sealed class OrdersCreateAcceptanceTests(NatsContainerFixture nats, MsSql
             // in OutboxRelayTests. Disabled here so this suite depends on
             // nothing but NATS + MS-SQL.
             options.Relay.Enabled = false;
+            // Mechanism-2 classification: this host's StopAsync/Dispose
+            // sites below do NOT need the group-clearance wait —
+            // "127.0.0.1:1" is deliberately unreachable, so SagaFactsConsumer
+            // can never actually join a real "orders.saga" group on ANY
+            // broker; mechanism 2 needs a real shared broker to cross a
+            // test boundary, which is structurally impossible here.
             options.Kafka.BootstrapServers = "127.0.0.1:1";
         });
         builder.Services.AddOrdersAcceptance(options =>

@@ -39,6 +39,13 @@ public sealed class SagaCommandConfiguration : IEntityTypeConfiguration<SagaComm
         builder.Property(s => s.UpdatedAt).HasColumnName("updated_at").HasColumnType("datetime2(3)");
         builder.Property(s => s.SentAt).HasColumnName("sent_at").HasColumnType("datetime2(3)");
 
+        // observability_reliability, OR3/R29's dead-letter clause (design.md
+        // §4.1) — nullable, because every row already in the table
+        // predates them.
+        builder.Property(s => s.TriggeringEventEnvelope).HasColumnName("triggering_event_envelope").HasColumnType("nvarchar(max)");
+        builder.Property(s => s.TriggeringEventTopic).HasColumnName("triggering_event_topic").HasMaxLength(64);
+        builder.Property(s => s.DeadLetteredAt).HasColumnName("dead_lettered_at").HasColumnType("datetime2(3)");
+
         builder.HasIndex(s => new { s.OrderId, s.Command }).IsUnique();
         builder.HasIndex(s => new { s.Status, s.CreatedAt });
         builder.HasIndex(s => new { s.Status, s.NextAttemptAt });

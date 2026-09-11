@@ -22,12 +22,18 @@ namespace OrderToCash.Gateway.UnitTests;
 /// </summary>
 public sealed partial class OpenApiContractTests
 {
-    /// <summary>The two paths NOT built by this feature — <c>/health/live</c>/<c>/health/ready</c> (phase 14). <c>/orders/stream</c> was excluded here through feature <c>gateway_rest_auth</c> (id 25); feature <c>gateway_sse_push</c> (id 26) built it, so it moved into the real, mapped set below.</summary>
-    private static readonly HashSet<(string Method, string Path)> _deliberatelyExcluded =
-    [
-        ("GET", "/health/live"),
-        ("GET", "/health/ready"),
-    ];
+    /// <summary>
+    /// Empty — the last two entries this set ever carried,
+    /// <c>/health/live</c>/<c>/health/ready</c>, moved into the real,
+    /// mapped set below when <c>observability_reliability</c>'s group A4
+    /// (phase 14) mapped both (<c>HealthEndpoints.MapHealthEndpoints</c>),
+    /// exactly the way <c>/orders/stream</c> moved out through feature
+    /// <c>gateway_sse_push</c> (id 26) before it. Kept as a field, not
+    /// deleted, so the NEXT feature that legitimately defers a declared
+    /// path has an established place to record it — the same reasoning
+    /// this comment's own predecessor used.
+    /// </summary>
+    private static readonly HashSet<(string Method, string Path)> _deliberatelyExcluded = [];
 
     [Fact]
     public void MappedEndpoints_MatchOpenApiYamlExactly_ForEveryPathThisFeatureBuilds()

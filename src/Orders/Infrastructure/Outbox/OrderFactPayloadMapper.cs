@@ -26,6 +26,7 @@ public sealed class OrderFactPayloadMapper : IFactPayloadMapper
         OrderConfirmed confirmed => ToOrderConfirmedPayload(confirmed),
         OrderCompleted completed => ToOrderCompletedPayload(completed),
         OrderCancelled cancelled => ToOrderCancelledPayload(cancelled),
+        OrderSagaFailed sagaFailed => ToOrderSagaFailedPayload(sagaFailed),
         _ => throw new InvalidOperationException($"OrderFactPayloadMapper has no mapping for event type '{domainEvent.GetType().FullName}' (eventType '{domainEvent.EventType}')."),
     };
 
@@ -67,6 +68,13 @@ public sealed class OrderFactPayloadMapper : IFactPayloadMapper
         CancelledAt: cancelled.CancelledAt,
         CompensationSteps: [.. cancelled.CompensationSteps.Select(ToCompensationStep)],
         Note: cancelled.Note);
+
+    private static ContractsPayloads.OrderSagaFailedPayload ToOrderSagaFailedPayload(OrderSagaFailed sagaFailed) => new(
+        OrderReference: sagaFailed.OrderReference.Value,
+        Command: sagaFailed.Command,
+        Attempts: sagaFailed.Attempts,
+        LastError: sagaFailed.LastError,
+        FailedAt: sagaFailed.FailedAt);
 
     private static Contracts.Facts.OrderLine ToOrderLine(OrderPlacedLine line) => new(
         ProductCode: line.ProductCode,

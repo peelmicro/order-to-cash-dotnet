@@ -22,6 +22,16 @@ namespace OrderToCash.Orders.Application.Sagas;
 /// and the step table's own pattern matches ever see the concrete payload
 /// type.
 /// </remarks>
+/// <param name="TriggeringEventEnvelope">
+/// Feature <c>observability_reliability</c>, <c>OR3</c>/<c>R29</c>'s
+/// dead-letter clause (design.md §4.2) — the RAW bytes of this fact's own
+/// envelope, exactly as <c>SagaFactsConsumer</c> received them, threaded
+/// through unmodified to <c>ISagaCommandStore.EnqueueAsync</c> so a later
+/// first-park can republish the ORIGINAL bytes byte-for-byte. Defaulted to
+/// <see langword="null"/> (not required) so tests that do not care about
+/// dead-lettering are not forced to supply it.
+/// </param>
+/// <param name="TriggeringEventTopic">The source topic <paramref name="TriggeringEventEnvelope"/> was consumed from.</param>
 public sealed record SagaFact(
     Guid EventId,
     string EventType,
@@ -29,4 +39,6 @@ public sealed record SagaFact(
     Guid CorrelationId,
     Guid CausationId,
     DateTimeOffset OccurredAt,
-    object Payload);
+    object Payload,
+    byte[]? TriggeringEventEnvelope = null,
+    string? TriggeringEventTopic = null);

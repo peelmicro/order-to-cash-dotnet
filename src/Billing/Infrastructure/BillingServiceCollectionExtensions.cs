@@ -70,6 +70,10 @@ public static class BillingServiceCollectionExtensions
         // producer, IDisposable (CA2213 is an error here).
         services.AddSingleton<IFactPublisher, KafkaFactPublisher>();
 
+        // OR5/design.md §7, §13 — Billing owns no .dlq topic, so
+        // otc_dlq_depth is always 0 here.
+        services.AddSingleton<IDlqDepthGauge, NoOpDlqDepthGauge>();
+
         services.AddScoped<OutboxRelay>();
         services.AddScoped<IOutboxRelay>(sp => sp.GetRequiredService<OutboxRelay>());
         services.AddHostedService<OutboxRelayBackgroundService>();

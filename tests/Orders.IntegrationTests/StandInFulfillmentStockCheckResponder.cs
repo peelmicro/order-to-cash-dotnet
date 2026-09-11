@@ -21,6 +21,13 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _loop;
 
+    /// <summary>
+    /// EVERY non-probe request's headers, in arrival order — review round
+    /// 2, L21 addendum: proves TWO concurrent calls each carried their OWN
+    /// <c>traceparent</c>, which a single "last observed" field cannot.
+    /// </summary>
+    public System.Collections.Concurrent.ConcurrentQueue<NATS.Client.Core.NatsHeaders> ObservedHeaders { get; } = new();
+
     /// <param name="rawAnswer">Returning <see langword="null"/> means "received the request, deliberately send no reply" — <see cref="StartSilentAsync"/>'s shape for a Fulfillment that is up (subscribed) but never answers, review D1's TIMEOUT case. Raw bytes, not the typed success payload, so <see cref="StartErrorAsync"/> (feature 46) can answer with an <c>RpcError</c>-shaped body over the same plumbing.</param>
     private StandInFulfillmentStockCheckResponder(INatsConnection connection, Func<StockCheckRequestPayload, byte[]?> rawAnswer)
     {
@@ -222,6 +229,11 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
             }
 
             var request = RpcJson.Deserialize<StockCheckRequestPayload>(message.Data);
+            if (request.CompanyCode != "PROBE" && message.Headers is { } headers)
+            {
+                ObservedHeaders.Enqueue(headers);
+            }
+
             var replyBytes = rawAnswer(request);
             if (replyBytes is null)
             {

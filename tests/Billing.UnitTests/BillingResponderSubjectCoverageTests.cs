@@ -35,8 +35,15 @@ public sealed class BillingResponderSubjectCoverageTests
         var hostedServiceTypes = host.Services.GetServices<IHostedService>().Select(s => s.GetType()).ToHashSet();
 
         // Exactly one RPC responder — not "at least one", so a second,
-        // narrower responder cannot slip in unnoticed.
-        Assert.Equal(new HashSet<Type> { typeof(OutboxRelayBackgroundService), typeof(BillingRpcResponder) }, hostedServiceTypes);
+        // narrower responder cannot slip in unnoticed. feature
+        // observability_reliability (phase 14, group A3b) adds
+        // TelemetryHostedService, registered unconditionally by
+        // AddOpenTelemetry() — neither a fact consumer nor a second RPC
+        // responder.
+        var nonOtelHostedServiceTypes = hostedServiceTypes.Where(t => t.FullName != "OpenTelemetry.Extensions.Hosting.Implementation.TelemetryHostedService").ToHashSet();
+        Assert.Equal(new HashSet<Type> { typeof(OutboxRelayBackgroundService), typeof(BillingRpcResponder) }, nonOtelHostedServiceTypes);
+        Assert.Equal(3, hostedServiceTypes.Count);
+        Assert.Contains(hostedServiceTypes, t => t.FullName == "OpenTelemetry.Extensions.Hosting.Implementation.TelemetryHostedService");
 
         var responderSource = File.ReadAllText(RepositoryPaths.Find(Path.Combine("src", "Billing", "Presentation", "BillingRpcResponder.cs")));
         var executeAsyncBody = ExtractExecuteAsyncBody(responderSource);

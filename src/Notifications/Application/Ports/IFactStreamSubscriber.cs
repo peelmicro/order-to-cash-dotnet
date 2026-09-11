@@ -2,7 +2,13 @@
 namespace OrderToCash.Notifications.Application.Ports;
 
 /// <summary>One consumed Kafka message, transport-neutral — never a <c>Confluent.Kafka</c> type, so this port stays clean of the one namespace <c>FactConsumerConfinementTests</c> confines to <c>*.Infrastructure.Messaging.Consumers</c>.</summary>
-public sealed record FactStreamMessage(string Topic, int Partition, long Offset, ReadOnlyMemory<byte> Value);
+public sealed record FactStreamMessage(string Topic, int Partition, long Offset, ReadOnlyMemory<byte> Value, IReadOnlyDictionary<string, string>? Headers = null)
+{
+    /// <summary>OR4/design.md §5.3 — the consumed message's decoded string headers, or an empty dictionary when the transport carried none (never null at the call site).</summary>
+    public IReadOnlyDictionary<string, string> HeaderMap => Headers ?? _emptyHeaders;
+
+    private static readonly IReadOnlyDictionary<string, string> _emptyHeaders = new Dictionary<string, string>(StringComparer.Ordinal);
+}
 
 /// <summary>
 /// Consumes the fact stream, offset-commit-after-handler — the SAME

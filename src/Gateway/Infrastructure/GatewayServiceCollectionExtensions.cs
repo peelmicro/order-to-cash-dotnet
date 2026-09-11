@@ -9,6 +9,7 @@ using OrderToCash.Gateway.Domain.Auth;
 using OrderToCash.Gateway.Domain.Orders;
 using OrderToCash.Gateway.Infrastructure.Auth;
 using OrderToCash.Gateway.Infrastructure.Clock;
+using OrderToCash.Gateway.Infrastructure.Health;
 using OrderToCash.Gateway.Infrastructure.Messaging;
 using OrderToCash.Gateway.Infrastructure.Persistence;
 using OrderToCash.Gateway.Infrastructure.RateLimiting;
@@ -33,6 +34,14 @@ public static class GatewayServiceCollectionExtensions
         services.AddSingleton(sp => sp.GetRequiredService<IMongoClient>()
             .GetDatabase(options.Mongo.Database)
             .GetCollection<BsonDocument>(GatewayReadModelCollection.Name));
+
+        // R60/OR6, design.md §8.2 — the Gateway checks rpcTransport (NATS)
+        // and readModel (MongoDB), mapped into the EXISTING WebApplication
+        // pipeline by HealthEndpoints.MapHealthEndpoints (GatewayHost.Configure),
+        // never a separate port the other five services need.
+        services.AddSingleton(options.Mongo);
+        services.AddSingleton<Application.Ports.IHealthCheck, NatsHealthCheck>();
+        services.AddSingleton<Application.Ports.IHealthCheck, MongoHealthCheck>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton(sp =>

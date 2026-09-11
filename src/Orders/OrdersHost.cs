@@ -1,8 +1,11 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Infrastructure;
+using OrderToCash.Orders.Infrastructure.Health;
+using OrderToCash.Orders.Infrastructure.Observability;
 
 namespace OrderToCash.Orders;
 
@@ -28,9 +31,37 @@ public static class OrdersHost
         string[] args,
         Action<OrdersOutboxOptions> configureOutbox,
         Action<OrdersAcceptanceOptions> configureAcceptance,
-        Action<OrdersSagaOptions> configureSaga)
+        Action<OrdersSagaOptions> configureSaga,
+        Action<TelemetryOptions>? configureTelemetry = null,
+        Action<HealthOptions>? configureHealth = null)
     {
         var builder = Host.CreateApplicationBuilder(args);
+
+        // design.md §5.1 — registered BEFORE anything else, so every span
+        // and metric this host later creates is already under a live
+        // TracerProvider/MeterProvider. Optional (defaults to the
+        // TelemetryOptions default endpoint) so every pre-existing test
+        // that drives this method for a reason unrelated to telemetry is
+        // undisturbed; Program.cs always passes the real
+        // OrdersProgramConfiguration.ConfigureTelemetry delegate.
+        builder.Services.AddOrdersTelemetry(configureTelemetry ?? (_ => { }));
+
+        // design.md §6 — R58/OR7: AddJsonConsole + IncludeScopes make
+        // the trace fields render at all. D11 (review round 3) — the
+        // explicit ActivityTrackingOptions setting below is NOT what turns
+        // TraceId on: the generic host enables
+        // ActivityTrackingOptions.TraceId by DEFAULT, so deleting this line
+        // alone leaves TraceId on every log line unchanged. Setting it
+        // explicitly to None is what removes the field — measured by a
+        // deletion probe against this runtime (round 2, probes 3-4), never
+        // read from framework source (ledger L25).
+        builder.Logging.ClearProviders();
+        builder.Logging.AddJsonConsole(o =>
+        {
+            o.IncludeScopes = true;
+            o.UseUtcTimestamp = true;
+        });
+        builder.Logging.Configure(o => o.ActivityTrackingOptions = ActivityTrackingOptions.TraceId | ActivityTrackingOptions.SpanId);
 
         // review D3: Host.CreateApplicationBuilder only turns ValidateOnBuild /
         // ValidateScopes ON when the environment is Development
@@ -60,6 +91,21 @@ public static class OrdersHost
         // handler needs must be registered before the dispatcher's
         // validation pass runs.
         builder.Services.AddOrdersSaga(configureSaga);
+
+        // design.md §8 (group A4) — OPT-IN: only registered when a real
+        // delegate is supplied. Program.cs always passes
+        // OrdersProgramConfiguration.ConfigureHealth; the many pre-existing
+        // fixtures/tests that build this host for an unrelated reason
+        // (OrdersDispatcherRegistrationTests, SagaIntegrationTestSupport,
+        // etc.) pass none and stay completely undisturbed — unlike
+        // telemetry, HealthProbeService binds a REAL Kestrel port the
+        // moment the host is started, so making it unconditional would risk
+        // port collisions across every test that starts this host for a
+        // reason that has nothing to do with this feature.
+        if (configureHealth is not null)
+        {
+            builder.Services.AddOrdersHealth(configureHealth);
+        }
 
         // AddDispatcher MUST run after the three calls above so every port
         // PlaceOrderCommandHandler and the ten saga fact command handlers

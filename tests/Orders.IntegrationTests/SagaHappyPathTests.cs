@@ -176,8 +176,7 @@ public sealed class SagaHappyPathTests(KafkaContainerFixture kafka, NatsContaine
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 }

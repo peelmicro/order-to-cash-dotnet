@@ -35,16 +35,6 @@
          build if any type outside *.Infrastructure.Outbox depends on
          Confluent.Kafka. -->
     <PackageReference Include="Confluent.Kafka" />
-    <!-- Infrastructure/Outbox and Presentation (StockRpcResponder is a
-         BackgroundService) — the host's BackgroundService/IHostedService
-         shape. -->
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
-    <!-- Infrastructure/Outbox, Infrastructure (FulfillmentOptions) and
-         Presentation (StockResponderOptions) — IOptions&lt;T&gt;. -->
-    <PackageReference Include="Microsoft.Extensions.Options" />
-    <!-- Infrastructure/Outbox and Presentation — ILogger&lt;T&gt; on the
-         relay, the producer adapter and the responder. -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>
@@ -55,9 +45,27 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Program.cs only — the first runnable Fulfillment host (feature
-         fulfillment_stock). -->
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <!-- Infrastructure/Observability only — feature observability_reliability
+         (phase 14, group A3): the OTel SDK, its OTLP exporter and its
+         hosting registration extension (design.md §9.1). -->
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Health only — feature observability_reliability
+         (phase 14, group A4): design.md §8.1's HealthProbeService. A
+         FrameworkReference, NOT a NuGet package — no Directory.Packages.props
+         entry, no new PackageVersion. Its shared framework already carries
+         Microsoft.Extensions.Hosting[.Abstractions]/Options/Logging.Abstractions,
+         which is why those four PackageReferences (previously used for
+         Program.cs, the outbox relay and the responder's IOptions/ILogger
+         sites) were REMOVED above rather than kept alongside this
+         FrameworkReference — NuGet's package-pruning warning (NU1510, an
+         error under this repository's TreatWarningsAsErrors) fails the
+         build otherwise, the same fix Orders.csproj needed first. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>

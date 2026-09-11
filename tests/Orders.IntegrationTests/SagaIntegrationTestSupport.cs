@@ -1,4 +1,5 @@
 using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -58,6 +59,15 @@ internal static class SagaIntegrationTestSupport
                 options.Sweeper.PendingGraceMs = 300;
                 options.Sweeper.ParkRetryCapMs = 5_000;
                 options.Sweeper.BatchSize = 20;
+                // OR1's DLQ producer — DEFAULTS to localhost:9092, which on
+                // a developer machine running docker-compose.infra.yml's own
+                // persistent Kafka is a REAL, DIFFERENT broker than this
+                // ephemeral Testcontainers one. Left unset, a dead-letter
+                // publish silently succeeds against the wrong broker and
+                // every SagaDeadLetterTests assertion against a real DLQ
+                // message times out despite the committed-offset assertion
+                // passing (PublishAsync never throws).
+                options.DeadLetter.BootstrapServers = kafka.BootstrapServers;
                 configureSaga?.Invoke(options);
             });
 
@@ -165,6 +175,65 @@ internal static class SagaIntegrationTestSupport
         }
 
         throw new TimeoutException($"'{subject}' never became reachable.");
+    }
+
+    /// <summary>
+    /// Stops <paramref name="host"/> AND CONFIRMS its own consumer has
+    /// actually LEFT <paramref name="groupId"/> before returning — never
+    /// merely that <c>StopAsync</c>/<c>Dispose</c> were called and trusted.
+    /// The Notifications-copy of this class (feature <c>observability_reliability</c>,
+    /// review round 4) proved directly, against the real
+    /// <c>KafkaFactStreamSubscriber</c>, that <c>host.StopAsync()</c> can
+    /// return successfully — matching .NET's own default
+    /// <c>HostOptions.ShutdownTimeout</c> (30s) almost to the millisecond —
+    /// WHILE the broker is still unreachable and the subscriber's own
+    /// <c>finally { consumer.Close(); }</c> has not completed, leaving a
+    /// stale member in the group. Every host built by
+    /// <see cref="StartHostAsync"/> joins the SAME literal production group
+    /// (<c>"orders.saga"</c>, <c>KafkaFactStreamSubscriber.cs:130</c>),
+    /// shared sequentially across every <see cref="SagaCollection"/> test —
+    /// so a stale member left by one test's teardown can block the NEXT
+    /// test's own host from ever being assigned a partition, exactly the
+    /// mechanism the Notifications copy's own `zombieprobe` reproduced
+    /// directly (a silent member held a fresh topic's partitions for the
+    /// full 90s a DLQ test budgets). This ported copy closes the SAME gap
+    /// here, at its class, rather than leaving it live in this project only
+    /// because THIS project's suite happened to stay green.
+    /// </summary>
+    public static async Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = "orders.saga", TimeSpan? timeout = null)
+    {
+        await host.StopAsync();
+        host.Dispose();
+
+        var budget = timeout ?? TimeSpan.FromSeconds(150);
+        var startedAt = DateTime.UtcNow;
+        var deadline = startedAt + budget;
+        using var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = kafka.BootstrapServers }).Build();
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var result = await admin.DescribeConsumerGroupsAsync([groupId], new DescribeConsumerGroupsOptions { RequestTimeout = TimeSpan.FromSeconds(10) });
+                var description = result.ConsumerGroupDescriptions.SingleOrDefault(g => g.GroupId == groupId);
+                if (description is null || description.Members.Count == 0)
+                {
+                    return;
+                }
+            }
+            catch (KafkaException)
+            {
+                // DescribeConsumerGroupsAsync itself can transiently fail
+                // under the SAME contention that motivates this wait —
+                // retry within the budget rather than surface a spurious
+                // failure from the PROBE itself.
+            }
+
+            await Task.Delay(300);
+        }
+
+        throw new TimeoutException(
+            $"Consumer group '{groupId}' still reported members {(DateTime.UtcNow - startedAt).TotalSeconds:F0}s after this test's own host was stopped — its teardown left a stale member that would otherwise block the NEXT test's rebalance (observed directly in the Notifications copy's own `zombieprobe` reproduction: a silent member can hold every partition of a topic for well over 90s).");
     }
 
     /// <summary>Places an order through the REAL <see cref="PlaceOrderCommandHandler"/>, in-process — the caller must already have a stand-in <c>fulfillment.stock.check</c> responder running.</summary>

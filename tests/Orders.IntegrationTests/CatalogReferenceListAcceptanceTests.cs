@@ -373,6 +373,12 @@ public sealed class CatalogReferenceListAcceptanceTests(NatsContainerFixture nat
         {
             options.ConnectionString = connectionString;
             options.Relay.Enabled = false;
+            // Mechanism-2 classification: this host's StopAsync/Dispose
+            // sites below do NOT need the group-clearance wait —
+            // "127.0.0.1:1" is deliberately unreachable, so SagaFactsConsumer
+            // can never actually join a real "orders.saga" group on ANY
+            // broker; mechanism 2 needs a real shared broker to cross a
+            // test boundary, which is structurally impossible here.
             options.Kafka.BootstrapServers = "127.0.0.1:1";
         });
         builder.Services.AddOrdersAcceptance(options => options.Nats.Url = nats.Url);

@@ -24,6 +24,14 @@ public sealed class StandInResponder : IAsyncDisposable
     /// <summary>The headers of the last NON-PROBE request this responder received — lets a test assert <c>x-correlation-id</c>/<c>x-request-id</c> actually arrived on the wire.</summary>
     public NatsHeaders? LastRequestHeaders { get; private set; }
 
+    /// <summary>
+    /// EVERY non-probe request's headers, in arrival order — review round
+    /// 2, L21 addendum: <see cref="LastRequestHeaders"/> alone cannot prove
+    /// TWO concurrent calls each carried their OWN <c>traceparent</c>,
+    /// since it only ever remembers the most recent one.
+    /// </summary>
+    public System.Collections.Concurrent.ConcurrentQueue<NatsHeaders> ObservedHeaders { get; } = new();
+
     private StandInResponder(INatsConnection connection, string subject, Func<byte[], byte[]?> rawAnswer)
     {
         _connection = connection;
@@ -165,6 +173,10 @@ public sealed class StandInResponder : IAsyncDisposable
             if (!isProbe)
             {
                 LastRequestHeaders = message.Headers;
+                if (message.Headers is { } headers)
+                {
+                    ObservedHeaders.Enqueue(headers);
+                }
             }
 
             var replyBytes = rawAnswer(message.Data);

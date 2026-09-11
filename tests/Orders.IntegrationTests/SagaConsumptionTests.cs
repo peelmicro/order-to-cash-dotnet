@@ -63,6 +63,12 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
             }
             finally
             {
+                // Mechanism-2 classification: does NOT need the group-clearance
+                // wait — this host is built from a bare Host.CreateApplicationBuilder()
+                // with AddOrdersOutbox + AddOrdersAcceptance + AddDispatcher only
+                // (this test's own point, line 39-42's comment), never AddOrdersSaga,
+                // so it never registers KafkaFactStreamSubscriber/SagaFactsConsumer
+                // and never joins group "orders.saga" at all.
                 await firstHost.StopAsync();
                 firstHost.Dispose();
             }
@@ -104,8 +110,7 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
         }
         finally
         {
-            await secondHost.StopAsync();
-            secondHost.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(secondHost, kafka);
         }
     }
 
@@ -220,8 +225,7 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
         }
         finally
         {
-            await host.StopAsync();
-            host.Dispose();
+            await SagaIntegrationTestSupport.StopHostAndWaitForGroupToClearAsync(host, kafka);
         }
     }
 
@@ -277,10 +281,10 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
     /// <summary>Throws on the FIRST call to <see cref="EnqueueAsync"/> (inside the fact's own transaction, so it rolls back cleanly); every subsequent call blocks on <see cref="ThrowOnceGate.Release"/> before delegating — SO9's test seam.</summary>
     private sealed class ThrowOnceSagaCommandStore(ISagaCommandStore inner, ThrowOnceGate gate) : ISagaCommandStore
     {
-        public async Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, CancellationToken cancellationToken)
+        public async Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, byte[]? triggeringEventEnvelope, string? triggeringEventTopic, CancellationToken cancellationToken)
         {
             await gate.BeforeEnqueueAsync(cancellationToken);
-            return await inner.EnqueueAsync(orderId, orderReference, command, payload, triggeringEventId, cancellationToken);
+            return await inner.EnqueueAsync(orderId, orderReference, command, payload, triggeringEventId, triggeringEventEnvelope, triggeringEventTopic, cancellationToken);
         }
 
         public Task<SagaCommandRecord?> TryClaimAsync(Guid orderId, SagaCommandKind command, CancellationToken cancellationToken) => inner.TryClaimAsync(orderId, command, cancellationToken);
@@ -289,8 +293,14 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
 
         public Task MarkSentAsync(Guid commandId, CancellationToken cancellationToken) => inner.MarkSentAsync(commandId, cancellationToken);
 
-        public Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => inner.ParkAsync(commandId, attemptsMade, lastError, cancellationToken);
+        public Task<bool> ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => inner.ParkAsync(commandId, attemptsMade, lastError, cancellationToken);
 
         public Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => inner.RejectAsync(commandId, attemptsMade, lastError, cancellationToken);
+
+        public Task<bool> TryClaimDeadLetterAsync(Guid commandId, CancellationToken cancellationToken) => inner.TryClaimDeadLetterAsync(commandId, cancellationToken);
+
+        public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => inner.FindOperatorCancelNoteAsync(orderId, cancellationToken);
+
+        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => inner.HasPendingCompensationAsync(orderId, cancellationToken);
     }
 }

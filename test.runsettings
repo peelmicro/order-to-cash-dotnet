@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Applied to EVERY test project automatically via Directory.Build.props'
+  RunSettingsFilePath — both `dotnet test OrderToCash.sln` (quality.sh's own
+  invocation) and a bare `dotnet test` in any single project pick this up,
+  because RunSettingsFilePath is an MSBuild property read by the VSTest
+  tasks regardless of how `dotnet test` is invoked.
+
+  Disables the generic host's configuration reload-on-change for every REAL
+  host a test builds via `*Host.CreateBuilder`/`Host.CreateApplicationBuilder`.
+  That machinery creates one `FileSystemWatcher` (one inotify instance, see
+  `fs.inotify.max_user_instances`) per host for `appsettings*.json`, and nothing
+  in this repository's tests relies on hot-reloading `appsettings*.json` at
+  runtime — no test edits a config file mid-run and asserts the host picked
+  the change up, so disabling it weakens no test's proof. Measured (id 71's
+  fix round, `progress/impl_operator_note_survives_the_compensation_branches.md`):
+  one host-heavy project alone peaked at 123/128 inotify instances WITHOUT
+  this setting; quality.sh runs ~12 such projects in parallel.
+-->
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <DOTNET_hostBuilder__reloadConfigOnChange>false</DOTNET_hostBuilder__reloadConfigOnChange>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

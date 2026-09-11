@@ -18,8 +18,20 @@ public sealed class SagaFactHandler(
     IIdempotentSagaRunner idempotentRunner,
     ISagaIgnoredFactRecorder ignoredFactRecorder,
     ISagaCommandStore commandStore,
+    ISagaCompletionRecorder completionRecorder,
+    IClock clock,
     ILogger<SagaFactHandler> logger)
 {
+    /// <summary>
+    /// Id 62's ONE exemption from the "supersede forward progress" guard
+    /// below — <c>credit.released.v1</c>'s two <see cref="SagaStep.Advance"/>
+    /// variants (<see cref="SagaStepTable"/>'s <c>CreditApproved</c>/<c>Confirmed</c>
+    /// rows) ARE the operator-cancel compensation's own first hop, never a
+    /// competitor to it; blocking them would strand the compensation
+    /// forever (its own <c>stock.release</c> would never be owed).
+    /// </summary>
+    private const string CreditReleasedEventType = "credit.released.v1";
+
     public async Task<SagaFactResult> HandleAsync(SagaFact fact, CancellationToken cancellationToken)
     {
         var variants = SagaStepTable.Variants(fact.EventType);
@@ -97,9 +109,66 @@ public sealed class SagaFactHandler(
                     return;
                 }
 
-                var owedCommand = ApplyStep(matchedStep, order, fact);
+                // Id 62 — a SECOND, generalised precondition, checked only
+                // for Advance steps (genuine forward progress; a Cancel
+                // step is itself a compensation completion and must always
+                // be allowed to apply): even though the status precondition
+                // matched, this fact is superseded when an operator-cancel
+                // compensation is already enqueued for this order — applying
+                // it would leave that compensation's own completion fact
+                // stranded (the PreconditionUnmet branch above would later
+                // find the order has moved past the status it expects, and
+                // correctly-but-harmfully ignore it — the exact mechanism
+                // #7's orders-cancel.integration.spec.ts disclosed and never
+                // fixed; see CancelOrderCommandHandler's own remarks).
+                // credit.released.v1's own two Advance variants are EXEMPT —
+                // they ARE the compensation's own first hop (SagaStepTable:
+                // "owes stock.release next"), never a competitor to it.
+                // Checked AFTER this transaction's own UPDLOCK read of the
+                // order row (EfCoreOrderRepository.GetByIdAsync), so a
+                // concurrent CancelOrderCommandHandler enqueue racing this
+                // exact moment is either already visible here (it committed
+                // first, unblocking this read) or this call is the one that
+                // was blocked waiting for OUR transaction to finish — either
+                // way this statement's own snapshot is never half-committed.
+                if (matchedStep is SagaStep.Advance && fact.EventType != CreditReleasedEventType)
+                {
+                    var superseded = await commandStore.HasPendingCompensationAsync(order.Id.Value, ct).ConfigureAwait(false);
+
+                    if (superseded)
+                    {
+                        await ignoredFactRecorder.RecordAsync(
+                            new SagaIgnoredFactRecord(fact.EventId, fact.EventType, order.Id.Value, fact.CorrelationId, SagaIgnoredFactMarker.Superseded, order.Status),
+                            ct).ConfigureAwait(false);
+                        logger.LogInformation(
+                            "Saga ignored {EventType} ({EventId}) for order {OrderId}: an operator-cancel compensation is already pending for this order — forward progress superseded, not applied.",
+                            fact.EventType,
+                            fact.EventId,
+                            order.Id);
+                        ignored = true;
+                        return;
+                    }
+                }
+
+                var owedCommand = await ApplyStepAsync(matchedStep, order, fact, ct).ConfigureAwait(false);
 
                 await orders.SaveChangesAsync(ct).ConfigureAwait(false);
+
+                // otc_saga_completion_ms (OR5/design.md §7, ported cases
+                // 74-78) — recorded ONLY when THIS call is the one that
+                // landed the order on a terminal status. The precondition
+                // check above already guarantees at-most-once: a fact
+                // arriving after the order is already terminal finds no
+                // matching precondition and never reaches here (the SAME
+                // mechanism that makes the compensation-completing cancel
+                // record exactly one, not two — no separate bookkeeping is
+                // needed). Measured from the order's own OrderDate, per
+                // design.md §7's table.
+                if (order.Status is Domain.OrderStatus.Completed or Domain.OrderStatus.Cancelled)
+                {
+                    var outcomeTag = order.Status == Domain.OrderStatus.Completed ? "completed" : "cancelled";
+                    completionRecorder.Record(outcomeTag, clock.UtcNow - order.OrderDate);
+                }
 
                 if (owedCommand is { } command)
                 {
@@ -119,6 +188,8 @@ public sealed class SagaFactHandler(
                         command,
                         payloadJson,
                         fact.EventId,
+                        fact.TriggeringEventEnvelope,
+                        fact.TriggeringEventTopic,
                         ct).ConfigureAwait(false);
 
                     if (enqueueOutcome == EnqueueOutcome.Enqueued)
@@ -154,8 +225,22 @@ public sealed class SagaFactHandler(
         _ => throw new InvalidOperationException($"Unexpected step shape {step}."),
     };
 
-    /// <summary>Applies the step's aggregate call(s) — already known to be legal, since the precondition was checked immediately above — and returns the command it owes, if any.</summary>
-    private static SagaCommandKind? ApplyStep(SagaStep step, Domain.Order order, SagaFact fact)
+    /// <summary>
+    /// Applies the step's aggregate call(s) — already known to be legal,
+    /// since the precondition was checked immediately above — and returns
+    /// the command it owes, if any. Instance (not <see langword="static"/>,
+    /// unlike before feature <c>operator_note_survives_the_compensation_branches</c>,
+    /// id 71) because the <see cref="SagaStep.Cancel"/> branch now reads
+    /// <see cref="commandStore"/> for the operator's note — see
+    /// <see cref="ISagaCommandStore.FindOperatorCancelNoteAsync"/>. Every
+    /// OTHER caller of this same branch (<c>stock.rejected.v1</c>'s direct
+    /// cancel, and <c>stock.released.v1</c>'s <c>credit_rejected</c>
+    /// variant) enqueued no operator-cancel row at all, so the lookup
+    /// returns <see langword="null"/> for them — no branch on WHICH cancel
+    /// this is needs writing here; the store already disambiguates by
+    /// envelope content.
+    /// </summary>
+    private async Task<SagaCommandKind?> ApplyStepAsync(SagaStep step, Domain.Order order, SagaFact fact, CancellationToken cancellationToken)
     {
         switch (step)
         {
@@ -164,7 +249,8 @@ public sealed class SagaFactHandler(
                 return advance.CommandAfter;
 
             case SagaStep.Cancel cancel:
-                order.Cancel(cancel.Reason(fact), cancel.CompensationSteps(fact), fact.OccurredAt, UniqueId.From(fact.EventId));
+                var note = await commandStore.FindOperatorCancelNoteAsync(order.Id.Value, cancellationToken).ConfigureAwait(false);
+                order.Cancel(cancel.Reason(fact), cancel.CompensationSteps(fact), fact.OccurredAt, UniqueId.From(fact.EventId), note);
                 return null;
 
             default:

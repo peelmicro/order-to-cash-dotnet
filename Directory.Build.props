@@ -20,6 +20,15 @@
 
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!--
+      Read by the VSTest tasks for every project regardless of how
+      `dotnet test` is invoked (solution-level, as quality.sh does, or a
+      bare `dotnet test` in a single project) — see test.runsettings for
+      why. Harmless for non-test (src/) projects: RunSettingsFilePath is
+      ignored outside a test run.
+    -->
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)test.runsettings</RunSettingsFilePath>
   </PropertyGroup>
 
 </Project>

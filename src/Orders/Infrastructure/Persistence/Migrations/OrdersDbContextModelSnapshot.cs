@@ -176,6 +176,10 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("order_reference");
 
+                    b.Property<Guid?>("RequestId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("request_id");
+
                     b.Property<Guid>("RetailerId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("retailer_id");
@@ -202,6 +206,11 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrderReference")
                         .IsUnique();
+
+                    b.HasIndex("RequestId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_orders_request_id")
+                        .HasFilter("[request_id] IS NOT NULL");
 
                     b.HasIndex("RetailerId", "Status");
 
@@ -531,6 +540,10 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2(3)")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTime?>("DeadLetteredAt")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("dead_lettered_at");
+
                     b.Property<string>("LastError")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("last_error");
@@ -566,9 +579,18 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Migrations
                         .HasDefaultValue("pending")
                         .HasColumnName("status");
 
+                    b.Property<string>("TriggeringEventEnvelope")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("triggering_event_envelope");
+
                     b.Property<Guid>("TriggeringEventId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("triggering_event_id");
+
+                    b.Property<string>("TriggeringEventTopic")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("triggering_event_topic");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2(3)")

@@ -1,6 +1,7 @@
 using OrderToCash.Gateway.Infrastructure;
 using OrderToCash.Gateway.Infrastructure.Auth;
 using OrderToCash.Gateway.Infrastructure.Messaging;
+using OrderToCash.Gateway.Infrastructure.Observability;
 using OrderToCash.Gateway.Infrastructure.Persistence;
 using OrderToCash.Gateway.Infrastructure.RateLimiting;
 
@@ -33,6 +34,13 @@ public static class GatewayProgramConfiguration
         options.LoginThrottle = LoginThrottleOptions.FromEnvironment();
         options.Jwt = JwtOptions.FromEnvironment();
         options.Sse = GatewaySseOptions.FromEnvironment();
+    }
+
+    // design.md §9.2 — OTEL_EXPORTER_OTLP_ENDPOINT, read on its own key
+    // exactly as every other env read in this class is.
+    public static void ConfigureTelemetry(TelemetryOptions options)
+    {
+        options.OtlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") ?? "http://localhost:4317";
     }
 
     // Mirrors ProjectorNatsOptions' own reading of the environment — the same

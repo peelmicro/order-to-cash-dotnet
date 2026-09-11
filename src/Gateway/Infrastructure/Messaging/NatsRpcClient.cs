@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using OrderToCash.Gateway.Application.Ports;
 using OrderToCash.Gateway.Infrastructure.Messaging.Rpc;
+using OrderToCash.Gateway.Infrastructure.Observability;
 
 namespace OrderToCash.Gateway.Infrastructure.Messaging;
 
@@ -32,6 +33,10 @@ public sealed class NatsRpcClient(INatsConnection connection, IOptions<NatsOptio
             ["x-correlation-id"] = meta.CorrelationId.ToString(),
             ["x-request-id"] = meta.RequestId.ToString(),
         };
+
+        // OR4/design.md §5.2, ledger L21 — added to THIS fresh, per-call
+        // NatsHeaders instance, never hoisted onto a shared field.
+        TraceContext.InjectNats(headers);
 
         var timeoutMs = options.Value.DefaultTimeoutMs;
 

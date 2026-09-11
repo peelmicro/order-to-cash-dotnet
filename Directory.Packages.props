@@ -44,6 +44,21 @@
     <PackageVersion Include="MongoDB.Driver" Version="3.11.1" />
     <PackageVersion Include="MailKit" Version="4.17.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <!-- feature observability_reliability (phase 14, group A3): the OTel SDK
+         itself — TracerProvider/MeterProvider, AddSource, AddMeter — the
+         base package OpenTelemetry.Extensions.Hosting's AddOpenTelemetry()
+         needs at runtime. Same 1.18.0 band as Extensions.Hosting (design.md
+         §9.1's version rule: pin the whole OTel set to one band). -->
+    <PackageVersion Include="OpenTelemetry" Version="1.18.0" />
+    <!-- feature observability_reliability (phase 14, group A3): exports
+         spans and metrics to the already-provisioned OTel Collector over
+         OTLP/gRPC (infra/otel-collector/otel-collector-config.yaml, not
+         edited by this feature). Same 1.18.0 band. -->
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+    <!-- feature observability_reliability (phase 14, group A3): the
+         Gateway's inbound HTTP server span — the first hop of R56's trace
+         (design.md §5.1). Consumed by src/Gateway only. Same 1.18.0 band. -->
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.14.0" />
     <!-- feature seed_job: real MongoDB container for the order_timeline
          parity tests (CLAUDE.md testing conventions — never a mocked

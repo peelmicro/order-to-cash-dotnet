@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
@@ -5,6 +6,7 @@ using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure;
 using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Orders.Infrastructure.Observability;
 using OrderToCash.SharedKernel;
 using Xunit;
 
@@ -212,6 +214,50 @@ public sealed class NatsSagaCommandsAdapterTests
             () => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "order_cancelled"), SampleMeta(), CancellationToken.None));
 
         Assert.Contains(transientCode, error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// OR4/design.md §5.2, ledger L21 — two GENUINELY CONCURRENT calls (a
+    /// <see cref="Barrier"/> holds both requesters until both have entered,
+    /// so neither can complete before the other starts), each under its OWN
+    /// active <see cref="Activity"/>, each observed to carry its OWN
+    /// <c>traceparent</c> — never one bleeding into the other, which is
+    /// exactly the failure a HOISTED (shared) <see cref="NatsHeaders"/>
+    /// instance would produce.
+    /// </summary>
+    [Fact]
+    public async Task OR4_TwoConcurrentCalls_EachCarriesItsOwnActiveTraceId()
+    {
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == OtcActivity.SourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        var observedHeaders = new System.Collections.Concurrent.ConcurrentBag<NatsHeaders?>();
+        using var barrier = new Barrier(2);
+
+        var adapter = BuildAdapter(async (subject, payload, headers, opts, ct) =>
+        {
+            barrier.SignalAndWait(TimeSpan.FromSeconds(5), ct);
+            observedHeaders.Add(headers);
+            await Task.Delay(10, ct);
+            return BuildReply(SuccessBodyFor(RpcSubjectUnderTest.StockReserve));
+        });
+
+        async Task CallUnderOwnActivityAsync()
+        {
+            using var activity = OtcActivity.Source.StartActivity("test-call");
+            await adapter.ReserveStockAsync(SampleStockReserveRequest(), SampleMeta(), CancellationToken.None);
+        }
+
+        await Task.WhenAll(CallUnderOwnActivityAsync(), CallUnderOwnActivityAsync());
+
+        Assert.Equal(2, observedHeaders.Count);
+        var traceParents = observedHeaders.Select(h => h!["traceparent"].ToString()).ToList();
+        Assert.All(traceParents, tp => Assert.False(string.IsNullOrEmpty(tp)));
+        Assert.NotEqual(traceParents[0], traceParents[1]);
     }
 
     [Fact]

@@ -207,7 +207,7 @@ public sealed class OutboxRelayConcurrencyTests(MsSqlContainerFixture fixture)
     }
 
     private static OutboxRelay BuildRelay(OrdersDbContext db, FakeFactPublisher publisher, int batchSize, int publishTimeoutMs = 5000) =>
-        new(db, publisher, new FakeClock(FakeClock.UtcNowToTheMillisecond()), Options.Create(new OutboxRelayOptions { BatchSize = batchSize, PublishTimeoutMs = publishTimeoutMs }), NullLogger<OutboxRelay>.Instance);
+        new(db, publisher, new FakeClock(FakeClock.UtcNowToTheMillisecond()), Options.Create(new OutboxRelayOptions { BatchSize = batchSize, PublishTimeoutMs = publishTimeoutMs }), new FakeDlqDepthGauge(), NullLogger<OutboxRelay>.Instance);
 
     private static OutboxMessage NewRow()
     {

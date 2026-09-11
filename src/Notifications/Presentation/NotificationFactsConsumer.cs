@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,7 +9,9 @@ using OrderToCash.Contracts.Wire;
 using OrderToCash.Cqrs;
 using OrderToCash.Notifications.Application.Commands;
 using OrderToCash.Notifications.Application.Ports;
+using OrderToCash.Notifications.Infrastructure.Messaging;
 using OrderToCash.Notifications.Infrastructure.Messaging.Consumers;
+using OrderToCash.Notifications.Infrastructure.Observability;
 
 namespace OrderToCash.Notifications.Presentation;
 
@@ -27,6 +30,7 @@ namespace OrderToCash.Notifications.Presentation;
 public sealed class NotificationFactsConsumer(
     IFactStreamSubscriber subscriber,
     IServiceScopeFactory scopeFactory,
+    FactRetryDispatcher factRetryDispatcher,
     ILogger<NotificationFactsConsumer> logger) : BackgroundService
 {
     /// <summary>
@@ -133,6 +137,40 @@ public sealed class NotificationFactsConsumer(
             return;
         }
 
+        // OR1 (design.md §3.1's own table): everything from here onward is
+        // wrapped by the retry-then-dead-letter dispatcher — the envelope
+        // guard and the not-notified-on-this-fact branch above are NOT,
+        // since neither is a failure a redelivery could ever fix.
+        Task Process(CancellationToken ct) => ProcessFactAsync(envelope, route, ct);
+
+        // OR4/design.md §5.3, ledger L22/L24 — extracted ONCE, wrapping the
+        // WHOLE DispatchAsync call (every retry attempt AND the eventual
+        // DLQ publish), not each individual attempt.
+        var context = TraceContext.ExtractKafka(message.HeaderMap);
+        using var activity = context is { } parent
+            ? OtcActivity.Source.StartActivity($"consume {envelope.EventType}", ActivityKind.Consumer, parentContext: parent)
+            : OtcActivity.Source.StartActivity($"consume {envelope.EventType}", ActivityKind.Consumer);
+
+        // design.md §6's scope-push table, fact consumer row —
+        // envelope.correlationId.
+        using var correlationScope = logger.BeginScope(new Dictionary<string, object> { ["correlationId"] = envelope.CorrelationId });
+
+        await factRetryDispatcher.DispatchAsync(
+            message.Topic,
+            message,
+            envelope.EventId,
+            envelope.EventType,
+            envelope.CorrelationId,
+            ConsumerName.Notifications,
+            Process,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ProcessFactAsync(
+        Envelope<JsonElement> envelope,
+        Func<Envelope<JsonElement>, IDispatcher, CancellationToken, Task> route,
+        CancellationToken cancellationToken)
+    {
         using var scope = scopeFactory.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<IDispatcher>();
 

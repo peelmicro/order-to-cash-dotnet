@@ -84,7 +84,8 @@ public sealed class KafkaFactStreamSubscriber(IOptions<OrdersSagaOptions> option
                     consumeResult.Topic,
                     consumeResult.Partition.Value,
                     consumeResult.Offset.Value,
-                    consumeResult.Message.Value);
+                    consumeResult.Message.Value,
+                    DecodeHeaders(consumeResult.Message.Headers));
 
                 // SO9's whole point: the offset is stored ONLY after the
                 // handler has run to completion. A throwing handler
@@ -104,6 +105,23 @@ public sealed class KafkaFactStreamSubscriber(IOptions<OrdersSagaOptions> option
             // from the last COMMITTED offset (design.md §3.3).
             consumer.Close();
         }
+    }
+
+    /// <summary>OR4/design.md §5.3 — decodes the raw Kafka header bytes to the string map <see cref="FactStreamMessage.HeaderMap"/> carries, so the consumer can extract <c>traceparent</c>/<c>tracestate</c> without ever referencing <c>Confluent.Kafka</c> outside this class.</summary>
+    private static IReadOnlyDictionary<string, string> DecodeHeaders(Headers? headers)
+    {
+        if (headers is null || headers.Count == 0)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        var decoded = new Dictionary<string, string>(headers.Count, StringComparer.Ordinal);
+        foreach (var header in headers)
+        {
+            decoded[header.Key] = System.Text.Encoding.UTF8.GetString(header.GetValueBytes());
+        }
+
+        return decoded;
     }
 
     private static ConsumerConfig BuildConsumerConfig(OrdersSagaOptions options) => new()

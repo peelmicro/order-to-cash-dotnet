@@ -5,6 +5,7 @@ using OrderToCash.Notifications.Application;
 using OrderToCash.Notifications.Application.Ports;
 using OrderToCash.Notifications.Infrastructure.Messaging;
 using OrderToCash.Notifications.Infrastructure.Messaging.Consumers;
+using OrderToCash.Notifications.Infrastructure.Messaging.DeadLetter;
 using OrderToCash.Notifications.Infrastructure.Notification;
 using OrderToCash.Notifications.Infrastructure.Persistence;
 using OrderToCash.Notifications.Presentation;
@@ -42,6 +43,15 @@ public static class NotificationsServiceCollectionExtensions
         services.AddScoped<ProcessedEventLedger>();
         services.AddScoped<IdempotentConsumer>();
         services.AddScoped<INotificationIdempotency, NotificationIdempotency>();
+
+        // OR1 — the retry-then-dead-letter wrapper (design.md §3). All
+        // singletons: FactRetryDispatcher holds no scoped state of its own,
+        // matching Orders' own registration shape.
+        services.AddSingleton<IOptions<FactRetryOptions>>(Options.Create(options.FactRetry));
+        services.AddSingleton<IOptions<DeadLetterKafkaOptions>>(Options.Create(options.DeadLetter));
+        services.AddSingleton<IFactRetryDelay, TaskDelayFactRetryDelay>();
+        services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
+        services.AddSingleton<FactRetryDispatcher>();
 
         services.AddScoped<NotificationDispatchService>();
 

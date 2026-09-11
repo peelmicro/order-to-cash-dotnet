@@ -35,7 +35,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
             await unitOfWork.ExecuteAsync(
                 async ct =>
                 {
-                    await repository.AddAsync(order, ct);
+                    await repository.AddAsync(order, null, ct);
                     await repository.SaveChangesAsync(ct);
                 },
                 CancellationToken.None);
@@ -102,7 +102,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
             await unitOfWork.ExecuteAsync(
                 async ct =>
                 {
-                    await repository.AddAsync(order, ct);
+                    await repository.AddAsync(order, null, ct);
                     await repository.SaveChangesAsync(ct);
                 },
                 CancellationToken.None);

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OrderToCash.Contracts.Envelopes;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
@@ -6,6 +7,7 @@ using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Domain;
 using OrderToCash.Orders.Domain.Errors;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Orders.Infrastructure.Outbox;
 using Xunit;
 
 namespace OrderToCash.Orders.UnitTests;
@@ -122,9 +124,11 @@ public sealed class CancelOrderCommandHandlerTests
         orders.Added.Add(order);
         var store = new FakeSagaCommandStore();
         var signal = new FakeSagaCommandSignal();
-        var handler = BuildHandler(orders, store, signal, OrderTestData.Now.AddMinutes(5));
+        var now = OrderTestData.Now.AddMinutes(5);
+        var handler = BuildHandler(orders, store, signal, now);
+        const string note = "Buyer asked to cancel before despatch.";
 
-        var result = await handler.HandleAsync(new CancelOrderCommand(order.Id.Value, Note: null), CancellationToken.None);
+        var result = await handler.HandleAsync(new CancelOrderCommand(order.Id.Value, Note: note), CancellationToken.None);
 
         Assert.Equal(OrderStatus.StockReserved, result.Status);
         Assert.Null(result.CancellationReason);
@@ -141,9 +145,51 @@ public sealed class CancelOrderCommandHandlerTests
         Assert.Equal(order.OrderReference.Value, payload.OrderReference);
         Assert.Equal("order_cancelled", payload.Reason);
 
+        // Id 71 — porting #7's buildTriggeringEnvelope (cancel-order.handler.ts:175,
+        // :272-286) verbatim: a synthetic orders.cancel.requested envelope,
+        // never null (R29's dead-letter clause needs it to republish
+        // anything, and this row now also carries the operator's note back
+        // for SagaFactHandler to read once the compensation completes).
+        var triggeringFact = Assert.Single(store.EnqueuedTriggeringFacts);
+        Assert.Equal(OrdersFactTopic.Name, triggeringFact.Topic);
+        Assert.NotNull(triggeringFact.Envelope);
+        var envelope = JsonSerializer.Deserialize<Envelope<OperatorCancelRequestedPayload>>(triggeringFact.Envelope!, JsonWire.Options)!;
+        Assert.Equal("orders.cancel.requested", envelope.EventType);
+        Assert.Equal(order.Id.Value, envelope.AggregateId);
+        Assert.Equal(order.Id.Value, envelope.CorrelationId);
+        Assert.Equal(enqueued.TriggeringEventId, envelope.EventId);
+        Assert.Equal(enqueued.TriggeringEventId, envelope.CausationId);
+        Assert.Equal(order.Id.Value, envelope.Payload.OrderId);
+        Assert.Equal("operator_cancelled", envelope.Payload.Reason);
+        Assert.Equal(note, envelope.Payload.Note);
+
         var signalled = Assert.Single(signal.Signalled);
         Assert.Equal(order.Id.Value, signalled.OrderId);
         Assert.Equal(SagaCommandKind.StockRelease, signalled.Command);
+    }
+
+    /// <summary>
+    /// Id 71 — when the operator supplies no note, the synthetic envelope
+    /// still exists (R29 needs it regardless), but JsonWire's own
+    /// null-omission means the wire carries no <c>note</c> key at all —
+    /// never a present, empty, or literal-null one.
+    /// </summary>
+    [Fact]
+    public async Task StockReserved_NoNoteSupplied_TheSyntheticEnvelopeOmitsTheNoteKeyEntirely()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.StockReserved);
+        var orders = new FakeOrderRepository();
+        orders.Added.Add(order);
+        var store = new FakeSagaCommandStore();
+        var signal = new FakeSagaCommandSignal();
+        var handler = BuildHandler(orders, store, signal, OrderTestData.Now.AddMinutes(5));
+
+        await handler.HandleAsync(new CancelOrderCommand(order.Id.Value, Note: null), CancellationToken.None);
+
+        var triggeringFact = Assert.Single(store.EnqueuedTriggeringFacts);
+        using var document = JsonDocument.Parse(triggeringFact.Envelope!);
+        var payloadElement = document.RootElement.GetProperty("payload");
+        Assert.False(payloadElement.TryGetProperty("note", out _), "the note key must be OMITTED, not present with a null/empty value.");
     }
 
     /// <summary>
@@ -188,8 +234,9 @@ public sealed class CancelOrderCommandHandlerTests
         var store = new FakeSagaCommandStore();
         var signal = new FakeSagaCommandSignal();
         var handler = BuildHandler(orders, store, signal, OrderTestData.Now.AddMinutes(5));
+        const string note = "Retailer requested cancellation after credit was already approved.";
 
-        var result = await handler.HandleAsync(new CancelOrderCommand(order.Id.Value, Note: null), CancellationToken.None);
+        var result = await handler.HandleAsync(new CancelOrderCommand(order.Id.Value, Note: note), CancellationToken.None);
 
         Assert.Equal(status, result.Status);
         Assert.Null(result.CancellationReason);
@@ -204,6 +251,26 @@ public sealed class CancelOrderCommandHandlerTests
         Assert.Equal(order.OrderReference.Value, payload.OrderReference);
         Assert.Equal(order.RetailerCode, payload.RetailerCode);
         Assert.Equal(order.CompanyCode, payload.CompanyCode);
+
+        // Id 71 — the SAME synthetic envelope the stock_reserved branch
+        // carries, on the credit.release enqueue site this time
+        // (CancelOrderCommandHandler.cs's OTHER call to
+        // OperatorCancelRequestedEnvelope.Build). This row's envelope is
+        // never touched again after this INSERT — the LATER stock.release
+        // row this chain owes is a separate, new row (inserted only once
+        // credit.released.v1 arrives), never a rewrite of this one — so
+        // this row stays the canonical note carrier for this branch.
+        var triggeringFact = Assert.Single(store.EnqueuedTriggeringFacts);
+        Assert.Equal(OrdersFactTopic.Name, triggeringFact.Topic);
+        Assert.NotNull(triggeringFact.Envelope);
+        var envelope = JsonSerializer.Deserialize<Envelope<OperatorCancelRequestedPayload>>(triggeringFact.Envelope!, JsonWire.Options)!;
+        Assert.Equal("orders.cancel.requested", envelope.EventType);
+        Assert.Equal(order.Id.Value, envelope.AggregateId);
+        Assert.Equal(order.Id.Value, envelope.CorrelationId);
+        Assert.Equal(enqueued.TriggeringEventId, envelope.EventId);
+        Assert.Equal(enqueued.TriggeringEventId, envelope.CausationId);
+        Assert.Equal("operator_cancelled", envelope.Payload.Reason);
+        Assert.Equal(note, envelope.Payload.Note);
 
         var signalled = Assert.Single(signal.Signalled);
         Assert.Equal(SagaCommandKind.CreditRelease, signalled.Command);
@@ -233,11 +300,14 @@ public sealed class CancelOrderCommandHandlerTests
     {
         public List<(Guid OrderId, string OrderReference, SagaCommandKind Command, string Payload, Guid TriggeringEventId)> Enqueued { get; } = [];
 
+        public List<(byte[]? Envelope, string? Topic)> EnqueuedTriggeringFacts { get; } = [];
+
         public EnqueueOutcome OutcomeToReturn { get; set; } = EnqueueOutcome.Enqueued;
 
-        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, CancellationToken cancellationToken)
+        public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, byte[]? triggeringEventEnvelope, string? triggeringEventTopic, CancellationToken cancellationToken)
         {
             Enqueued.Add((orderId, orderReference, command, payload, triggeringEventId));
+            EnqueuedTriggeringFacts.Add((triggeringEventEnvelope, triggeringEventTopic));
             return Task.FromResult(OutcomeToReturn);
         }
 
@@ -247,9 +317,15 @@ public sealed class CancelOrderCommandHandlerTests
 
         public Task MarkSentAsync(Guid commandId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<bool> ParkAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task RejectAsync(Guid commandId, int attemptsMade, string lastError, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<bool> TryClaimDeadLetterAsync(Guid commandId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class FakeSagaCommandSignal : ISagaCommandSignal

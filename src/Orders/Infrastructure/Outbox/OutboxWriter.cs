@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using OrderToCash.Contracts.Facts;
 using OrderToCash.Contracts.Wire;
@@ -26,9 +27,10 @@ public sealed class OutboxWriter(IClock clock, IFactPayloadMapper payloadMapper)
     /// event type must be a member of
     /// <see cref="FactCatalog.PayloadTypesByEventType"/>'s keys (a
     /// catalogued fact with a mapped payload type); only then is the row
-    /// built. Assigns no <c>seq</c>, leaves <c>published_at</c> and
-    /// <c>trace_parent</c> null, and takes <c>created_at</c> from
-    /// <see cref="IClock"/> so tests control time.
+    /// built. Assigns no <c>seq</c>, leaves <c>published_at</c> null, takes
+    /// <c>created_at</c> from <see cref="IClock"/> so tests control time,
+    /// and stamps <c>trace_parent</c> from the active span — or null with
+    /// none active (OR4).
     /// </summary>
     public IReadOnlyList<OutboxMessage> BuildRows(IReadOnlyList<IDomainEvent> domainEvents)
     {
@@ -61,7 +63,11 @@ public sealed class OutboxWriter(IClock clock, IFactPayloadMapper payloadMapper)
                 OccurredAt = factEvent.OccurredAt.UtcDateTime,
                 PublishedAt = null,
                 CreatedAt = createdAt,
-                TraceParent = null,
+                // OR4/design.md §5.3, ledger L22/L24 — the writing
+                // command's own trace id, or null with no active span
+                // (never fabricated). OutboxRelay restores this and
+                // starts a child publish span under it.
+                TraceParent = Activity.Current?.Id,
             });
         }
 

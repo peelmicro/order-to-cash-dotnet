@@ -30,12 +30,29 @@
     <!-- Infrastructure/Signal + the DI extension only — the update signal
          (R55), a publish-only NATS client, never a request. -->
     <PackageReference Include="NATS.Net" />
-    <!-- Program.cs, ProjectorHost and every BackgroundService/IHostedService. -->
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <!-- Every IOptions<T> site. -->
-    <PackageReference Include="Microsoft.Extensions.Options" />
-    <!-- Every ILogger<T> site. -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Observability only — feature observability_reliability
+         (phase 14, group A3): the OTel SDK, its OTLP exporter and its
+         hosting registration extension (design.md §9.1). -->
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure/Health only — feature observability_reliability
+         (phase 14, group A4): design.md §8.1's HealthProbeService. A
+         FrameworkReference, NOT a NuGet package. Its shared framework
+         already carries Microsoft.Extensions.Hosting/Options/Logging.Abstractions
+         (previously used for Program.cs, ProjectorHost and every
+         BackgroundService/IHostedService/IOptions&lt;T&gt;/ILogger&lt;T&gt;
+         site), which is why those three PackageReferences were REMOVED
+         above rather than kept alongside this FrameworkReference —
+         NuGet's package-pruning warning (NU1510, an error under
+         TreatWarningsAsErrors) fails the build otherwise. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>

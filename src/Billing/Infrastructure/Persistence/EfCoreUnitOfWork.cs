@@ -1,7 +1,9 @@
 // COPY OF — src/Orders/Infrastructure/Persistence/EfCoreUnitOfWork.cs
 using System.Data;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using OrderToCash.Billing.Application.Ports;
+using OrderToCash.Billing.Infrastructure.Observability;
 
 namespace OrderToCash.Billing.Infrastructure.Persistence;
 
@@ -26,6 +28,14 @@ public sealed class EfCoreUnitOfWork(BillingDbContext db) : IUnitOfWork
 
         return await strategy.ExecuteAsync(async () =>
         {
+            // OR4/design.md §5.4, ledger L23 — the write-database hop of
+            // R56's trace: one hand-started Activity for the whole
+            // transaction, nested under whatever span is Activity.Current
+            // at this point (the RPC responder's own span).
+            using var activity = OtcActivity.Source.StartActivity("writemodel.transaction", ActivityKind.Internal);
+            activity?.SetTag("db.system", "mssql");
+            activity?.SetTag("db.name", db.Database.GetDbConnection().Database);
+
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
             var result = await work(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

@@ -1,9 +1,11 @@
 // COPY OF — src/Orders/Infrastructure/Outbox/OutboxRelay.cs
 using System.Data;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrderToCash.Billing.Application.Ports;
+using OrderToCash.Billing.Infrastructure.Observability;
 using OrderToCash.Billing.Infrastructure.Persistence.Entities;
 using WriteModelDbContext = OrderToCash.Billing.Infrastructure.Persistence.BillingDbContext;
 
@@ -35,6 +37,7 @@ public sealed class OutboxRelay(
     IFactPublisher publisher,
     IClock clock,
     IOptions<OutboxRelayOptions> options,
+    IDlqDepthGauge dlqDepthGauge,
     ILogger<OutboxRelay> logger) : IOutboxRelay
 {
     /// <summary>
@@ -54,6 +57,13 @@ public sealed class OutboxRelay(
 
     public async Task<OutboxRelayResult> RunOnceAsync(CancellationToken cancellationToken)
     {
+        // OR5/design.md §7 — otc_outbox_lag_ms and otc_dlq_depth, recorded
+        // ONCE per cycle, OUTSIDE the claim transaction below so neither
+        // round trip (a plain read; a Kafka admin/watermark round trip)
+        // extends the claim's UPDLOCK hold time.
+        await RecordOutboxLagAsync(cancellationToken).ConfigureAwait(false);
+        await dlqDepthGauge.RecordAsync(cancellationToken).ConfigureAwait(false);
+
         var relayOptions = options.Value;
         var strategy = db.Database.CreateExecutionStrategy();
 
@@ -119,11 +129,16 @@ public sealed class OutboxRelay(
                 // both land here: OI8/OI14 — roll back rather than commit
                 // empty, leave every claimed record unstamped, retry the
                 // same records on the next poll.
-                logger.LogError(
-                    ex,
-                    "Outbox relay failed to publish a batch of {Count} record(s): {EventIds}",
-                    claimed.Count,
-                    string.Join(",", claimed.Select(row => row.EventId)));
+                //
+                // design.md §6's scope-push table, OutboxRelay row — the
+                // row's own correlation_id, pushed PER CLAIMED ROW rather
+                // than once for the whole batch, so a reader filtering logs
+                // by correlationId sees every relay cycle that touched it.
+                foreach (var row in claimed)
+                {
+                    using var correlationScope = logger.BeginScope(new Dictionary<string, object> { ["correlation_id"] = row.CorrelationId });
+                    logger.LogError(ex, "Outbox relay failed to publish {EventId} ({EventType}): {Message}", row.EventId, row.EventType, ex.Message);
+                }
 
                 await transaction.RollbackAsync(cancellationToken);
                 return new OutboxRelayResult(claimed.Count, 0);
@@ -145,16 +160,58 @@ public sealed class OutboxRelay(
         });
     }
 
-    private static PublishableFact BuildPublishableFact(OutboxMessage row) => new(
-        // R15: correlationId, Guid.ToString() — the default "D" format,
-        // lowercase and hyphenated, matching every golden envelope.
-        Key: row.CorrelationId.ToString(),
-        EnvelopeJson: OutboxEnvelopeMapper.ToWireBytes(row),
-        Headers: new Dictionary<string, string>(StringComparer.Ordinal)
+    /// <summary>
+    /// otc_outbox_lag_ms — the age, in milliseconds, of the OLDEST row with
+    /// <c>published_at IS NULL</c>, via the existing <c>(published_at, seq)</c>
+    /// index; <c>0</c> when nothing is unpublished (design.md §7's "asserted
+    /// at an exact value against a clock-aged real row, then at 0 after the
+    /// relay drains").
+    /// </summary>
+    private async Task RecordOutboxLagAsync(CancellationToken cancellationToken)
+    {
+        var oldestCreatedAt = await db.OutboxMessages
+            .Where(row => row.PublishedAt == null)
+            .OrderBy(row => row.Seq)
+            .Select(row => (DateTime?)row.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var lagMs = oldestCreatedAt is { } createdAt
+            ? Math.Max(0d, (clock.UtcNow.UtcDateTime - createdAt).TotalMilliseconds)
+            : 0d;
+
+        OtcMetrics.OutboxLagMs.Record(lagMs);
+    }
+
+    private static PublishableFact BuildPublishableFact(OutboxMessage row)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["x-event-type"] = row.EventType,
             ["content-type"] = "application/json",
-            // No "traceparent" — feature 27's gap, documented rather than
-            // fabricated (design.md §5.3).
-        });
+        };
+
+        // OR4/design.md §5.3, ledger L22/L24 — restore the WRITING
+        // command's own trace (row.TraceParent, null with no active span at
+        // write time — never fabricated), start a CHILD "outbox.publish"
+        // span under it, and inject THAT span's own id as the header the
+        // consumer will extract. No stored parent means no span and no
+        // header, matching the write side's own "no active span, no
+        // traceparent" rule rather than inventing a root trace here.
+        var parentContext = TraceContext.ContextFromTraceParent(row.TraceParent);
+        using var activity = parentContext is { } parent
+            ? OtcActivity.Source.StartActivity("outbox.publish", ActivityKind.Producer, parentContext: parent)
+            : null;
+
+        if (activity?.Id is { } traceParent)
+        {
+            headers["traceparent"] = traceParent;
+        }
+
+        // R15: correlationId, Guid.ToString() — the default "D" format,
+        // lowercase and hyphenated, matching every golden envelope.
+        return new PublishableFact(
+            Key: row.CorrelationId.ToString(),
+            EnvelopeJson: OutboxEnvelopeMapper.ToWireBytes(row),
+            Headers: headers);
+    }
 }

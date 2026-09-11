@@ -1,3 +1,6 @@
+using OrderToCash.Projector.Infrastructure.Messaging;
+using OrderToCash.Projector.Infrastructure.Messaging.DeadLetter;
+
 namespace OrderToCash.Projector.Infrastructure;
 
 /// <summary>Kafka consumer settings for the fact stream (mirrors <c>NotificationsKafkaOptions</c>'s shape).</summary>
@@ -62,4 +65,10 @@ public sealed class ProjectorOptions
     public ProjectorMongoOptions Mongo { get; set; } = new();
 
     public ProjectorNatsOptions Nats { get; } = new();
+
+    /// <summary>OR1's retry policy for <see cref="Messaging.FactRetryDispatcher"/> — <c>FACT_RETRY_MAX_ATTEMPTS</c>/<c>FACT_RETRY_BACKOFF_MS</c>.</summary>
+    public FactRetryOptions FactRetry { get; } = new();
+
+    /// <summary>The dedicated DLQ producer's connection — reuses the same broker as <see cref="Kafka"/>, a distinct client id.</summary>
+    public DeadLetterKafkaOptions DeadLetter { get; } = new();
 }

@@ -403,16 +403,17 @@
       "phase": 14,
       "title": "Terminus health checks, OTel propagation through NATS and Kafka, structured logging, retry + DLQ, and orders.create requestId idempotent replay",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
-        "one trace spans HTTP -> NATS -> MySQL -> Kafka -> consumers",
+        "one trace spans HTTP -> NATS -> the write database -> Kafka -> consumers (the bullet was inherited from #7 naming MySQL; #8 is MS-SQL and #9 will be a third engine, so the hop is named by role rather than by product)",
         "correlationId in every log line",
         "failed processing lands on <topic>.dlq after N attempts",
         "readiness includes DB, Kafka and NATS indicators",
         "a repeated orders.create request carrying the same requestId returns the ORIGINAL order (same orderId/orderReference/money fields), not a second placement",
         "concurrent duplicate requests for the same requestId never place two orders",
         "requestId remains optional: omitting it places a normal, non-deduplicated order"
-      ]
+      ],
+      "notes": "#7 WIDENED this feature before speccing, at its human's request, to fold in a dormant entry (orders_idempotent_replay, its former id 39) — which is why the last three acceptance bullets are about requestId rather than observability. #8 inherited the widened form, so that decision is already made and is not a gate question. #7's counterpart was the largest feature in its project by every measure: 1 spec session + 1 gate + SIX implementer passes + 1 review, approved first time. The first acceptance bullet named MySQL, inherited verbatim; corrected at the phase-14 dispatch to name the hop by role, since #8 is MS-SQL and #9 will be a third engine."
     },
     {
       "id": 28,
@@ -465,7 +466,8 @@
       "acceptance": [
         "full happy path",
         "full compensation path",
-        "duplicate paymentReference yields one payment"
+        "duplicate paymentReference yields one payment",
+        "R24's API half — this feature is its named closer (test-matrix.md's R24 cell, until entry 72 corrects it, still says 'the gateway feature', which shipped in phase 13 without closing it): the happy-path scenario asserts the completion triple is present on the timeline AND causally ordered, applied structurally rather than as a hand-written expected sequence — #7's amendment A1 to apps/gateway/src/black-box-api.integration.spec.ts scenario 1, after progress/review_api_tests.md §2 defect D4 found the status-only assertion could rot"
       ]
     },
     {
@@ -854,12 +856,13 @@
       "phase": 14,
       "title": "An operator cancel reads the order status and enqueues compensation in one transaction while the saga advances the same order in another — nothing serialises the two",
       "sdd": false,
-      "status": "pending",
+      "status": "in_progress",
       "acceptance": [
         "the race is reproduced by a test that FAILS on today's code — a released resource stranded on an order that kept progressing — before any fix is written",
         "the chosen defence is stated with its cost: whatever serialises the operator decision against the saga's own forward progress, and what it does to the fact-driven path's throughput",
         "R25's precondition-unmet check keeps ignoring facts whose precondition genuinely no longer holds — the fix must not turn a correct no-op into a retry storm",
-        "armed: the fix is removed and the reproducing test fails again, with the verbatim message"
+        "armed: the fix is removed and the reproducing test fails again, with the verbatim message",
+        "the operator-note lookup id 71 added (ISagaCommandStore.FindOperatorCancelNoteAsync, which picks the note by envelope CONTENT across the order's compensation rows) is exercised UNDER the race: when an operator cancel and the saga's forward progress interleave, the note that reaches order.cancelled.v1 is the operator's own, never absent and never taken from a saga-decided row — review advisory A3 of id 71 (progress/review_operator_note_survives_the_compensation_branches.md), unprobed there; armed by a mutation that makes the lookup select a row by position rather than by its operator-cancel envelope"
       ],
       "notes": "Disclosed, not introduced, by feature 41 — and independently by #7's own feature 41, which reproduced it live and also declined to fix it in scope. Both assessments therefore ship it, so it is parity rather than a #8 regression. Mechanism: CancelOrderCommandHandler reads status and enqueues a compensating command in ONE transaction, while the saga's forward progress (credit.approved.v1 advancing stock_reserved -> credit_approved -> confirmed) runs in an INDEPENDENT transaction on an INDEPENDENT consumer. If the order advances past the observed status before the compensating fact lands, SagaStepTable.ForStatus's equality-only R25 check correctly ignores that fact and a genuinely released resource is stranded. Worse on the credit_approved/confirmed branch than on stock_reserved. Confirmed present in #8's own integration harness: OrdersCancelAcceptanceTests isolates it by never starting a despatch.create stand-in, the same technique #7's suite used. Filed against phase 14 because reliability and retry semantics are that phase's subject and a fix here without R29/DLQ context would be guessing. Existed only in prose in two implementation reports until this entry; the reviewer flagged that and deliberately did not file it, to keep the backlog single-writer."
     },
@@ -989,15 +992,130 @@
       "phase": 14,
       "title": "Carry the operator's cancellation note across the async saga boundary so stock_reserved, credit_approved and confirmed cancellations reach the timeline with it — the unqualified half of id 66's bullet 1",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "POST /orders/{id}/cancel with a note against an order in stock_reserved lands that note on the read-model timeline entry after the real compensation chain completes, proved end to end",
         "the same for credit_approved and confirmed",
         "a saga-decided cancellation (stock_rejected, credit_rejected) still carries no note and no note key on the wire",
         "armed in all three families: deleting the retention, corrupting the retained text, and substituting the persisted column or field for a real sibling — the substitution must fail with a message naming what was broken",
-        "while the saga_commands row is open, store the triggering fact's BYTES and not only its id — R29's dead-letter clause (test-matrix.md:127, feature 27) cannot republish an envelope verbatim without them, and one column serves both needs"
+        "while the saga_commands row is open, store the triggering fact's BYTES and not only its id — R29's dead-letter clause (test-matrix.md:127, feature 27) cannot republish an envelope verbatim without them, and one column serves both needs",
+        "parity with #7 on the RPC-triggered path, which feature 27's A2 left null: both operator-cancel compensation enqueues (src/Orders/Application/Commands/CancelOrderCommandHandler.cs:167 credit.release, :194 stock.release) store a synthetic orders.cancel.requested envelope — eventId and causationId the request id, aggregateId and correlationId the order id, payload {orderId, reason: operator_cancelled, note when present} — and the orders facts topic, exactly as #7's apps/orders/src/application/cancel-order.handler.ts:175 and :234 do through buildTriggeringEnvelope (:272); #7's port makes that envelope non-nullable (apps/orders/src/application/ports/saga-command-store.port.ts:40, :51), which is the property #8's nullable port silently dropped",
+        "the divergence's guards are ported, not only its code: CancelOrderCommandHandlerTests.cs:146-148's Assert.Null on envelope and topic flips to #7's assertions (cancel-order.handler.spec.ts:178 and :220 — eventType orders.cancel.requested); the 'design.md §4.2' attributions at CancelOrderCommandHandler.cs:167/:194 and the test's :144-145 are corrected, since §4.2 (design.md:191-193) speaks only of fact-triggered threading; a named integration test proves a parked operator-cancel compensation command publishes a .dlq copy byte-equal to the stored envelope, armed by restoring the null; and progress/impl_operator_note_survives_the_compensation_branches.md carries the ledger row for it"
       ],
-      "notes": "NO SA-3 IS REQUIRED, and that is the part got wrong twice — by the implementer AND by the leader's own brief, both of which placed the root cause in specs/shared/. It is not there: grep -rn 'saga_commands|saga command' specs/shared/*.md returns five hits (saga.md:31, requirements.md:564, domain-model.md:275 and :475, test-matrix.md:127), all prose about saga progression and DLQ policy, NONE describing a column. The table is implementation-owned and per-assessment. #7 already solves this without a wire change: apps/orders/src/application/cancel-order.handler.ts:272-283 puts the note into the saga command's triggering envelope on both compensation branches (:175, :234), persisted at saga-commands.schema.ts:61. The #8 shape is an Orders-local column plus SagaFactHandler.cs:167 feeding the note: parameter feature 66 already added to Order.Cancel — wholly inside src/Orders/. Bullet 5 folds in review finding F3: grep -rn TriggeringEvent src/Orders returns seven hits, all the ID, so #8 stores the triggering fact's bytes nowhere."
+      "notes": "NO SA-3 IS REQUIRED, and that is the part got wrong twice — by the implementer AND by the leader's own brief, both of which placed the root cause in specs/shared/. It is not there: grep -rn 'saga_commands|saga command' specs/shared/*.md returns five hits (saga.md:31, requirements.md:564, domain-model.md:275 and :475, test-matrix.md:127), all prose about saga progression and DLQ policy, NONE describing a column. The table is implementation-owned and per-assessment. #7 already solves this without a wire change: apps/orders/src/application/cancel-order.handler.ts:272-283 puts the note into the saga command's triggering envelope on both compensation branches (:175, :234), persisted at saga-commands.schema.ts:61. The #8 shape is an Orders-local column plus SagaFactHandler.cs:187 (was :167 when filed; feature 27's A2 added lines above it) feeding the note: parameter feature 66 already added to Order.Cancel — wholly inside src/Orders/. Bullet 5 folds in review finding F3: grep -rn TriggeringEvent src/Orders returns seven hits, all the ID, so #8 stores the triggering fact's bytes nowhere."
+    },
+    {
+      "id": 72,
+      "name": "test_matrix_rows_that_outlived_their_named_closer",
+      "phase": 14,
+      "title": "Close the test-matrix rows whose deferral named 'the gateway feature' after that feature shipped without closing them, and give the coverage summary the standing paragraph its own legend points to",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "R61's API half is cited as tests/Gateway.IntegrationTests/FulfillmentStockEndToEndTests.cs › ReplenishStock_ThroughTheRealGatewayPipeline_ActuallyAddsUnitsInFulfillmentsRealDatabase only AFTER that assertion is armed: corrupting the replenished quantity on the Gateway's side, and substituting the RPC subject for a real sibling, each fail the named test with a message naming what was broken; then the cell flips to DONE",
+        "R1's API half exists: a Gateway integration test ported from #7's apps/gateway/src/money-representation.integration.spec.ts — a sweep that DISCOVERS money-shaped fields in every money-bearing Gateway response rather than listing expected field names — armed by making one real response carry a money amount without its currency and by emitting a non-integer amount, each failing with a message naming the endpoint and the field; #7's test and its test-support/money-field-sweep.ts are enumerated assertion by assertion and each classified ported / not ported (reason) / not applicable",
+        "R24's cell names feature 31 api_tests as its closer instead of 'the gateway feature', and id 31's acceptance carries the R24 bullet (already added by the leader) — a deferral that names someone",
+        "test-matrix.md carries the paragraph under the coverage summary that its legend already points to: every Scoped row by id, who ratified it and where, and what closing it would take — the shape of #7's own paragraph",
+        "the coverage summary is recounted row by row from the Status column after these flips, the enumeration (one classification line per R-row) recorded in progress/impl_test_matrix_rows_that_outlived_their_named_closer.md, and every section row plus Total reconciles against it"
+      ],
+      "notes": "Found by the leader during feature 27's Group N pre-checks, 2026-09-10. Three rows (R1, R24, R61) said their API half was 'closed by the gateway feature' because 'no Gateway/API surface exists yet'; id 25 gateway_rest_auth shipped in phase 13 and closed none of them, because no bullet of its acceptance named them — CLAUDE.md's 'the next feature that touches X names no one' failure, inside the traceability file itself. Resolved against #7 before filing: #7 closed R61's API half in its own gateway feature (billing-fulfillment.integration.spec.ts › 'R61 — POST /stock/replenish translates to fulfillment.stock.replenish'), R24's in api_tests (d19342c, tightened by amendment A1), and R1's only in its Phase 25 traceability closure (8a3a3d3), which #8's backlog has no counterpart for. The same pass found the coverage summary stale in §2 and §3 (R16 and R29 flipped by feature 27, counts unmoved) — that recount belongs to feature 27's Group N, since its own flips moved it; this entry recounts again after its own. #7 recorded the identical defect in the same file ('Why the numbers moved': it once claimed 47 green because it had never been recomputed as rows were filled), and init.sh §5d exempts test-matrix.md from parity by design, so nothing mechanical sees the arithmetic. Deliberately NOT a new init.sh guard: classifying a free-text Status cell into Green/Scoped/Not-yet-green is judgement, and a checker that only verified green+scoped+notyet=rows would have passed this exact drift (7+0+1=8)."
+    },
+    {
+      "id": 73,
+      "name": "notification_send_degrades_on_permanent_failure",
+      "phase": 14,
+      "title": "Port #7's degrading notification sender — a permanent send failure renders to the console and acknowledges instead of retrying into the DLQ — a #7 fix made outside its backlog, so #8's copied backlog never carried it",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "a DegradingNotificationSender decorator wraps MailKitNotificationSender with ConsoleNotificationSender as its fallback, wired only when SMTP is configured (a console-only binding stays unwrapped); on a TRANSIENT failure it rethrows the original exception unchanged, so FactRetryDispatcher's retry-then-DLQ path behaves exactly as it does today",
+        "on a PERMANENT failure it renders the same message through the console fallback, logs one structured error line carrying a stable event field plus correlationId and traceId, and returns normally — no retry, no .dlq copy, the idempotency ledger row stays committed and the offset commits",
+        "the classifier is rebuilt on MailKit's own signals, not transliterated from nodemailer's: #7 (apps/notifications/src/infrastructure/notification/send-failure-classifier.ts) treats an SMTP responseCode 5xx and code EAUTH as permanent and everything else, unknown included, as transient; #8 names the MailKit equivalents it relies on and proves each against a real SMTP failure (a real Mailpit or equivalent), never a hand-constructed exception of its own choosing — and progress/impl_notification_send_degrades_on_permanent_failure.md carries the ledger row stating which MailKit signal supplies the property #7 got from nodemailer's error fields",
+        "#7's tests are enumerated assertion by assertion and classified ported / not ported (reason) / not applicable: send-failure-classifier.spec.ts and degrading-notification-sender.spec.ts, the latter in three layers (in isolation, composed with the real FactRetryDispatcher, composed with the real NotificationDispatchService)",
+        "armed in all three families: deleting the transient rethrow (so every failure silently degrades) fails a named test; corrupting one permanent status to transient fails a named test; and replacing the permanent branch's normal return with a rethrow fails a test asserting that no .dlq publication happened"
+      ],
+      "notes": "Found by #8's feature-27 review, round 1 (2026-09-10), and confirmed by the leader against #7's checkout. #7 commit ad90de6 ('fix(notifications): degrade to console on a permanent send failure', 2026-08-30) built this as an operational hardening task, explicitly 'Not a feature_list.json entry' (order-to-cash-nestjs/progress/impl_notification_degradation.md:3). #8's backlog was copied from #7's, so a fix #7 never wrote down as backlog work never became #8 work — a new shape of the routing failure CLAUDE.md names: not a deferral that named no one, but a fix that was never an entry. #8's src/Notifications/Infrastructure/Notification carries only ConsoleNotificationSender and MailKitNotificationSender. #7's decorator semantics, read from apps/notifications/src/infrastructure/notification/degrading-notification-sender.ts:1-33: transient rethrows the original error unchanged; permanent renders via the fallback, logs one loud structured line and returns normally so no caller retries or dead-letters. The live incident in #7 was an SMTP provider's quota exhaustion; the classifier's signal is the part that cannot be ported literally, because #7 read nodemailer's responseCode/code fields, which MailKit does not have."
+    },
+    {
+      "id": 74,
+      "name": "dead_letter_tests_select_their_message_by_content",
+      "phase": 14,
+      "title": "Dead-letter integration tests take the FIRST message on a shared .dlq topic rather than the one they produced — a positional read that let two test classes collide and can assert against another test's message",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the class is enumerated repository-wide FIRST, as a search result: every test that reads a Kafka topic positionally (ConsumeOneAsync and any equivalent helper, found by content, bin/obj excluded by path), one classification line per call site — the three dead-letter tests named below are where it was noticed, not where it ends",
+        "each positional read selects its message by content the test controls — the eventId or correlationId it produced — instead of taking the first message on the topic",
+        "armed by change of kind, per site: publish a decoy message with a different eventId to the same topic before the real one; the test must still assert the real message, and the pre-fix positional version must be shown to assert the decoy (or fail for the decoy's reason) against the same mutation",
+        "joins the guard-hardening loop with ids 67–70, whose first task is already one repository-wide enumeration of a defect class",
+        "the sibling exclusivity class feature 27's review round 3 named (advisory A13, progress/review_observability_reliability.md from :1580) is enumerated and closed in the same loop: every Assert.Single (or equivalent exactly-one assertion) over a SHARED capture — a MeterListener/ActivityListener collection, a shared topic, a process-wide sink — that other concurrently-running tests can also write to; the review counted nine such sites beyond the one feature 27 fixed. Each site either scopes its capture to what the test itself produced (by tag, trace id, correlationId or instrument instance) or proves exclusivity, armed by a concurrent writer that emits a matching-shaped measurement during the test",
+        "the consumer-group clearance feature 27 added (StopHostAndWaitForGroupToClearAsync, applied at 12 Notifications, 25 Orders and 4 Projector teardown sites) is made STRUCTURAL rather than per-site — review round 4's advisory A16: today a future bare host.StopAsync() in any of those projects silently reintroduces the shared-consumer-group race, so the clearance belongs where a host is built or disposed (a test-host wrapper or fixture), with a guard that fails when a Kafka-group host is torn down without it; and because the helper currently throws from a finally block, a test that fails AND whose teardown also throws must still report its OWN failure, armed by making both happen in one test and asserting the original assertion message survives",
+        "the test-harness delivery of test.runsettings is guarded against a PER-PROJECT escape (review advisory A1 of id 77, progress/review_test_hosts_exhaust_the_per_user_inotify_limit.md): today all 18 test projects inherit RunSettingsFilePath from the root Directory.Build.props and none override it, so HostInotifyReloadGuardTests in Orders.UnitTests alone is sufficient — but a future project that sets its own RunSettingsFilePath, sets ImportDirectoryBuildProps=false, or is run with its own --settings would lose the reload-on-change setting invisibly, because the one guard lives in a different project; add a structural check over a LITERAL list of the test projects (never discovered by a predicate a violating project could escape) that fails naming the project, armed by adding each escape shape to one project in turn"
+      ],
+      "notes": "Advisory A8 of feature 27's review, round 2 (progress/review_observability_reliability.md, Round 2 section). The positional ConsumeOneAsync is what caused the cross-test .dlq collision feature 27's review-round-1 fix round found and worked around by moving the new log-correlation tests to other topics (ProjectorFactTopics.FulfillmentFacts, NotificationFactTopics.BillingFacts) — the collision was avoided, the positional read that produced it was left in place. Sites named by the review: tests/Orders.IntegrationTests/SagaDeadLetterTests.cs, tests/Notifications.IntegrationTests/NotificationDeadLetterTests.cs, tests/Projector.IntegrationTests/ProjectorDeadLetterTests.cs (all reading OrdersFacts' .dlq). Filed as an entry rather than folded into feature 27 because it is a test-shape CLASS whose population is not yet enumerated, which is exactly the loop's remit; it stays in phase 14."
+    },
+    {
+      "id": 75,
+      "name": "dead_letter_first_failed_at_semantics",
+      "phase": 14,
+      "title": "asyncapi.yaml never defines x-first-failed-at — #7 renders the dispatch ENTRY instant, #8 the first FAILURE instant — and both are green against a contract that is silent",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the human rules at the gate on the leader's recommendation: an SA-3 amendment giving x-first-failed-at a description in specs/shared/asyncapi.yaml (and x-failed-at one alongside it), applied to both repositories in the same session and committed on its own",
+        "recommended wording: x-first-failed-at is the instant the FIRST processing attempt failed; x-failed-at is the instant the final attempt failed — this matches the header's own name, matches #8's current behaviour (src/*/Infrastructure/Messaging/FactRetryDispatcher.cs `firstFailedAt ??= clock.UtcNow` inside the catch), and costs #7 a one-line change (apps/orders/src/infrastructure/messaging/fact-retry-dispatcher.ts:136, `const firstFailedAt = enteredAt;`) plus its own spec's expectation (fact-retry-dispatcher.spec.ts:89)",
+        "whichever meaning is ruled, both repositories assert it with a test whose clock advances between dispatch entry and the first failure, so the entry instant and the first-failure instant are DIFFERENT values and the test can tell them apart — #8's DeadLetterPublication_FirstFailedAt_IsTheFirstAttemptsClockReading_NeverALaterOne and #7's spec both pass today only because their clocks make the distinction invisible or were never asked",
+        "armed in both repositories by rendering the other meaning's instant into the header"
+      ],
+      "notes": "Found by the leader on 2026-09-11 while reading #7's fact-retry-dispatcher.ts at HEAD bf45af0 for feature 27's L29 ledger row. #7: firstFailedAt = enteredAt (:136), rendered by kafka-dlq-publisher.ts:49, asserted as the entry instant at fact-retry-dispatcher.spec.ts:89. #8: the instant of the first caught failure, added under test by feature 27's review-round-2 fixes. specs/shared/asyncapi.yaml:2240-2243 declares both headers as bare `$ref: Instant` with NO description, while every neighbouring header (x-attempts, x-error, x-original-topic) has one; the only other occurrence (:1578-1579) is an example payload, which is not normative. Routed per CLAUDE.md's rule that a gap whose root cause is specs/shared/ becomes a numbered backlog entry, never a sentence in a record. Not a feature-27 blocker: the contract is silent, so neither assessment violates it; what is lost is parity, and a redrive operator reading the header would get different instants from #7 and #8 for the same failure. The amendment itself is human-gated; this entry carries a recommendation, not a menu."
+    },
+    {
+      "id": 76,
+      "name": "application_layer_depends_on_infrastructure_unguarded",
+      "phase": 14,
+      "title": "Application-layer code imports Infrastructure namespaces across Billing, Fulfillment and Orders, against CLAUDE.md's inward-dependency rule — and no architecture test forbids it, because NetArchTest only enforces domain purity",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the class is enumerated FIRST, as a search result: every file under any src/*/Application/ that references an OrderToCash.<Service>.Infrastructure namespace (using directives AND fully-qualified names, excluding cref-only doc comments, bin/obj excluded by path), one classification line each — the leader's 2026-09-11 sweep found Billing 10 and Fulfillment 10 files (all Infrastructure.Messaging.Rpc), Orders ISagaCommands, SagaCommandRequestFactory and CancelOrderCommandHandler (Infrastructure.Messaging.Rpc), plus id 71's OperatorCancelRequestedEnvelope, whose Infrastructure.Outbox import id 71's fix round removed but which STILL imports OrderToCash.Orders.Infrastructure.Messaging.Rpc (line 2) and is therefore in this entry's population too (amended after id 71's review round 2, advisory A1)",
+        "the remedy follows #7's own placement: #7 kept every RPC payload type in its shared contracts package, generated from asyncapi.yaml (order-to-cash-nestjs/packages/contracts/src/generated/asyncapi.types.ts at HEAD bf45af0), while #8 put them under each service's Infrastructure/Messaging/Rpc — so the RPC request/reply payload records move into src/Contracts (the project CLAUDE.md already designates for wire contract types), and Application code references them there; any reference that is not a wire payload is resolved by a port in Application implemented in Infrastructure",
+        "the existing RPC payload schema-parity guards (feature ids 51 and 70's retyped-key-list class) still pass against the moved records, and their wire JSON stays byte-identical — asserted by the golden and parity tests already in the suite, not assumed",
+        "tests/Architecture.Tests gains a NetArchTest rule: no type in any *.Application namespace depends on any *.Infrastructure namespace, in every service — armed by re-adding one Application→Infrastructure using in each of two services and confirming the rule fails naming the offending type",
+        "the rule's population is a literal list of the six service assemblies, never discovered by a predicate that a violating assembly could escape"
+      ],
+      "notes": "Found by the leader on 2026-09-11 while verifying review advisory A1 of id 71 (progress/review_operator_note_survives_the_compensation_branches.md), which flagged only the one new import id 71 added. The sweep found the class is pre-existing and systemic, silent since phase 8: CLAUDE.md's Clean Architecture section says dependencies point inward and Infrastructure implements the ports the Application declares, but the only NetArchTest rules enforce Domain purity, SharedKernel's zero package references and Cqrs's exclusion from Domain — grep over tests/Architecture.Tests for any Application→Infrastructure constraint returns nothing. Honest parity note: this is NOT a guard dropped in translation — #7 has application→infrastructure imports of its own (apps/orders/src/application/saga-fact-handler.ts:17-18, apps/orders/src/application/commands/saga-dispatch.handlers.ts:8, apps/notifications/src/application/commands/notify.command-handlers.ts:14-20, and two trace-context imports) and no lint rule against them. It is #8's own stated convention, unenforced. The RPC-payload half, which is most of the population, is also a placement divergence from #7, whose payloads lived in the contracts package. Filed in phase 14 per the standing instruction not to defer issues to a later phase."
+    },
+    {
+      "id": 77,
+      "name": "test_hosts_exhaust_the_per_user_inotify_limit",
+      "phase": 14,
+      "title": "Every real host built in a test watches its configuration files for reload, one inotify instance each, and a parallel quality.sh run exhausts this machine's per-user limit of 128 — fixed on the test side during id 71, filed here as its own work with the guard it still lacks",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "the change already in the tree is recorded as this entry's work, not id 71's: root test.runsettings sets DOTNET_hostBuilder__reloadConfigOnChange=false under RunConfiguration/EnvironmentVariables, and Directory.Build.props carries <RunSettingsFilePath>$(MSBuildThisFileDirectory)test.runsettings</RunSettingsFilePath>, so both quality.sh's solution-level dotnet test and a bare single-project dotnet test pick it up",
+        "a guard that FAILS when the setting stops reaching test hosts: a test that builds a real host the way the suite does (a *Host.CreateBuilder composition root) and asserts the host's own configuration reports hostBuilder:reloadConfigOnChange as false — reading the host's IConfiguration, never the process environment the test itself set — armed by deleting the RunSettingsFilePath line, and separately by deleting the environment entry from test.runsettings, each failing the named test",
+        "the setting is confirmed to reach test hosts under quality.sh's own coverage-collecting invocation too (review round 2 of id 71 observed it only under plain dotnet test): read a live test host's environment, or run the guard above inside quality.sh, and record which",
+        "the measurement stays recorded with the entry: fs.inotify.max_user_instances = 128 on this machine; 113–115 instances held by desktop processes at rest; Gateway.IntegrationTests alone peaked at 123 without the setting and 118 with it; the full quality.sh run peaked at 118 — leaving ~10 spare, which the entry states as a known thin margin whose remedy beyond the test side (raising the system limit) is the user's decision, never the harness's",
+        "no test depends on configuration hot-reload: the search that id 71's review round 2 ran (no appsettings*.json under src/ or tests/, no reload-token reader, no test writing a config file mid-run) is re-run and pasted as a search result"
+      ],
+      "notes": "Found on 2026-09-11 when id 71's review-round-1 fix round ran a red full quality.sh: Billing.UnitTests.BillingDispatcherRegistrationTests.InvoicingPorts_EachResolve_AndAreEachRegisteredScoped threw IOException 'The configured user limit (128) on the number of inotify instances has been reached' from HostApplicationBuilder's configuration plumbing. The agent first attributed it to accumulated session state a reboot would clear; the leader measured instead, right after the reboot and before any test, 113 of 128 instances already held by desktop processes (VS Code and its extensions, kwallet, wireplumber), and no code anywhere disabling reload-on-change — so the red was structural, not residue. The test-side fix was built inside id 71's close-out, proved by change of kind (one host-heavy project's peak with and without the setting) and ended in a green full run at 1820. Id 71's review round 2 ruled it (a) safe, (b) reaching test hosts under plain dotnet test, (c) unguarded, and (d) deserving its own entry — which this is. The system limit was deliberately never touched."
+    },
+    {
+      "id": 78,
+      "name": "doc_comment_crefs_are_never_compiler_checked",
+      "phase": 14,
+      "title": "Unresolved <see cref> targets in XML doc comments are never compiler-checked, because Directory.Build.props sets GenerateDocumentationFile=false — so every 'the build verifies the doc comments' claim in this repository cannot fail",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the class is enumerated FIRST, as a search result: a documentation-enabled build (GenerateDocumentationFile=true, NoWarn=CS1591 so missing-comment noise is excluded) of EVERY project in the solution, one classification line per CS1573/CS1574/CS1584/CS1734 site — naming ISagaCommandStore.cs:26 (FindOperatorCancelNoteAsync, rewritten in id 71's round-2 fixes) and SagaFactHandler.cs:183 (commandStore, a primary-constructor parameter, id 71 round 1) as id 71's, and CancelOrderCommandHandler.cs:34 (OrderNotCancellableError) as feature 41's; id 71's review round 3 counted 12 in the Orders build closure alone, before the other five services were looked at",
+        "every unresolved cref is fixed to a resolvable target or rewritten as <c>…</c>, per site; a cref that pointed at a non-existent <remarks> is corrected to what the target actually carries",
+        "the check is made STANDING, not one-off: documentation generation enabled under TreatWarningsAsErrors with CS1591 suppressed (Directory.Build.props), or an equivalent quality.sh step that fails the run — and the choice states its build-time cost",
+        "armed: adding one unresolved cref to a src/ file fails the standing check with a message naming that cref and file, and removing it restores green",
+        "while in ISagaCommandStore.cs and SagaCommand.cs, correct review round 3's advisory R3-A1: the triggering-event-topic docs (ISagaCommandStore.cs:77, SagaCommand.cs:55) say the envelope was 'consumed from' the topic, which is untrue for operator-cancel compensation rows — they STORE the orders facts topic for dead-letter routing, they never consumed from it"
+      ],
+      "notes": "Found by id 71's review round 3 (progress/review_operator_note_survives_the_compensation_branches.md, R3-F1, filed per its own recommendation). It corrects a verification claim the LEADER wrote into id 71's round-2 text-fix brief: that `dotnet build --no-incremental` under TreatWarningsAsErrors 'catches broken <see cref> in rewritten doc comments'. It cannot: Directory.Build.props:22 sets <GenerateDocumentationFile>false</GenerateDocumentationFile>, and .editorconfig assigns no severity to CS1574/CS1584 — so the compiler never emits the diagnostic, and the prescribed verification was a guard that could not fire. The reviewer's doc-enabled build surfaced the class. Filed as its own entry rather than fixed inside id 71 because it is a repository-wide CLASS (CLAUDE.md: enumerate the class before fixing any instance) and fixing id 71's two instances would have closed two lines and left the class live."
     },
     {
       "id": 44,

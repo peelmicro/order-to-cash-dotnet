@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Orders.Infrastructure.Observability;
 
 namespace OrderToCash.Orders.Infrastructure.Messaging;
 
@@ -96,6 +97,10 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
             { CorrelationIdHeader, meta.CorrelationId.Value.ToString() },
             { RequestIdHeader, meta.RequestId.Value.ToString() },
         };
+
+        // OR4/design.md §5.2, ledger L21 — added to THIS fresh, per-call
+        // NatsHeaders instance, never hoisted onto a shared field.
+        TraceContext.InjectNats(headers);
 
         NatsMsg<byte[]> reply;
         try

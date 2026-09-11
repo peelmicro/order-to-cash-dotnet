@@ -9,7 +9,11 @@ using OrderToCash.Fulfillment;
 // FulfillmentProgramConfiguration.Configure (feature
 // composition_root_env_reads_are_unguarded) so a test can call the exact
 // method this file calls.
-var builder = FulfillmentHost.CreateBuilder(args, configure: FulfillmentProgramConfiguration.Configure);
+var builder = FulfillmentHost.CreateBuilder(
+    args,
+    configure: FulfillmentProgramConfiguration.Configure,
+    configureTelemetry: FulfillmentProgramConfiguration.ConfigureTelemetry,
+    configureHealth: FulfillmentProgramConfiguration.ConfigureHealth);
 
 var host = builder.Build();
 await host.RunAsync().ConfigureAwait(false);
