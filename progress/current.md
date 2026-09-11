@@ -9,7 +9,52 @@
 2. **The `CLAUDE.md` amendment is approved** ("name the unit in every brief; a sample is never the population"). Applied under *Briefing subagents economically*, with the four instances and the id 78 verification lesson.
 3. **SA-3 is approved for both repositories:** `x-first-failed-at` = the instant the first processing attempt failed; `x-failed-at` = the instant the final attempt failed. Its code and tests stay id 75's work.
 
-**Id 62 paused safely** ("SAFE FOR COMMIT"): no mutation, no process. The tree is **unchanged since its first pass's green run** (`/tmp/quality_run.log` 13:34: **1833**, 0 failed; the leader confirmed no `src/`, `tests/` or harness file is newer than that log). Four of its tests assert the rejected supersede design; they are named in its record's `### Paused for wrap-up` and must be labelled in the commit body.
+**Id 62 paused safely** ("SAFE FOR COMMIT"): no mutation, no process. The tree is **unchanged since its first pass's green run** (`/tmp/quality_run.log` 13:34: **1833**, 0 failed; the leader confirmed no `src/`, `tests/` or harness file is newer than that log). ~~Four of its tests assert the rejected supersede design~~ **Corrected (leader, 15:05):** `d8d71c7`'s body names **eight** tests tied to the rejected design, enumerated by content at `tests/`: `SagaFactHandlerTests.cs` `:475` and `:503` (assert the supersede), `:534` (a `[Theory]` asserting its `credit.released.v1` exemption), `:555` (asserts the cancel step never checks), and `OperatorCancelRacesSagaForwardProgressTests.cs` `:53`, `:142`, `:210` and `:309`. Only `:53` and `:210` assert the supersede itself; `:142` and `:309` assert the operator-first ordering's precondition-unmet ignore, which the rework must re-examine rather than assume is sound, since a late `credit.approved.v1` ignored there may also strand a hold. Classification is the rework's first task, not settled here.
+
+**Progress:**
+- **Checkpoint commit `d8d71c7` created**, 326 files, hook passed, working tree clean after it.
+- **SA-3 applied** to `specs/shared/asyncapi.yaml` in both repositories in one count-asserted script: descriptions on `x-first-failed-at` and `x-failed-at`, `cmp` IDENTICAL across the repositories, and the YAML still parses.
+- **SA-3 verification running:**
+  - #8: a full `quality.sh`, `scratchpad/quality_sa3.log`.
+  - #7: a controlled comparison of the contracts `check` and tests, HEAD spec against SA-3 spec.
+- **Docs agent dispatched:** `PROCESS.md`, the three external documents and both quizzes. It must not touch `README.md` or `history.md` until SA-3 is committed.
+
+**SA-3 progress:**
+- **#7 verified green on the final form:**
+  - `pnpm --filter @otc/contracts run check` → *"contracts:check OK"*;
+  - contracts tests → counted: 5 files, 22 tests passed;
+  - the contracts typecheck and the workspace `pnpm run typecheck` pass;
+  - the tree held exactly the regenerated `asyncapi.types.ts` (+9) and `asyncapi.yaml` (+5).
+- **#7 SA-3 committed as `5723874`** (`asyncapi.yaml`, the regenerated contract types, a `history.md` section stating the SA-2 repair and the placement lesson) and **pushed**: `bf45af0..5723874`. #7's tree is clean and in sync with `origin/main`. #7 carries no commit-msg hook; the subject was written to #8's rules anyway.
+- **#8 README registry:** SA-3 row added at `:37` (4 columns, matching SA-1/SA-2).
+- **#8 still to do:** the `history.md` SA-3 section once the final-form `quality.sh` (`scratchpad/quality_sa3_final.log`) reports, then the SA-3 commit (`asyncapi.yaml`, `README.md`, `progress/history.md`).
+- **#8 final-form `quality.sh` reported (15:11), RED on one test:** format OK, build OK, **18 projects, 1833 total, 1832 passed, 1 failed** — per-project counts identical to the 13:34 green baseline. The failure is `Projector.IntegrationTests.OffsetContractTests.PR38_AThrowingHandlerLeavesTheCommittedOffsetUnchanged_ReadFromTheBroker`: `KafkaException : Broker: Not coordinator` from `consumer.Committed` at `OffsetContractTests.cs:58`. `/var/log/dpkg.log` shows nothing since 06:22.
+  - **Why SA-3 cannot reach it:** `Projector.IntegrationTests` has no `asyncapi.yaml` reader (its one hit is a comment, `ProjectorDeadLetterTests.cs:72`); the failure is a broker error inside a test helper, not a schema comparison; SA-3's diff is five YAML description lines.
+  - **What it is:** a pre-existing harness defect class. Four committed-offset helpers retry a fixed 5 attempts × 300 ms and catch every `KafkaException` (Orders `SagaIntegrationTestSupport.cs:425-436`, Notifications `NotificationDeadLetterTests.cs:419-430`, Projector `ProjectorDeadLetterTests.cs:329-340` and `OffsetContractTests.cs:54-65`); #7 paces the same broker condition against a 60 s deadline (`apps/projector/src/test-support/kafka-test-fixture.ts:93-126`).
+  - **Routed:** bullet added to id 69 (same class as id 63/69: an attempt-counted budget against an error that returns instantly), keeping the backlog at 77 entries.
+  - **Rerun:** `PR38` alone, three sequential `--no-build` runs on the same build (15:12:41–15:13:47), `scratchpad/pr38_rerun_{1,2,3}.log`: **1/1 passed, three times**, exit 0 each. That shows intermittency; it is not evidence of the cause. No build/test process alive after; only Testcontainers' Ryuk reaper remained, which removes itself.
+  - **Full-project rerun:** `Projector.IntegrationTests` whole, `--no-build`, `scratchpad/projector_integration_rerun.log`: **59/59 passed**, exit 0, 15:14:41–15:15:56, nothing alive after. The SA-3 commit goes ahead with the red disclosed and routed, not hidden.
+- **#8 SA-3 committed as `5ec5264`** (15:17): `specs/shared/asyncapi.yaml` +5, `README.md` +1, `progress/history.md` +43, `feature_list.json` +5/−3 — 4 files, hook passed. Left uncommitted by design: `docs/PROCESS.md` and this file, for the docs commit. Next: fill `5ec5264` into the doc placeholders, regenerate both quizzes, docs commit, push #8, brief id 62's resumption.
+  - **`init.sh`** exit 0 after the backlog edits: 77 features, 53 done, 1 in progress, backlog tripwire OK, *"shared spec byte-identical to #7 across 6 file(s)"*. Backlog diff: three hunks, 5 insertions / 3 deletions — id 69 bullet, id 75 correction, id 78 bullet, nothing else.
+- **Also corrected before the SA-3 commit:** id 75's cost bullet and the README SA-3 row named only #7's orders dispatcher site; all three #7 copies record the entry instant (orders `:135-136`, projector `:126`, notifications `:123`), and only orders has a spec. The stale `PlaceOrderCommand.cs` `<remarks>` found by the docs agent is a bullet on id 78. The Stack Comparison header date was updated.
+
+**SA-3's first placement was wrong, and #7's generator is what showed it.**
+- **First form:** a `description` beside each header's `$ref: '#/components/schemas/Instant'`. #7's generator then emitted `'x-first-failed-at'?: string;` and `'x-failed-at'?: string;` instead of `Instant`. A keyword beside `$ref` makes the generator drop the reference, so a correct definition would have silently weakened a type.
+- **The controlled comparison** (HEAD spec vs SA-3 spec, backup plus `cmp` restore) proved two further things:
+  - the four failing #7 contracts tests are **pre-existing**: the same four fail at HEAD's spec, all generated-files-are-stale checks;
+  - a #7 contracts test **writes into the real generated directory**, which rewrote tracked `asyncapi.types.ts`. It was restored from `git show HEAD:…`, and `git diff` came back empty.
+- **Final form, applied count-asserted to both repositories:** the two misplaced lines removed, and the definitions appended to `DeadLetterHeaders`' block `description`, which the generator emits as the interface's JSDoc.
+  - #8's net diff is **+5 description lines**, `$ref`s untouched, `cmp` IDENTICAL, YAML parses.
+  - #7's regenerated diff is exactly the SA-3 JSDoc **plus SA-2's missing `note?: string`**, and both headers stay `Instant` (`asyncapi.types.ts:638-639`).
+- **The #8 `quality.sh` run on the first form was stopped** (process tree killed, no containers left) and restarted on the final form. Its result will not be cited for anything.
+- **The meaning the user approved is unchanged;** only its location in the YAML moved.
+
+**A defect from the PREVIOUS wrap-up, found by SA-3's verification.** #7's `pnpm --filter @otc/contracts run check` fails with *"committed generated files are stale"*. The stale hunk it prints is **SA-2's** `note?: string` on `OrderCancelledPayload`, not SA-3.
+- **Cause:** #7's SA-2 commit `bf45af0` touched only `specs/shared/asyncapi.yaml` and `progress/history.md`, and **never ran `pnpm --filter @otc/contracts run generate`**. So #7's tracked `packages/contracts/src/generated/asyncapi.types.ts` has been stale against its own spec since 2026-09-09.
+- **Tests:** four contracts tests also fail. The comparison run decides whether they predate SA-3.
+- **Why it escaped:** #7's check exists, but nobody ran it when applying an amendment to #7. The SA-2 checklist (same bytes, a `history.md` entry, a README registry row) never included #7's own contract regeneration.
+- **Routing:** #7's SA-3 commit must regenerate the contracts (which also carries SA-2's missing types), pass `contracts:check` and the contracts tests, and say plainly that it repairs SA-2's miss.
+- **Lesson for the SA convention:** applying an amendment to a repository includes that repository's own spec-derived artefacts and its own spec checks.
 
 **Order of operations:**
 1. `init.sh`, then the checkpoint commit (code, `progress`, `feature_list`, `CLAUDE.md`, harness).
