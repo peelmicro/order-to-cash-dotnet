@@ -5,6 +5,7 @@ using OrderToCash.Billing.Application.Ports;
 using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Billing.Presentation.Rpc;
 using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.SharedKernel;
 using Xunit;

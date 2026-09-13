@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Fulfillment.Application.Ports;
-using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 
 namespace OrderToCash.Fulfillment.Infrastructure.Persistence;
 

@@ -190,17 +190,52 @@ public sealed class SagaStepTableTests
         Assert.Null(step.CommandAfter);
     }
 
+    /// <summary>
+    /// SA-4 — <c>credit.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c>
+    /// variant is now the COMPLETING <see cref="SagaStep.Cancel"/> (the
+    /// inverse of its pre-SA-4 shape, where this fact type was a no-op
+    /// <see cref="SagaStep.Advance"/> and <c>stock.released.v1</c>
+    /// completed): reason <c>operator_cancelled</c>, and compensation steps
+    /// in RELEASE order — stock (the CONTESTED resource, released first,
+    /// synthesised with no <c>eventId</c>) then credit (THIS fact's own).
+    /// </summary>
     [Theory]
     [InlineData(OrderStatus.CreditApproved)]
     [InlineData(OrderStatus.Confirmed)]
-    public void CreditReleasedV1_CreditApprovedOrConfirmedVariant_LeavesStatusUntouchedAndOwesStockRelease(OrderStatus status)
+    public void CreditReleasedV1_CreditApprovedOrConfirmedVariant_CancelsWithReasonOperatorCancelledAndBothCompensationStepsInReleaseOrder(OrderStatus status)
     {
         var order = OrderTestData.RehydratedOrder(status);
-        var step = (SagaStep.Advance)SagaStepTable.ForStatus("credit.released.v1", status)!;
+        var fact = BuildCreditReleasedFact("order_cancelled");
+        var step = (SagaStep.Cancel)SagaStepTable.ForStatus("credit.released.v1", status)!;
 
-        Assert.Null(step.Apply);
-        Assert.Equal(SagaCommandKind.StockRelease, step.CommandAfter);
-        Assert.Equal(status, order.Status);
+        var reason = step.Reason(fact);
+        var compensationSteps = step.CompensationSteps(fact);
+        order.Cancel(reason, compensationSteps, fact.OccurredAt, UniqueId.From(fact.EventId));
+
+        Assert.Equal(CancellationReason.OperatorCancelled, reason);
+        var cancelled = Assert.IsType<OrderCancelled>(Assert.Single(order.DomainEvents));
+        Assert.Equal(2, cancelled.CompensationSteps.Count);
+
+        // Release order — saga.md §4.3: the CONTESTED resource (stock) released FIRST.
+        var first = cancelled.CompensationSteps[0];
+        var second = cancelled.CompensationSteps[1];
+        Assert.Equal(CompensationStepKind.StockReleased, first.Step);
+        Assert.Null(first.EventId);
+        Assert.Equal("stock.released.v1", first.EventType);
+
+        Assert.Equal(CompensationStepKind.CreditReleased, second.Step);
+        Assert.Equal(fact.EventId, second.EventId!.Value.Value);
+        Assert.Equal(fact.EventType, second.EventType);
+        Assert.Equal(fact.OccurredAt, second.OccurredAt);
+    }
+
+    /// <summary><c>credit.released.v1</c>'s reason mapping — the closed set is now just <c>{order_cancelled}</c> at these two statuses (SA-4); anything else is refused.</summary>
+    [Fact]
+    public void MapCreditReleaseReason_ThrowsForAnUnrecognisedReason()
+    {
+        var fact = BuildCreditReleasedFact("invoice_paid");
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => SagaStepTable.MapCreditReleaseReason(fact));
     }
 
     [Theory]
@@ -225,34 +260,26 @@ public sealed class SagaStepTableTests
         Assert.Equal(fact.OccurredAt, compensationStep.OccurredAt);
     }
 
+    /// <summary>
+    /// SA-4 — <c>stock.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c>
+    /// variant is now a no-op <see cref="SagaStep.Advance"/> that owes
+    /// <see cref="SagaCommandKind.CreditRelease"/> (the inverse of its
+    /// pre-SA-4 shape, where this fact type COMPLETED the cancellation): the
+    /// CONTESTED resource has just been released (this fact IS that
+    /// release, having won the race against a despatch already requested —
+    /// saga.md §4.3), so the second hop is now due.
+    /// </summary>
     [Theory]
     [InlineData(OrderStatus.CreditApproved)]
     [InlineData(OrderStatus.Confirmed)]
-    public void StockReleasedV1_CreditApprovedOrConfirmedVariant_CancelsWithBothCompensationStepsInCausalOrder(OrderStatus status)
+    public void StockReleasedV1_CreditApprovedOrConfirmedVariant_LeavesStatusUntouchedAndOwesCreditRelease(OrderStatus status)
     {
         var order = OrderTestData.RehydratedOrder(status);
-        var fact = BuildFact("stock.released.v1", "order_cancelled");
-        var step = (SagaStep.Cancel)SagaStepTable.ForStatus("stock.released.v1", status)!;
+        var step = (SagaStep.Advance)SagaStepTable.ForStatus("stock.released.v1", status)!;
 
-        var reason = step.Reason(fact);
-        var compensationSteps = step.CompensationSteps(fact);
-        order.Cancel(reason, compensationSteps, fact.OccurredAt, UniqueId.From(fact.EventId));
-
-        Assert.Equal(CancellationReason.OperatorCancelled, reason);
-        var cancelled = Assert.IsType<OrderCancelled>(Assert.Single(order.DomainEvents));
-        Assert.Equal(2, cancelled.CompensationSteps.Count);
-
-        // Causal order — saga.md §4.3 point 3: credit released BEFORE stock released.
-        var first = cancelled.CompensationSteps[0];
-        var second = cancelled.CompensationSteps[1];
-        Assert.Equal(CompensationStepKind.CreditReleased, first.Step);
-        Assert.Null(first.EventId);
-        Assert.Equal("credit.released.v1", first.EventType);
-
-        Assert.Equal(CompensationStepKind.StockReleased, second.Step);
-        Assert.Equal(fact.EventId, second.EventId!.Value.Value);
-        Assert.Equal(fact.EventType, second.EventType);
-        Assert.Equal(fact.OccurredAt, second.OccurredAt);
+        Assert.Null(step.Apply);
+        Assert.Equal(SagaCommandKind.CreditRelease, step.CommandAfter);
+        Assert.Equal(status, order.Status);
     }
 
     [Theory]
@@ -279,6 +306,16 @@ public sealed class SagaStepTableTests
             OccurredAt: OrderTestData.Now.AddMinutes(5),
             Payload: payload);
     }
+
+    /// <summary>SA-4's own typed fact, for <c>credit.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c> Cancel variant — <see cref="SagaStepTable.MapCreditReleaseReason"/> casts <see cref="SagaFact.Payload"/> to <see cref="CreditReleasedPayload"/>.</summary>
+    private static SagaFact BuildCreditReleasedFact(string reason) => new(
+        EventId: Guid.NewGuid(),
+        EventType: "credit.released.v1",
+        AggregateId: Guid.NewGuid(),
+        CorrelationId: Guid.NewGuid(),
+        CausationId: Guid.NewGuid(),
+        OccurredAt: OrderTestData.Now.AddMinutes(5),
+        Payload: new CreditReleasedPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", 2_450, 100_000, reason, "CR-000001"));
 
     private static OrderStatus PreconditionOf(SagaStep? step) => step switch
     {

@@ -51,7 +51,30 @@ public sealed class OrdersSagaSweeperOptions
     public int BatchSize { get; set; } = 20;
 }
 
-/// <summary>The five nested settings groups <see cref="OrdersSagaServiceCollectionExtensions.AddOrdersSaga"/> needs (design.md §9) — the last two added by <c>observability_reliability</c>'s A1 group (OR1, design.md §3.5).</summary>
+/// <summary>
+/// <see cref="Saga.SagaCommandDispatchWorker"/>'s own concurrency (backlog
+/// id 80, design.md §5.5) — bounded parallelism across orders' fast-path
+/// dispatches, so one slow or absent responder no longer stalls every other
+/// order's saga commands behind it for up to the ~16.5s worst case
+/// <see cref="OrdersSagaCommandOptions"/>'s own header documents. No
+/// per-order affinity/serialisation: no invariant in this saga depends on
+/// per-order dispatch ORDER (enumerated in
+/// progress/impl_saga_command_fast_path_is_head_of_line_blocked.md) — the
+/// contested-resource race SA-4 anticipates (a cancellation's
+/// <c>stock.release</c> racing the confirmation's own <c>despatch.create</c>)
+/// is arbitrated by Fulfillment's own lock, never by dispatch ordering here,
+/// and <c>credit.release</c> is never enqueued until the triggering fact
+/// (<c>stock.released.v1</c>) is processed — so the compensation ordering
+/// (stock.release before credit.release) is enforced by the fact-driven
+/// state machine, never by this worker's own drain order.
+/// </summary>
+public sealed class OrdersSagaDispatchOptions
+{
+    /// <summary>How many <c>saga_commands</c> rows this worker may have in flight at once, across every order — bounded so a channel-drop storm cannot open unbounded concurrent NATS calls. Each concurrent dispatch still claims its OWN row via <c>ISagaCommandStore.TryClaimAsync</c>'s atomic conditional UPDATE (SO11, design.md §6.3), so no additional locking is needed here.</summary>
+    public int DegreeOfParallelism { get; set; } = 8;
+}
+
+/// <summary>The six nested settings groups <see cref="OrdersSagaServiceCollectionExtensions.AddOrdersSaga"/> needs (design.md §9) — two added by <c>observability_reliability</c>'s A1 group (OR1, design.md §3.5), <see cref="Dispatch"/> added by backlog id 80.</summary>
 public sealed class OrdersSagaOptions
 {
     public OrdersSagaKafkaOptions Kafka { get; } = new();
@@ -65,4 +88,7 @@ public sealed class OrdersSagaOptions
 
     /// <summary>The dedicated DLQ producer's connection — reuses the same broker as <see cref="Kafka"/>, a distinct client id.</summary>
     public DeadLetterKafkaOptions DeadLetter { get; } = new();
+
+    /// <summary>Backlog id 80 — <see cref="Saga.SagaCommandDispatchWorker"/>'s degree of parallelism.</summary>
+    public OrdersSagaDispatchOptions Dispatch { get; } = new();
 }

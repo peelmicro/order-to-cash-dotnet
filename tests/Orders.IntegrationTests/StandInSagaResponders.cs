@@ -3,6 +3,7 @@ using System.Text.Json;
 using Confluent.Kafka;
 using NATS.Client.Core;
 using OrderToCash.Contracts.Envelopes;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Infrastructure.Outbox;

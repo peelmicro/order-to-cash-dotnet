@@ -1,7 +1,7 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Fulfillment.Application;
 using OrderToCash.Fulfillment.Application.Ports;
 using OrderToCash.Fulfillment.Domain;
-using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using OrderToCash.SharedKernel;
 using Xunit;
 

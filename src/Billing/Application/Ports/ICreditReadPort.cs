@@ -1,4 +1,4 @@
-using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
+using OrderToCash.Contracts.Rpc;
 
 namespace OrderToCash.Billing.Application.Ports;
 

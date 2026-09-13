@@ -13,6 +13,7 @@ namespace OrderToCash.Fulfillment.UnitTests;
 /// eleven environment reads fails a named test instead of leaving the suite
 /// green.
 /// </summary>
+[Collection(FulfillmentEnvironmentVariableTestCollection.Name)]
 public sealed class FulfillmentProgramConfigurationTests
 {
     private static readonly string[] _envVars =

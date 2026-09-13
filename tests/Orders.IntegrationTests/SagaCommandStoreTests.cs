@@ -209,6 +209,8 @@ public sealed class SagaCommandStoreTests(MsSqlContainerFixture mssql)
     /// <c>stock_reserved</c> branch's own row, never enqueued here). Reads
     /// through the REAL <c>nvarchar(max)</c> column and the REAL JSON parse,
     /// bracketed to the exact text supplied (CLAUDE.md's provenance rule).
+    /// This describes this test's seeded fixture; production envelope assignment
+    /// is defined by SA-4.
     /// </summary>
     [Fact]
     public async Task FindOperatorCancelNoteAsync_CreditReleaseRowCarriesTheSyntheticEnvelope_ReturnsItsExactNote()
@@ -267,10 +269,11 @@ public sealed class SagaCommandStoreTests(MsSqlContainerFixture mssql)
     /// The precedence claim itself, made falsifiable. Review round 1's D2:
     /// no code ever rewrites <c>triggering_event_envelope</c> — the column
     /// is written exactly once, by <see cref="EfCoreSagaCommandStore.EnqueueAsync"/>'s
-    /// own <c>INSERT</c> — so the ordinary credit-held chain has
-    /// <c>stock.release</c> carrying a REAL fact's bytes (no note), which
-    /// <see cref="FindOperatorCancelNoteAsync_ARealFactEnvelope_ReturnsNull"/>
-    /// already covers. THIS test makes BOTH rows carry a synthetic
+    /// own <c>INSERT</c> — under SA-4, the ordinary credit-held operator-cancel chain has
+    /// <c>stock.release</c> carrying the synthetic envelope and <c>credit.release</c> carrying
+    /// real fact's bytes — reversing the pre-SA-4 order. <see cref="FindOperatorCancelNoteAsync_ARealFactEnvelope_ReturnsNull"/>
+    /// covers a different case: R27's credit-rejected chain, where a <c>StockRelease</c> row carries
+    /// a real <c>credit.rejected.v1</c> envelope. THIS test makes BOTH rows carry a synthetic
     /// <c>orders.cancel.requested</c> envelope, each with its OWN, distinct
     /// note, so <c>credit.release</c> winning is observable and can fail —
     /// unlike the retired version, which put a note-less REAL envelope on
@@ -319,13 +322,18 @@ public sealed class SagaCommandStoreTests(MsSqlContainerFixture mssql)
     /// still returns <c>credit.release</c> first). So a position-based
     /// mutation cannot be armed by reordering INSERTS — it has to reorder
     /// which COMMAND carries the note. Here <c>credit.release</c> is the
-    /// row that is NOT the operator's (a real fact's own envelope — the
-    /// shape a saga-decided compensation leaves, never reachable from
-    /// <c>credit.release</c> in production today since only
-    /// <c>CancelOrderCommandHandler</c> ever enqueues it, but guarded
-    /// defensively exactly as <see cref="FindOperatorCancelNoteAsync_PrefersCreditReleaseOverStockRelease_WhenBothRowsExistForTheOrder"/>
-    /// already does for the symmetric case), and <c>stock.release</c> —
-    /// physically SECOND in the index — carries the operator's own note. A
+    /// row that is NOT the operator's (a real fact's own envelope) and
+    /// <c>stock.release</c> — physically SECOND in the index — carries the
+    /// operator's own synthetic note. Under SA-4 (ruled 2026-09-11) this is
+    /// not a defensive-only shape: <c>CancelOrderCommandHandler</c> never
+    /// enqueues <c>credit.release</c> directly (it enqueues only
+    /// <c>stock.release</c>, the synthetic-envelope row), and every
+    /// <c>credit.release</c> row is enqueued from a FACT-DRIVEN path
+    /// (<see cref="OrderToCash.Orders.Application.Sagas.SagaFactHandler"/>)
+    /// carrying a real fact's own envelope — this is the production shape
+    /// of BOTH SA-4 interleaves: release-wins at <c>confirmed</c>
+    /// (<c>stock.released.v1</c>'s envelope), and a late approval at
+    /// <c>stock_reserved</c> (<c>credit.approved.v1</c>'s envelope). A
     /// lookup that selected by ROW POSITION (the physically-first row)
     /// rather than by the envelope's own <c>eventType</c> would return
     /// <see langword="null"/> here; the content-based lookup must not.
@@ -364,6 +372,68 @@ public sealed class SagaCommandStoreTests(MsSqlContainerFixture mssql)
         var found = await store.FindOperatorCancelNoteAsync(orderId, CancellationToken.None);
 
         Assert.Equal(operatorNote, found);
+    }
+
+    /// <summary>
+    /// Id 62 (SA-4) — <see cref="ISagaCommandStore.HasAcceptedOperatorCancelAsync"/>'s
+    /// own content discipline, the store-level half of the id-62 arming
+    /// table's A3: an R27-style <c>stock.release</c> row carrying a REAL
+    /// fact's envelope (<c>credit.rejected.v1</c>) must NOT count as an
+    /// accepted operator cancellation — armed by substituting "any
+    /// <c>stock.release</c> row, regardless of envelope" for the content
+    /// check this proves exists.
+    /// </summary>
+    [Fact]
+    public async Task HasAcceptedOperatorCancelAsync_ARealFactEnvelopeOnStockRelease_ReturnsFalse()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_sagastore_{Guid.NewGuid():N}");
+        await using (var migrateDb = mssql.CreateDbContext(connectionString))
+        {
+            await migrateDb.Database.MigrateAsync();
+        }
+
+        var orderId = Guid.NewGuid();
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var options = Options.Create(BuildOptions(leaseMs: 60_000));
+
+        await using var db = mssql.CreateDbContext(connectionString);
+        var store = new EfCoreSagaCommandStore(db, clock, options);
+
+        // R27's own credit_rejected path — a stock.release row that exists
+        // for this order, but was never the operator's own.
+        await store.EnqueueAsync(
+            orderId, "ORD-000013", SagaCommandKind.StockRelease, "{}", Guid.NewGuid(),
+            BuildRealFactEnvelopeBytes(orderId, "credit.rejected.v1"), SagaFactTopics.BillingFacts, CancellationToken.None);
+
+        var accepted = await store.HasAcceptedOperatorCancelAsync(orderId, CancellationToken.None);
+
+        Assert.False(accepted);
+    }
+
+    /// <summary>The other half — a <c>stock.release</c> row carrying the SYNTHETIC <c>orders.cancel.requested</c> envelope (<see cref="CancelOrderCommandHandler"/>'s own direct enqueue) DOES count.</summary>
+    [Fact]
+    public async Task HasAcceptedOperatorCancelAsync_TheSyntheticOperatorEnvelopeOnStockRelease_ReturnsTrue()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_sagastore_{Guid.NewGuid():N}");
+        await using (var migrateDb = mssql.CreateDbContext(connectionString))
+        {
+            await migrateDb.Database.MigrateAsync();
+        }
+
+        var orderId = Guid.NewGuid();
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var options = Options.Create(BuildOptions(leaseMs: 60_000));
+
+        await using var db = mssql.CreateDbContext(connectionString);
+        var store = new EfCoreSagaCommandStore(db, clock, options);
+
+        await store.EnqueueAsync(
+            orderId, "ORD-000014", SagaCommandKind.StockRelease, "{}", Guid.NewGuid(),
+            BuildSyntheticEnvelopeBytes(orderId, note: "Operator cancelled while stock_reserved."), OrdersFactTopic.Name, CancellationToken.None);
+
+        var accepted = await store.HasAcceptedOperatorCancelAsync(orderId, CancellationToken.None);
+
+        Assert.True(accepted);
     }
 
     /// <summary>

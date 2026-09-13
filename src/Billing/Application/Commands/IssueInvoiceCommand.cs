@@ -1,4 +1,5 @@
 using OrderToCash.Contracts.Facts;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.SharedKernel;
 
@@ -13,12 +14,12 @@ public sealed record IssueInvoiceCommand(
     IReadOnlyList<InvoiceLine> Lines,
     long? Discount,
     UniqueId CorrelationId,
-    UniqueId RequestId) : ICommand<Infrastructure.Messaging.Rpc.InvoiceIssueReplyPayload>;
+    UniqueId RequestId) : ICommand<InvoiceIssueReplyPayload>;
 
 /// <summary>Thin delegation to <see cref="InvoiceIssueService.IssueAsync"/> — the split that keeps the transactional unit a plain class a unit test can <c>new</c> with fakes.</summary>
 public sealed class IssueInvoiceCommandHandler(InvoiceIssueService service)
-    : ICommandHandler<IssueInvoiceCommand, Infrastructure.Messaging.Rpc.InvoiceIssueReplyPayload>
+    : ICommandHandler<IssueInvoiceCommand, InvoiceIssueReplyPayload>
 {
-    public Task<Infrastructure.Messaging.Rpc.InvoiceIssueReplyPayload> HandleAsync(IssueInvoiceCommand command, CancellationToken cancellationToken) =>
+    public Task<InvoiceIssueReplyPayload> HandleAsync(IssueInvoiceCommand command, CancellationToken cancellationToken) =>
         service.IssueAsync(command, cancellationToken);
 }

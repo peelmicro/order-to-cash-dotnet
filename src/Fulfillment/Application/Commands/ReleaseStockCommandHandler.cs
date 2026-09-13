@@ -1,5 +1,5 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
-using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 
 namespace OrderToCash.Fulfillment.Application.Commands;
 

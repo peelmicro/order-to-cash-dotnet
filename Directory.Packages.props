@@ -18,6 +18,22 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
     <PackageVersion Include="coverlet.msbuild" Version="6.0.2" />
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+    <!-- feature composition_root_delegation_and_wiring_are_unguarded (id 68,
+         fix round 4, corrected fix round 5 — D19): tests/Architecture.Tests
+         only. Replaces the hand-rolled comment/string-literal text scanner
+         (defeated across three review rounds by a comment, then #if false /
+         a raw string, then "# if false" and a quote nested inside an
+         interpolation hole) with the C# compiler's own lexer/parser — a raw
+         string or an interpolation hole's contents become literal tokens,
+         never reachable as an ArgumentSyntax node, so that half of the
+         defeat class cannot exist rather than needing another spelling
+         added to a denylist. Conditional-compilation regions are NOT
+         automatically safe this way: round 4's re-review found the parser
+         (fed no preprocessor symbols) and the build (which defines DEBUG)
+         can disagree about which #if branch is live, so
+         CompositionRootDelegationWiringTests.ParseFile rejects any
+         directive outright rather than relying on the parser alone. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
 
     <!-- feature cqrs_dispatcher (phase 8): the hand-rolled in-process CQRS
          dispatcher's only package — resolves ICommandHandler/IQueryHandler/

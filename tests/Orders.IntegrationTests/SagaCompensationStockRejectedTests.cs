@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
-using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using Xunit;
 
 namespace OrderToCash.Orders.IntegrationTests;

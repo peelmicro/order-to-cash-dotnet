@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Fulfillment.Application;
 using OrderToCash.Fulfillment.Application.Commands;

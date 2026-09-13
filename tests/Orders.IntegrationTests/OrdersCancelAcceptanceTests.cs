@@ -5,6 +5,7 @@ using Confluent.Kafka.Admin;
 using Microsoft.EntityFrameworkCore;
 using NATS.Client.Core;
 using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Infrastructure.Outbox;
@@ -150,17 +151,20 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
     }
 
     /// <summary>
-    /// The <c>credit_approved</c>/<c>confirmed</c> branch — the reverse-
-    /// order-of-acquisition proof: a shared, ORDERED list two SEPARATE
-    /// stand-in responders append to (never merely "both eventually
-    /// happened") must read exactly <c>["credit.release", "stock.release"]</c>.
-    /// No <c>despatch.create</c> responder is started at all — isolating the
-    /// SAME operator-cancel-vs-saga-forward-progress race #7 disclosed,
-    /// which is materially WORSE on this branch (see
-    /// <c>progress/impl_orders_cancel_responder.md</c>).
+    /// The <c>credit_approved</c>/<c>confirmed</c> branch — SA-4's own
+    /// order proof: a shared, ORDERED list two SEPARATE stand-in responders
+    /// append to (never merely "both eventually happened") must read
+    /// exactly <c>["stock.release", "credit.release"]</c> — stock, the
+    /// CONTESTED resource, released FIRST so Fulfillment's own one-lock
+    /// arbitration could decide it against a despatch already requested
+    /// (saga.md §4.3, "The despatch already requested"). No
+    /// <c>despatch.create</c> responder is started at all — isolating the
+    /// SAME operator-cancel-vs-saga-forward-progress race #7 disclosed
+    /// (its OTHER outcome — despatch winning the race — is proven by
+    /// <c>OperatorCancelRacesSagaForwardProgressTests.Confirmed_DespatchWins</c>).
     /// </summary>
     [Fact]
-    public async Task CreditApprovedOrConfirmed_IssuesCreditReleaseStrictlyBeforeStockRelease_ReverseOrderOfAcquisition()
+    public async Task CreditApprovedOrConfirmed_IssuesStockReleaseStrictlyBeforeCreditRelease_TheContestedResourceFirst()
     {
         var (host, connectionString) = await SagaIntegrationTestSupport.StartHostAsync(mssql, kafka, nats, "cancelcreditrel");
         try
@@ -225,30 +229,30 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
 
             Assert.Equal("confirmed", reply.Status);
             Assert.Null(reply.CancellationReason);
-            Assert.Equal(["credit_release", "stock_release"], reply.CompensationPlanned);
+            Assert.Equal(["stock_release", "credit_release"], reply.CompensationPlanned);
 
-            // credit.release is enqueued and dispatched over the real wire
+            // stock.release is enqueued and dispatched over the real wire
             // (the stand-in above answered it) — but only the PUBLISHED
-            // credit.released.v1 FACT advances the saga, standing in for
-            // Billing's own outbox relay, same discipline as every other
-            // fact in this suite.
-            var creditReleasedFactEventId = Guid.NewGuid();
-            await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "credit.release", "sent", _wait);
-            await StandInSagaResponders.PublishFactAsync(
-                kafka.BootstrapServers, SagaFactTopics.BillingFacts, "credit.released.v1", orderId, creditReleasedFactEventId, DateTimeOffset.UtcNow,
-                new CreditReleasedPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.RetailerCode, OrderPersistenceTestSupport.CompanyCode, "EUR", 2_450, 100_000, "order_cancelled", "CR-000001"), CancellationToken.None,
-                eventId: creditReleasedFactEventId);
-
-            // Not yet cancelled — the order stays confirmed until
-            // stock.released.v1 (the SECOND compensation step) arrives too.
-            Assert.Equal("confirmed", await SagaIntegrationTestSupport.WaitForOrderStatusAsync(connectionString, mssql, orderId, "confirmed", TimeSpan.FromSeconds(1)));
-
+            // stock.released.v1 FACT advances the saga, standing in for
+            // Fulfillment's own outbox relay, same discipline as every
+            // other fact in this suite.
             var stockReleasedFactEventId = Guid.NewGuid();
             await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "stock.release", "sent", _wait);
             await StandInSagaResponders.PublishFactAsync(
                 kafka.BootstrapServers, SagaFactTopics.FulfillmentFacts, "stock.released.v1", orderId, stockReleasedFactEventId, DateTimeOffset.UtcNow,
                 new StockReleasedPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.CompanyCode, [], "order_cancelled"), CancellationToken.None,
                 eventId: stockReleasedFactEventId);
+
+            // Not yet cancelled — the order stays confirmed until
+            // credit.released.v1 (the SECOND compensation step) arrives too.
+            Assert.Equal("confirmed", await SagaIntegrationTestSupport.WaitForOrderStatusAsync(connectionString, mssql, orderId, "confirmed", TimeSpan.FromSeconds(1)));
+
+            var creditReleasedFactEventId = Guid.NewGuid();
+            await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "credit.release", "sent", _wait);
+            await StandInSagaResponders.PublishFactAsync(
+                kafka.BootstrapServers, SagaFactTopics.BillingFacts, "credit.released.v1", orderId, creditReleasedFactEventId, DateTimeOffset.UtcNow,
+                new CreditReleasedPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.RetailerCode, OrderPersistenceTestSupport.CompanyCode, "EUR", 2_450, 100_000, "order_cancelled", "CR-000001"), CancellationToken.None,
+                eventId: creditReleasedFactEventId);
 
             await SagaIntegrationTestSupport.WaitForOrderStatusAsync(connectionString, mssql, orderId, "cancelled", _wait);
 
@@ -257,16 +261,16 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
             Assert.Equal("operator_cancelled", row.CancellationReason);
 
             // The ordering guarantee itself — not merely that both fired.
-            Assert.Equal(["credit.release", "stock.release"], issuedOrder.ToArray());
+            Assert.Equal(["stock.release", "credit.release"], issuedOrder.ToArray());
 
             var cancelledRow = await db.OutboxMessages.SingleAsync(m => m.AggregateId == orderId && m.EventType == "order.cancelled.v1");
             using var payloadDoc = JsonDocument.Parse(cancelledRow.Payload);
             var steps = payloadDoc.RootElement.GetProperty("compensationSteps");
             Assert.Equal(2, steps.GetArrayLength());
-            Assert.Equal("credit_released", steps[0].GetProperty("step").GetString());
-            Assert.False(steps[0].TryGetProperty("eventId", out _), "the synthesised credit_released step carries no eventId — no cross-fact state sources the earlier fact's own id (see SagaStepTable.CompensationStepsFromCreditThenStockRelease)");
-            Assert.Equal("stock_released", steps[1].GetProperty("step").GetString());
-            Assert.Equal(stockReleasedFactEventId, steps[1].GetProperty("eventId").GetGuid());
+            Assert.Equal("stock_released", steps[0].GetProperty("step").GetString());
+            Assert.False(steps[0].TryGetProperty("eventId", out _), "the synthesised stock_released step carries no eventId — no cross-fact state sources the earlier fact's own id (see SagaStepTable.CompensationStepsFromStockThenCreditRelease)");
+            Assert.Equal("credit_released", steps[1].GetProperty("step").GetString());
+            Assert.Equal(creditReleasedFactEventId, steps[1].GetProperty("eventId").GetGuid());
         }
         finally
         {
@@ -392,10 +396,11 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
 
     /// <summary>
     /// Id 71, branch 2 of 3 (<c>confirmed</c>) — same real chain as
-    /// <see cref="CreditApprovedOrConfirmed_IssuesCreditReleaseStrictlyBeforeStockRelease_ReverseOrderOfAcquisition"/>,
-    /// but through BOTH real compensation hops (<c>credit.release</c> then
-    /// <c>stock.release</c>) — proving the note survives the TWO-hop chain,
-    /// not merely the direct one <c>StockReserved_WithANote_…</c> covers.
+    /// <see cref="CreditApprovedOrConfirmed_IssuesStockReleaseStrictlyBeforeCreditRelease_TheContestedResourceFirst"/>,
+    /// but through BOTH real compensation hops (<c>stock.release</c> then
+    /// <c>credit.release</c>, SA-4 order) — proving the note survives the
+    /// TWO-hop chain, not merely the direct one <c>StockReserved_WithANote_…</c>
+    /// covers.
     /// </summary>
     [Fact]
     public async Task Confirmed_WithANote_TheNoteReachesTheCancelledOutboxRowAfterTheRealCompensationCompletes()
@@ -431,23 +436,23 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
             await using var caller = new NatsConnection(new NatsOpts { Url = nats.Url });
             await CancelAsync(caller, orderId, note);
 
-            var creditReleasedFactEventId = Guid.NewGuid();
-            await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "credit.release", "sent", _wait);
-            await StandInSagaResponders.PublishFactAsync(
-                kafka.BootstrapServers, SagaFactTopics.BillingFacts, "credit.released.v1", orderId, creditReleasedFactEventId, DateTimeOffset.UtcNow,
-                new CreditReleasedPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.RetailerCode, OrderPersistenceTestSupport.CompanyCode, "EUR", 2_450, 100_000, "order_cancelled", "CR-000001"), CancellationToken.None,
-                eventId: creditReleasedFactEventId);
-
-            // Not yet cancelled — confirms the note has not already leaked
-            // through before the SECOND hop completes.
-            Assert.Equal("confirmed", await SagaIntegrationTestSupport.WaitForOrderStatusAsync(connectionString, mssql, orderId, "confirmed", TimeSpan.FromSeconds(1)));
-
             var stockReleasedFactEventId = Guid.NewGuid();
             await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "stock.release", "sent", _wait);
             await StandInSagaResponders.PublishFactAsync(
                 kafka.BootstrapServers, SagaFactTopics.FulfillmentFacts, "stock.released.v1", orderId, stockReleasedFactEventId, DateTimeOffset.UtcNow,
                 new StockReleasedPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.CompanyCode, [], "order_cancelled"), CancellationToken.None,
                 eventId: stockReleasedFactEventId);
+
+            // Not yet cancelled — confirms the note has not already leaked
+            // through before the SECOND hop completes.
+            Assert.Equal("confirmed", await SagaIntegrationTestSupport.WaitForOrderStatusAsync(connectionString, mssql, orderId, "confirmed", TimeSpan.FromSeconds(1)));
+
+            var creditReleasedFactEventId = Guid.NewGuid();
+            await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "credit.release", "sent", _wait);
+            await StandInSagaResponders.PublishFactAsync(
+                kafka.BootstrapServers, SagaFactTopics.BillingFacts, "credit.released.v1", orderId, creditReleasedFactEventId, DateTimeOffset.UtcNow,
+                new CreditReleasedPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.RetailerCode, OrderPersistenceTestSupport.CompanyCode, "EUR", 2_450, 100_000, "order_cancelled", "CR-000001"), CancellationToken.None,
+                eventId: creditReleasedFactEventId);
 
             await SagaIntegrationTestSupport.WaitForOrderStatusAsync(connectionString, mssql, orderId, "cancelled", _wait);
 
@@ -475,19 +480,21 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
     /// handler's own class remarks), so this test seeds it directly via EF,
     /// the same "cheap fixture, not the path under test" precedent
     /// <see cref="Terminal_RepliesOrderNotCancellableNot503_AndLeavesTheOrderUntouched"/>
-    /// already establishes. The COMPLETION half (the note surviving the
-    /// two-hop chain once it is running) is identical code to
+    /// already establishes. SA-4 makes this branch's direct enqueue
+    /// <c>stock.release</c> (not <c>credit.release</c> — the CONTESTED
+    /// resource, released first). The COMPLETION half (the note surviving
+    /// the two-hop chain once it is running) is identical code to
     /// <see cref="Confirmed_WithANote_TheNoteReachesTheCancelledOutboxRowAfterTheRealCompensationCompletes"/>
     /// and is not re-proven here.
     /// </summary>
     [Fact]
-    public async Task CreditApproved_WithANote_TheEnqueuedCreditReleaseRowCarriesItInItsRealStoredEnvelope()
+    public async Task CreditApproved_WithANote_TheEnqueuedStockReleaseRowCarriesItInItsRealStoredEnvelope()
     {
         var (host, connectionString) = await SagaIntegrationTestSupport.StartHostAsync(mssql, kafka, nats, "cancelcreditapprovednote");
         try
         {
-            await using var creditRelease = await StandInSagaResponders.StartCreditReleaseAsync(
-                nats.Url, request => new CreditReleaseReplyPayload(true, request.OrderReference, AvailableCreditAfter: 500_00, CreditCode: "CR-000001", Currency: "EUR", ReleasedAmount: 2_450), CancellationToken.None);
+            await using var stockRelease = await StandInSagaResponders.StartStockReleaseAsync(
+                nats.Url, request => new StockReleaseReplyPayload("released", request.OrderReference, Released: []), CancellationToken.None);
             await using var stockCheck = await StandInFulfillmentStockCheckResponder.StartAvailableAsync(nats.Url, CancellationToken.None);
 
             var placed = await SagaIntegrationTestSupport.PlaceOrderAsync(host);
@@ -504,12 +511,12 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
             await using var caller = new NatsConnection(new NatsOpts { Url = nats.Url });
             var reply = await CancelAsync(caller, orderId, note);
             Assert.Equal("credit_approved", reply.Status);
-            Assert.Equal(["credit_release", "stock_release"], reply.CompensationPlanned);
+            Assert.Equal(["stock_release", "credit_release"], reply.CompensationPlanned);
 
-            await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "credit.release", "sent", _wait);
+            await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "stock.release", "sent", _wait);
 
             await using var db2 = mssql.CreateDbContext(connectionString);
-            var row2 = await db2.SagaCommands.AsNoTracking().SingleAsync(c => c.OrderId == orderId && c.Command == "credit.release");
+            var row2 = await db2.SagaCommands.AsNoTracking().SingleAsync(c => c.OrderId == orderId && c.Command == "stock.release");
             Assert.NotNull(row2.TriggeringEventEnvelope);
             using var envelopeDoc = JsonDocument.Parse(row2.TriggeringEventEnvelope!);
             Assert.Equal("orders.cancel.requested", envelopeDoc.RootElement.GetProperty("eventType").GetString());
@@ -518,7 +525,7 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
             // GetProperty()/KeyNotFoundException.
             Assert.True(
                 envelopePayload.TryGetProperty("note", out var envelopeNoteElement),
-                $"expected the stored credit.release envelope's payload to carry \"note\": \"{note}\", but it carries no note key at all. payload: {envelopePayload.GetRawText()}");
+                $"expected the stored stock.release envelope's payload to carry \"note\": \"{note}\", but it carries no note key at all. payload: {envelopePayload.GetRawText()}");
             Assert.Equal(note, envelopeNoteElement.GetString());
         }
         finally

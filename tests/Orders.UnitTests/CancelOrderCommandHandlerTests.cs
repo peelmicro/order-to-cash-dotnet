@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OrderToCash.Contracts.Envelopes;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
@@ -216,17 +217,21 @@ public sealed class CancelOrderCommandHandlerTests
     }
 
     /// <summary>
-    /// The <c>credit_approved</c>/<c>confirmed</c> branch — enqueues
-    /// <c>credit.release</c> ONLY (never <c>stock.release</c> too: that
-    /// follows later, once <c>credit.released.v1</c> arrives and the
+    /// SA-4 — the <c>credit_approved</c>/<c>confirmed</c> branch enqueues
+    /// <c>stock.release</c> ONLY, the SAME way the <c>stock_reserved</c>
+    /// branch does: stock is the CONTESTED resource at these statuses
+    /// (saga.md §4.3, "The despatch already requested"), released FIRST so
+    /// Fulfillment's own one-lock arbitration can decide it against a
+    /// <c>despatch.create</c> already in flight. <c>credit.release</c>
+    /// follows later, once <c>stock.released.v1</c> arrives and the
     /// EXTENDED <see cref="SagaStepTable"/> owes it — this handler issues
-    /// the FIRST step of the reverse-order-of-acquisition chain, not both).
-    /// The reply names BOTH planned releases, credit first (saga.md §4.3).
+    /// only the first step. The reply names BOTH planned releases, stock
+    /// first (saga.md §4.3).
     /// </summary>
     [Theory]
     [InlineData(OrderStatus.CreditApproved)]
     [InlineData(OrderStatus.Confirmed)]
-    public async Task CreditApprovedOrConfirmed_EnqueuesCreditReleaseOnly_StatusUnchangedAndBothReleasesPlannedInReverseOrderOfAcquisition(OrderStatus status)
+    public async Task CreditApprovedOrConfirmed_EnqueuesStockReleaseOnly_StatusUnchangedAndBothReleasesPlannedStockFirst(OrderStatus status)
     {
         var order = OrderTestData.RehydratedOrder(status);
         var orders = new FakeOrderRepository();
@@ -240,26 +245,25 @@ public sealed class CancelOrderCommandHandlerTests
 
         Assert.Equal(status, result.Status);
         Assert.Null(result.CancellationReason);
-        Assert.Equal(["credit_release", "stock_release"], result.CompensationPlanned);
+        Assert.Equal(["stock_release", "credit_release"], result.CompensationPlanned);
         Assert.Equal(status, order.Status);
         Assert.Equal(0, orders.SaveChangesCallCount);
 
         var enqueued = Assert.Single(store.Enqueued);
-        Assert.Equal(SagaCommandKind.CreditRelease, enqueued.Command);
+        Assert.Equal(SagaCommandKind.StockRelease, enqueued.Command);
 
-        var payload = JsonSerializer.Deserialize<CreditReleaseRequestPayload>(enqueued.Payload, JsonWire.Options)!;
+        var payload = JsonSerializer.Deserialize<StockReleaseRequestPayload>(enqueued.Payload, JsonWire.Options)!;
         Assert.Equal(order.OrderReference.Value, payload.OrderReference);
-        Assert.Equal(order.RetailerCode, payload.RetailerCode);
-        Assert.Equal(order.CompanyCode, payload.CompanyCode);
+        Assert.Equal("order_cancelled", payload.Reason);
 
         // Id 71 — the SAME synthetic envelope the stock_reserved branch
-        // carries, on the credit.release enqueue site this time
-        // (CancelOrderCommandHandler.cs's OTHER call to
-        // OperatorCancelRequestedEnvelope.Build). This row's envelope is
-        // never touched again after this INSERT — the LATER stock.release
-        // row this chain owes is a separate, new row (inserted only once
-        // credit.released.v1 arrives), never a rewrite of this one — so
-        // this row stays the canonical note carrier for this branch.
+        // carries, since SA-4 makes this branch's own direct enqueue the
+        // SAME call (BeginStockReleaseCompensationAsync). This row's
+        // envelope is never touched again after this INSERT — the LATER
+        // credit.release row this chain owes is a separate, new row
+        // (inserted only once stock.released.v1 arrives), never a rewrite
+        // of this one — so this row stays the canonical note carrier for
+        // this branch.
         var triggeringFact = Assert.Single(store.EnqueuedTriggeringFacts);
         Assert.Equal(OrdersFactTopic.Name, triggeringFact.Topic);
         Assert.NotNull(triggeringFact.Envelope);
@@ -273,7 +277,7 @@ public sealed class CancelOrderCommandHandlerTests
         Assert.Equal(note, envelope.Payload.Note);
 
         var signalled = Assert.Single(signal.Signalled);
-        Assert.Equal(SagaCommandKind.CreditRelease, signalled.Command);
+        Assert.Equal(SagaCommandKind.StockRelease, signalled.Command);
     }
 
     [Fact]
@@ -294,7 +298,7 @@ public sealed class CancelOrderCommandHandlerTests
     }
 
     private static CancelOrderCommandHandler BuildHandler(FakeOrderRepository orders, FakeSagaCommandStore store, FakeSagaCommandSignal signal, DateTimeOffset now) =>
-        new(new FakeUnitOfWork(), orders, store, signal, new FakeClock(now));
+        new(new FakeUnitOfWork(), orders, store, signal, new RpcJsonRequestSerializer(), new FakeClock(now));
 
     private sealed class FakeSagaCommandStore : ISagaCommandStore
     {
@@ -325,7 +329,7 @@ public sealed class CancelOrderCommandHandlerTests
 
         public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class FakeSagaCommandSignal : ISagaCommandSignal

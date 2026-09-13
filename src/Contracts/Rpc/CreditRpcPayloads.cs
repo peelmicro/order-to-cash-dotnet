@@ -1,11 +1,21 @@
-namespace OrderToCash.Billing.Infrastructure.Messaging.Rpc;
+namespace OrderToCash.Contracts.Rpc;
 
 // The six request/reply payload records of the three billing.credit.*
-// subjects, transcribed from specs/shared/asyncapi.yaml — Billing's OWN
-// copy, not a reference to Orders' SagaCommandPayloads.cs, per the
-// established rule that "RPC payloads live in the service that speaks
-// them" (design.md §4.3). BC23's parsed-from-the-spec test is what makes
-// following the generated contract mechanical rather than a matter of care.
+// subjects, transcribed from specs/shared/asyncapi.yaml. Feature 76
+// (application_layer_depends_on_infrastructure_unguarded) moved these here
+// from src/Billing/Infrastructure/Messaging/Rpc/CreditRpcPayloads.cs AND
+// unified them with Orders' own saga-side copy
+// (src/Orders/Infrastructure/Messaging/Rpc/SagaCommandPayloads.cs's
+// billing.credit.hold/release section, which declared a structurally
+// IDENTICAL SagaMoney/CreditHoldRequestPayload/CreditHoldReplyPayload/
+// CreditReleaseRequestPayload/CreditReleaseReplyPayload set) — the two
+// services were maintaining two copies of the same wire shape, one per side
+// of the RPC call, which is what #7 never did (its contracts package was
+// the ONE copy both the caller and the responder imported). CreditMoney is
+// the name that survives; Orders' SagaMoney is retired as a duplicate.
+// BC23's/`SagaCommandPayloadTests`'s parsed-from-the-spec tests are what
+// make following the generated contract mechanical rather than a matter of
+// care, unaffected by the type's namespace.
 
 // -- billing.credit.hold -----------------------------------------------------
 

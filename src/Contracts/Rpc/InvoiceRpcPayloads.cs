@@ -1,15 +1,19 @@
 using OrderToCash.Contracts.Facts;
 
-namespace OrderToCash.Billing.Infrastructure.Messaging.Rpc;
+namespace OrderToCash.Contracts.Rpc;
 
-// The seven request/reply payload records of the two billing.invoice.*
-// subjects, transcribed from specs/shared/asyncapi.yaml — Billing's OWN
-// copy, not a reference to Orders' SagaCommandPayloads.cs, per the
-// established rule that "RPC payloads live in the service that speaks
-// them" (design.md §4.3). `BI28`'s parsed-from-the-spec test is what makes
-// following the generated contract mechanical rather than a matter of care.
-// Every optional property is nullable, so an absent value is OMITTED,
-// never sent as `null` (`JsonWire.Options`).
+// The nine request/reply payload records of the two billing.invoice.*
+// subjects plus billing.payment.register, transcribed from
+// specs/shared/asyncapi.yaml. Feature 76
+// (application_layer_depends_on_infrastructure_unguarded) moved these here
+// from src/Billing/Infrastructure/Messaging/Rpc/InvoiceRpcPayloads.cs AND
+// unified InvoiceIssueRequestPayload/InvoiceIssueReplyPayload with Orders'
+// own saga-side copy in
+// src/Orders/Infrastructure/Messaging/Rpc/SagaCommandPayloads.cs, which
+// declared the structurally IDENTICAL pair for the same subject — see
+// CreditRpcPayloads.cs's own header for the full reasoning. Every optional
+// property is nullable, so an absent value is OMITTED, never sent as
+// <c>null</c> (`JsonWire.Options`).
 
 // -- billing.invoice.issue ----------------------------------------------------
 
@@ -79,7 +83,7 @@ public sealed record InvoiceListReplyPayload(IReadOnlyList<InvoiceViewPayload> I
 /// <see cref="InvoiceId"/>/<see cref="InvoiceReference"/> is REQUIRED —
 /// neither is in the schema's own `required:` list, so the cross-field
 /// "at least one identifier" rule lives in <c>PaymentRegisterRequestValidator</c>,
-/// not here (the placement <see cref="InvoiceRequestValidator"/>'s own
+/// not here (the placement <c>InvoiceRequestValidator</c>'s own
 /// `discount` cross-field check already established).
 /// </summary>
 public sealed record PaymentRegisterRequestPayload(

@@ -13,6 +13,7 @@ namespace OrderToCash.Notifications.UnitTests;
 /// makes this the one caller in the repository that sends real mail — fails
 /// a named test instead of leaving the suite green.
 /// </summary>
+[Collection(NotificationsEnvironmentVariableTestCollection.Name)]
 public sealed class NotificationsProgramConfigurationTests
 {
     private static readonly string[] _envVars =

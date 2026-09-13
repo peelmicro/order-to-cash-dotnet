@@ -1,15 +1,20 @@
 using OrderToCash.Contracts.Facts;
 
-namespace OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
+namespace OrderToCash.Contracts.Rpc;
 
-// The ten request/reply payload records of the five fulfillment.stock.*
-// subjects, transcribed from specs/shared/asyncapi.yaml — Fulfillment's OWN
-// copy, not a reference to Orders' SagaCommandPayloads.cs, per design.md
-// §6.3's rule that "RPC payloads live in the service that speaks them".
-// Money never appears here — this service handles no money at all. Reply
-// line shapes (ReservationRef, Shortage, StockView, PageInfo) are reused
-// from Contracts.Facts / this file rather than re-declared where the wire
-// shape is identical.
+// The sixteen request/reply payload records of the six fulfillment.stock.*
+// subjects, transcribed from specs/shared/asyncapi.yaml. Feature 76
+// (application_layer_depends_on_infrastructure_unguarded) moved these here
+// from src/Fulfillment/Infrastructure/Messaging/Rpc/StockRpcPayloads.cs AND
+// unified StockCheckRequestLine/StockCheckRequestPayload/StockCheckReplyLine/
+// StockCheckReplyPayload/StockReserveRequestLine/StockReserveRequestPayload/
+// StockReserveReplyPayload/StockReleaseRequestPayload/StockReleaseReplyPayload
+// with Orders' own caller-side copy
+// (src/Orders/Infrastructure/Messaging/Rpc/StockCheckPayloads.cs and the
+// stock section of SagaCommandPayloads.cs), which declared structurally
+// IDENTICAL types for the same subjects — see CreditRpcPayloads.cs's own
+// header for the full reasoning. Money never appears here — this service
+// handles no money at all.
 
 // -- fulfillment.stock.check -------------------------------------------------
 

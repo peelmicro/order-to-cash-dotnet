@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrderToCash.Notifications.Application;
 using OrderToCash.Notifications.Application.Ports;
@@ -71,11 +72,28 @@ public static class NotificationsServiceCollectionExtensions
         // own header explains why Mailpit does not need that rule). Every
         // automated test leaves SenderKind at its Console default; only
         // Program.cs sets it to Smtp.
+        //
+        // Backlog id 73 — the Smtp binding is wrapped in
+        // DegradingNotificationSender, with ConsoleNotificationSender as its
+        // fallback: a permanent SMTP failure renders through the console
+        // adapter and acknowledges the fact instead of retrying into the
+        // DLQ. The Console-only binding below is left UNWRAPPED — nothing
+        // to degrade FROM (#7's own app.module.ts rule).
         switch (options.SenderKind)
         {
             case NotificationSenderKind.Smtp:
                 services.AddSingleton<Func<ISmtpTransport>>(_ => static () => new MailKitSmtpTransport());
-                services.AddSingleton<INotificationSender, MailKitNotificationSender>();
+                services.AddSingleton<INotificationSender>(sp =>
+                {
+                    var smtpSender = new MailKitNotificationSender(
+                        sp.GetRequiredService<IOptions<NotificationsSmtpOptions>>(),
+                        sp.GetRequiredService<Func<ISmtpTransport>>());
+                    var consoleFallback = new ConsoleNotificationSender(sp.GetRequiredService<ILogger<ConsoleNotificationSender>>());
+                    return new DegradingNotificationSender(
+                        smtpSender,
+                        consoleFallback,
+                        sp.GetRequiredService<ILogger<DegradingNotificationSender>>());
+                });
                 break;
 
             case NotificationSenderKind.Console:

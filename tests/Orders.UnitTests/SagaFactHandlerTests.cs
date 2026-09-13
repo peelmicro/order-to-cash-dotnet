@@ -1,4 +1,5 @@
 using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Domain;
@@ -136,7 +137,7 @@ public sealed class SagaFactHandlerTests
         var store = new FakeSagaCommandStore();
         var completionRecorder = new FakeSagaCompletionRecorder();
         var laterClock = new FakeClock(OrderTestData.Now.AddMinutes(37));
-        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, laterClock, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), laterClock, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
 
         var fact = BuildFact("credit.released.v1", order.Id.Value);
         var result = await handler.HandleAsync(fact, CancellationToken.None);
@@ -158,7 +159,7 @@ public sealed class SagaFactHandlerTests
         var ignoredFacts = new FakeSagaIgnoredFactRecorder();
         var store = new FakeSagaCommandStore();
         var completionRecorder = new FakeSagaCompletionRecorder();
-        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
 
         var fact = BuildFact("order.placed.v1", order.Id.Value);
         var result = await handler.HandleAsync(fact, CancellationToken.None);
@@ -177,7 +178,7 @@ public sealed class SagaFactHandlerTests
         var ignoredFacts = new FakeSagaIgnoredFactRecorder();
         var store = new FakeSagaCommandStore();
         var completionRecorder = new FakeSagaCompletionRecorder();
-        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
 
         // order.despatched.v1 requires Confirmed; the order is at Placed.
         var fact = BuildFact("order.despatched.v1", order.Id.Value);
@@ -209,7 +210,7 @@ public sealed class SagaFactHandlerTests
         var store = new FakeSagaCommandStore();
         var completionRecorder = new FakeSagaCompletionRecorder();
         var laterClock = new FakeClock(OrderTestData.Now.AddMinutes(11));
-        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, laterClock, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), laterClock, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
 
         var fact = BuildFact("stock.rejected.v1", order.Id.Value);
         var result = await handler.HandleAsync(fact, CancellationToken.None);
@@ -224,10 +225,10 @@ public sealed class SagaFactHandlerTests
     /// <summary>
     /// Review round 2, D5 rows 65–66/74–78 — #7's own second missing case:
     /// "the compensation-completing cancel records EXACTLY ONE, not two".
-    /// The two-step operator-cancel compensation (saga.md §4.3):
-    /// <c>credit.released.v1</c>'s <c>CreditApproved</c> variant is a
-    /// no-op <c>Advance</c> (records nothing — proven first, below), then
-    /// <c>stock.released.v1</c>'s <c>CreditApproved</c> variant is the
+    /// SA-4's two-step operator-cancel compensation (saga.md §4.3):
+    /// <c>stock.released.v1</c>'s <c>CreditApproved</c> variant is a no-op
+    /// <c>Advance</c> (records nothing — proven first, below), then
+    /// <c>credit.released.v1</c>'s <c>CreditApproved</c> variant is the
     /// <c>Cancel</c> that actually completes the order — recorded exactly
     /// once, on the SAME <see cref="FakeSagaCompletionRecorder"/> instance
     /// across both calls, so a regression that also records on the
@@ -243,19 +244,19 @@ public sealed class SagaFactHandlerTests
         var store = new FakeSagaCommandStore();
         var completionRecorder = new FakeSagaCompletionRecorder();
         var laterClock = new FakeClock(OrderTestData.Now.AddMinutes(19));
-        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, laterClock, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var handler = new SagaFactHandler(orders, runner, ignoredFacts, store, completionRecorder, new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), laterClock, Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
 
-        var creditReleasedFact = BuildFact("credit.released.v1", order.Id.Value);
-        var creditResult = await handler.HandleAsync(creditReleasedFact, CancellationToken.None);
-        Assert.Equal(SagaFactOutcome.Processed, creditResult.Outcome);
+        var stockReleasedFact = BuildFact("stock.released.v1", order.Id.Value);
+        var stockResult = await handler.HandleAsync(stockReleasedFact, CancellationToken.None);
+        Assert.Equal(SagaFactOutcome.Processed, stockResult.Outcome);
         Assert.Equal(OrderStatus.CreditApproved, order.Status);
         Assert.Empty(completionRecorder.Recorded);
 
-        var stockReleasedPayload = new StockReleasedPayload("ORD-000001", "COMPANY1", [], "order_cancelled");
-        var stockReleasedFact = BuildFactWithPayload("stock.released.v1", order.Id.Value, stockReleasedPayload);
-        var stockResult = await handler.HandleAsync(stockReleasedFact, CancellationToken.None);
+        var creditReleasedPayload = new CreditReleasedPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", 2_450, 100_000, "order_cancelled", "CR-000001");
+        var creditReleasedFact = BuildFactWithPayload("credit.released.v1", order.Id.Value, creditReleasedPayload);
+        var creditResult = await handler.HandleAsync(creditReleasedFact, CancellationToken.None);
 
-        Assert.Equal(SagaFactOutcome.Processed, stockResult.Outcome);
+        Assert.Equal(SagaFactOutcome.Processed, creditResult.Outcome);
         Assert.Equal(OrderStatus.Cancelled, order.Status);
         var recorded = Assert.Single(completionRecorder.Recorded);
         Assert.Equal("cancelled", recorded.Outcome);
@@ -318,11 +319,21 @@ public sealed class SagaFactHandlerTests
         Assert.Equal("credit_rejected", payload.Reason);
     }
 
-    /// <summary>Same enqueue path, the OTHER fact-driven variant: R27's mirror image for the operator-cancel compensation (feature <c>orders_cancel_responder</c>).</summary>
+    /// <summary>
+    /// SA-4's own step — the mirror image of the ABOVE, on the OTHER
+    /// completing fact: <c>stock.released.v1</c>'s <c>credit_approved</c>/
+    /// <c>confirmed</c> variant is a no-op <see cref="SagaStep.Advance"/>
+    /// that owes <see cref="SagaCommandKind.CreditRelease"/> — the CONTESTED
+    /// resource (stock) has already been released (this fact IS that
+    /// release), so the reverse-order-of-acquisition chain's second hop is
+    /// now due. Reached through <c>SagaCommandRequestFactory.BuildJson</c>'s
+    /// generic overload, not the reason-aware <c>BuildStockReleaseJson</c> —
+    /// <c>credit.release</c> has no caller-chosen reason.
+    /// </summary>
     [Theory]
     [InlineData(OrderStatus.CreditApproved)]
     [InlineData(OrderStatus.Confirmed)]
-    public async Task CreditReleasedV1_CreditApprovedOrConfirmedVariant_EnqueuesStockReleaseWithReasonOrderCancelled_ThroughTheFactory(OrderStatus status)
+    public async Task StockReleasedV1_CreditApprovedOrConfirmedVariant_OwesCreditReleaseAsANoOpAdvance(OrderStatus status)
     {
         var order = OrderTestData.RehydratedOrder(status);
         var orders = new FakeOrderRepository { OrderToReturn = order };
@@ -331,14 +342,61 @@ public sealed class SagaFactHandlerTests
         var store = new FakeSagaCommandStore();
         var handler = BuildHandler(orders, runner, ignoredFacts, store);
 
-        var fact = BuildFact("credit.released.v1", order.Id.Value);
+        var fact = BuildFact("stock.released.v1", order.Id.Value);
         var result = await handler.HandleAsync(fact, CancellationToken.None);
 
         Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
+        Assert.Equal(status, order.Status); // no transition — a no-op Advance.
+        Assert.True(orders.SaveChangesCalled);
         var enqueued = Assert.Single(store.Enqueued);
-        Assert.Equal(SagaCommandKind.StockRelease, enqueued.Command);
-        var payload = RpcJson.Deserialize<StockReleaseRequestPayload>(System.Text.Encoding.UTF8.GetBytes(enqueued.Payload));
-        Assert.Equal("order_cancelled", payload.Reason);
+        Assert.Equal(SagaCommandKind.CreditRelease, enqueued.Command);
+        var payload = RpcJson.Deserialize<CreditReleaseRequestPayload>(System.Text.Encoding.UTF8.GetBytes(enqueued.Payload));
+        Assert.Equal(order.OrderReference.Value, payload.OrderReference);
+        Assert.Equal(order.RetailerCode, payload.RetailerCode);
+        Assert.Equal(order.CompanyCode, payload.CompanyCode);
+        Assert.Empty(ignoredFacts.Records);
+    }
+
+    /// <summary>
+    /// SA-4's completing step: <c>credit.released.v1</c>'s <c>credit_approved</c>/
+    /// <c>confirmed</c> variant CANCELS (the inverse of the pre-SA-4 shape,
+    /// where this fact type was the no-op first hop and <c>stock.released.v1</c>
+    /// completed) — reason <c>operator_cancelled</c>, mapped from the fact's
+    /// own <c>order_cancelled</c> wire reason
+    /// (<see cref="SagaStepTable.MapCreditReleaseReason"/>), and compensation
+    /// steps recorded in RELEASE order: <c>stock_released</c> (synthesised,
+    /// no <c>eventId</c> — the earlier fact's own id is not available, see
+    /// <see cref="SagaStepTable.CompensationStepsFromStockThenCreditRelease"/>'s
+    /// own remarks) then <c>credit_released</c> (THIS fact's own id).
+    /// </summary>
+    [Theory]
+    [InlineData(OrderStatus.CreditApproved)]
+    [InlineData(OrderStatus.Confirmed)]
+    public async Task CreditReleasedV1_CreditApprovedOrConfirmedVariant_CancelsWithStepsInStockThenCreditOrder(OrderStatus status)
+    {
+        var order = OrderTestData.RehydratedOrder(status);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var ignoredFacts = new FakeSagaIgnoredFactRecorder();
+        var store = new FakeSagaCommandStore();
+        var handler = BuildHandler(orders, runner, ignoredFacts, store);
+
+        var payload = new CreditReleasedPayload(order.OrderReference.Value, order.RetailerCode, order.CompanyCode, "EUR", 2_450, 100_000, "order_cancelled", "CR-000001");
+        var fact = BuildFactWithPayload("credit.released.v1", order.Id.Value, payload);
+        var result = await handler.HandleAsync(fact, CancellationToken.None);
+
+        Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
+        Assert.Equal(OrderStatus.Cancelled, order.Status);
+        Assert.Equal(CancellationReason.OperatorCancelled, order.CancellationReason);
+        Assert.Empty(store.Enqueued); // Cancel steps never enqueue anything.
+
+        var cancelled = Assert.Single(order.DomainEvents.OfType<OrderToCash.Orders.Domain.Events.OrderCancelled>());
+        var steps = cancelled.CompensationSteps;
+        Assert.Equal(2, steps.Count);
+        Assert.Equal(CompensationStepKind.StockReleased, steps[0].Step);
+        Assert.Null(steps[0].EventId);
+        Assert.Equal(CompensationStepKind.CreditReleased, steps[1].Step);
+        Assert.Equal(fact.EventId, steps[1].EventId!.Value.Value);
     }
 
     /// <summary>
@@ -374,16 +432,17 @@ public sealed class SagaFactHandlerTests
 
     /// <summary>
     /// Id 71's core wiring, <c>credit_approved</c>/<c>confirmed</c> branch —
-    /// the TWO-hop chain (<c>credit.released.v1</c> then
-    /// <c>stock.released.v1</c>), reading the note back only on the fact
-    /// that actually completes the cancellation (the FIRST hop is a no-op
-    /// <see cref="SagaStep.Advance"/>, never touching the store's note
-    /// lookup at all).
+    /// under SA-4 (ruled 2026-09-11) the TWO-hop chain runs
+    /// <c>stock.released.v1</c> FIRST, then <c>credit.released.v1</c>,
+    /// reading the note back only on the fact that actually completes the
+    /// cancellation (the FIRST hop, <c>stock.released.v1</c>, is a no-op
+    /// <see cref="SagaStep.Advance"/> that owes <c>credit.release</c> next,
+    /// never touching the store's note lookup at all).
     /// </summary>
     [Theory]
     [InlineData(OrderStatus.CreditApproved)]
     [InlineData(OrderStatus.Confirmed)]
-    public async Task CreditApprovedOrConfirmedVariant_StockReleasedV1_ReadsTheOperatorNoteBackFromTheStore_AndThreadsItOntoOrderCancelled(OrderStatus status)
+    public async Task CreditApprovedOrConfirmedVariant_CreditReleasedV1_ReadsTheOperatorNoteBackFromTheStore_AndThreadsItOntoOrderCancelled(OrderStatus status)
     {
         var order = OrderTestData.RehydratedOrder(status);
         var orders = new FakeOrderRepository { OrderToReturn = order };
@@ -393,16 +452,16 @@ public sealed class SagaFactHandlerTests
         var store = new FakeSagaCommandStore { NoteToReturn = note };
         var handler = BuildHandler(orders, runner, ignoredFacts, store);
 
-        var creditReleasedFact = BuildFact("credit.released.v1", order.Id.Value);
-        var creditResult = await handler.HandleAsync(creditReleasedFact, CancellationToken.None);
-        Assert.Equal(SagaFactOutcome.Processed, creditResult.Outcome);
+        var stockReleasedFact = BuildFact("stock.released.v1", order.Id.Value);
+        var stockResult = await handler.HandleAsync(stockReleasedFact, CancellationToken.None);
+        Assert.Equal(SagaFactOutcome.Processed, stockResult.Outcome);
         Assert.Empty(store.FindOperatorCancelNoteCalls); // the no-op Advance never looks it up.
 
-        var stockReleasedPayload = new StockReleasedPayload("ORD-000001", "COMPANY1", [], "order_cancelled");
-        var stockReleasedFact = BuildFactWithPayload("stock.released.v1", order.Id.Value, stockReleasedPayload);
-        var stockResult = await handler.HandleAsync(stockReleasedFact, CancellationToken.None);
+        var creditReleasedPayload = new CreditReleasedPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", 2_450, 100_000, "order_cancelled", "CR-000001");
+        var creditReleasedFact = BuildFactWithPayload("credit.released.v1", order.Id.Value, creditReleasedPayload);
+        var creditResult = await handler.HandleAsync(creditReleasedFact, CancellationToken.None);
 
-        Assert.Equal(SagaFactOutcome.Processed, stockResult.Outcome);
+        Assert.Equal(SagaFactOutcome.Processed, creditResult.Outcome);
         Assert.Equal(OrderStatus.Cancelled, order.Status);
         Assert.Contains(order.Id.Value, store.FindOperatorCancelNoteCalls);
         var cancelled = Assert.Single(order.DomainEvents.OfType<OrderToCash.Orders.Domain.Events.OrderCancelled>());
@@ -461,116 +520,147 @@ public sealed class SagaFactHandlerTests
     }
 
     /// <summary>
-    /// Id 62's core guard, branch A shape — <c>credit.approved.v1</c> is
-    /// genuine forward progress (Advance, precondition <c>StockReserved</c>),
-    /// but an operator-cancel compensation is ALREADY enqueued for this
-    /// order: the fact must be SUPERSEDED, not applied — no status change,
-    /// no <c>despatch.create</c> dispatch, a <see cref="SagaIgnoredFactMarker.Superseded"/>
-    /// record instead of the <see cref="SagaIgnoredFactMarker.PreconditionUnmet"/>
-    /// this order's status would otherwise never even trip (its precondition
-    /// DOES match — that is exactly what makes this a SECOND, distinct
-    /// precondition, not R25's original one).
+    /// SA-4's own new clause (saga.md §4.3, "A credit approval that arrives
+    /// after the cancellation"), <c>stock_reserved</c> shape — a late
+    /// <c>credit.approved.v1</c> for a hold issued before the operator's own
+    /// (already-accepted, not-yet-completed) cancellation issues
+    /// <c>credit.release</c> and NOTHING else: no transition, no
+    /// <c>despatch.create</c>. Checked BEFORE the generic status-precondition
+    /// dispatch (<see cref="SagaFactHandler"/>'s own <c>CreditApprovedEventType</c>
+    /// remarks) — the order's status DOES match the ordinary Advance's own
+    /// precondition, which is exactly why this needs its own check.
     /// </summary>
     [Fact]
-    public async Task Advance_WithAPendingOperatorCancelCompensation_IsSupersededAndNeverApplied()
+    public async Task CreditApprovedV1_LateForAnAcceptedOperatorCancel_AtStockReserved_IssuesCreditReleaseOnly()
     {
         var order = OrderTestData.RehydratedOrder(OrderStatus.StockReserved);
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var ignoredFacts = new FakeSagaIgnoredFactRecorder();
-        var store = new FakeSagaCommandStore { PendingCompensationToReturn = true };
+        var store = new FakeSagaCommandStore { AcceptedOperatorCancelToReturn = true };
+        var handler = BuildHandler(orders, runner, ignoredFacts, store);
+
+        var fact = BuildFact("credit.approved.v1", order.Id.Value);
+        var result = await handler.HandleAsync(fact, CancellationToken.None);
+
+        Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
+        Assert.NotNull(result.Enqueued);
+        Assert.Equal(SagaCommandKind.CreditRelease, result.Enqueued!.Command);
+        Assert.Equal(OrderStatus.StockReserved, order.Status); // never advanced to Confirmed.
+        Assert.False(orders.SaveChangesCalled); // no domain mutation — the order itself is untouched.
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.CreditRelease, enqueued.Command);
+        Assert.Contains(order.Id.Value, store.HasAcceptedOperatorCancelCalls);
+        Assert.Empty(ignoredFacts.Records); // Processed, not ignored — a real, durable effect.
+    }
+
+    /// <summary>SA-4's OTHER ordering — the compensation has already completed (order already <c>cancelled</c>, reason <c>operator_cancelled</c>); the store query is never even asked, since the order's own reason already answers it.</summary>
+    [Fact]
+    public async Task CreditApprovedV1_LateForAnAcceptedOperatorCancel_AtCancelledOperatorCancelled_IssuesCreditReleaseOnly()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.Cancelled, cancellationReason: CancellationReason.OperatorCancelled);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var ignoredFacts = new FakeSagaIgnoredFactRecorder();
+        var store = new FakeSagaCommandStore();
+        var handler = BuildHandler(orders, runner, ignoredFacts, store);
+
+        var fact = BuildFact("credit.approved.v1", order.Id.Value);
+        var result = await handler.HandleAsync(fact, CancellationToken.None);
+
+        Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
+        Assert.NotNull(result.Enqueued);
+        Assert.Equal(SagaCommandKind.CreditRelease, result.Enqueued!.Command);
+        Assert.Equal(OrderStatus.Cancelled, order.Status);
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.CreditRelease, enqueued.Command);
+        Assert.Empty(store.HasAcceptedOperatorCancelCalls); // short-circuited by the order's own reason.
+        Assert.Empty(ignoredFacts.Records);
+    }
+
+    /// <summary>Every OTHER stale combination at <c>cancelled</c> — a SAGA-decided reason, never an operator's — still falls to R25's ORIGINAL <c>precondition_unmet</c> ignore, unaffected by SA-4's new clause.</summary>
+    [Theory]
+    [InlineData(CancellationReason.StockRejected)]
+    [InlineData(CancellationReason.CreditRejected)]
+    public async Task CreditApprovedV1_AtCancelledWithASagaDecidedReason_IsIgnoredByPreconditionUnmet(CancellationReason reason)
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.Cancelled, cancellationReason: reason);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var ignoredFacts = new FakeSagaIgnoredFactRecorder();
+        var store = new FakeSagaCommandStore();
         var handler = BuildHandler(orders, runner, ignoredFacts, store);
 
         var fact = BuildFact("credit.approved.v1", order.Id.Value);
         var result = await handler.HandleAsync(fact, CancellationToken.None);
 
         Assert.Equal(SagaFactOutcome.Ignored, result.Outcome);
-        Assert.Null(result.Enqueued);
-        Assert.Equal(OrderStatus.StockReserved, order.Status); // never advanced to Confirmed.
-        Assert.False(orders.SaveChangesCalled);
-        Assert.Empty(store.Enqueued); // despatch.create never dispatched.
-        Assert.Contains(order.Id.Value, store.HasPendingCompensationCalls);
-
+        Assert.Equal(OrderStatus.Cancelled, order.Status);
+        Assert.Empty(store.Enqueued);
         var record = Assert.Single(ignoredFacts.Records);
-        Assert.Equal(SagaIgnoredFactMarker.Superseded, record.Marker);
-        Assert.Equal(order.Id.Value, record.OrderId);
-        Assert.Equal(OrderStatus.StockReserved, record.ObservedStatus);
-        Assert.Null(record.ExpectedStatus);
-    }
-
-    /// <summary>Same guard, branch B shape — <c>order.despatched.v1</c> (Advance, precondition <c>Confirmed</c>) is #7's own Finding 1 mechanism: superseded rather than allowed to strand the pending <c>credit.release</c>/<c>stock.release</c> chain at <c>despatched</c>.</summary>
-    [Fact]
-    public async Task DespatchedV1_WithAPendingOperatorCancelCompensation_IsSupersededAndNeverApplied()
-    {
-        var order = OrderTestData.RehydratedOrder(OrderStatus.Confirmed);
-        var orders = new FakeOrderRepository { OrderToReturn = order };
-        var runner = new FakeIdempotentSagaRunner();
-        var ignoredFacts = new FakeSagaIgnoredFactRecorder();
-        var store = new FakeSagaCommandStore { PendingCompensationToReturn = true };
-        var handler = BuildHandler(orders, runner, ignoredFacts, store);
-
-        var fact = BuildFact("order.despatched.v1", order.Id.Value);
-        var result = await handler.HandleAsync(fact, CancellationToken.None);
-
-        Assert.Equal(SagaFactOutcome.Ignored, result.Outcome);
-        Assert.Equal(OrderStatus.Confirmed, order.Status); // never advanced to Despatched.
-        Assert.False(orders.SaveChangesCalled);
-        Assert.Empty(store.Enqueued); // invoice.issue never dispatched.
-
-        var record = Assert.Single(ignoredFacts.Records);
-        Assert.Equal(SagaIgnoredFactMarker.Superseded, record.Marker);
+        Assert.Equal(SagaIgnoredFactMarker.PreconditionUnmet, record.Marker);
     }
 
     /// <summary>
-    /// The ONE exemption: <c>credit.released.v1</c>'s own <c>CreditApproved</c>/<c>Confirmed</c>
-    /// <see cref="SagaStep.Advance"/> variants ARE the compensation — they
-    /// must proceed and enqueue <c>stock.release</c> even though a
-    /// (their OWN) compensation row is already pending, or the compensation
-    /// chain would deadlock against itself on its own second hop.
+    /// Review round 1, A2 — the two facts SA-4 REWIRED (<c>stock.released.v1</c>
+    /// and <c>credit.released.v1</c> both now own a conditional
+    /// <c>credit_approved</c>/<c>confirmed</c> variant) had no unit case at
+    /// all for the ONE precondition <see cref="SagaStepTable"/> genuinely
+    /// lacks a variant for: <c>Cancelled</c> with reason
+    /// <c>OperatorCancelled</c> (the compensation having ALREADY completed
+    /// before either fact arrives again — a duplicate or late redelivery).
+    /// R25's original <c>precondition_unmet</c> path must still ignore it
+    /// cleanly: no throw, nothing enqueued, no status change. Armed by the
+    /// review's own M5 (record's Fix round 3 section).
     /// </summary>
     [Theory]
-    [InlineData(OrderStatus.CreditApproved)]
-    [InlineData(OrderStatus.Confirmed)]
-    public async Task CreditReleasedV1_AdvanceVariant_IsNeverSupersededEvenWithAPendingCompensation(OrderStatus status)
+    [InlineData("stock.released.v1")]
+    [InlineData("credit.released.v1")]
+    public async Task StockReleasedOrCreditReleasedV1_AtCancelledOperatorCancelled_IsIgnoredByPreconditionUnmetWithNoThrow(string eventType)
     {
-        var order = OrderTestData.RehydratedOrder(status);
+        var order = OrderTestData.RehydratedOrder(OrderStatus.Cancelled, cancellationReason: CancellationReason.OperatorCancelled);
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var ignoredFacts = new FakeSagaIgnoredFactRecorder();
-        var store = new FakeSagaCommandStore { PendingCompensationToReturn = true };
+        var store = new FakeSagaCommandStore();
         var handler = BuildHandler(orders, runner, ignoredFacts, store);
 
-        var fact = BuildFact("credit.released.v1", order.Id.Value);
+        var fact = BuildFact(eventType, order.Id.Value);
         var result = await handler.HandleAsync(fact, CancellationToken.None);
 
-        Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
-        var enqueued = Assert.Single(store.Enqueued);
-        Assert.Equal(SagaCommandKind.StockRelease, enqueued.Command);
-        Assert.Empty(ignoredFacts.Records);
-        Assert.Empty(store.HasPendingCompensationCalls); // exempt by eventType — never even asks.
+        Assert.Equal(SagaFactOutcome.Ignored, result.Outcome);
+        Assert.Null(result.Enqueued);
+        Assert.Equal(OrderStatus.Cancelled, order.Status);
+        Assert.Empty(store.Enqueued);
+        var record = Assert.Single(ignoredFacts.Records);
+        Assert.Equal(SagaIgnoredFactMarker.PreconditionUnmet, record.Marker);
     }
 
-    /// <summary>A <see cref="SagaStep.Cancel"/> step (the compensation's own completion, e.g. <c>stock.released.v1</c>) never even asks — the guard is Advance-only.</summary>
+    /// <summary>The ordinary case, unaffected: at <c>stock_reserved</c> with NO accepted operator cancel, <c>credit.approved.v1</c> takes the NORMAL Advance — approve, confirm, dispatch <c>despatch.create</c>.</summary>
     [Fact]
-    public async Task CancelStep_NeverChecksForAPendingCompensation()
+    public async Task CreditApprovedV1_AtStockReservedWithNoAcceptedOperatorCancel_TakesTheNormalAdvance()
     {
-        var order = OrderTestData.RehydratedOrder(OrderStatus.Placed);
+        var order = OrderTestData.RehydratedOrder(OrderStatus.StockReserved);
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var ignoredFacts = new FakeSagaIgnoredFactRecorder();
-        var store = new FakeSagaCommandStore { PendingCompensationToReturn = true };
+        var store = new FakeSagaCommandStore { AcceptedOperatorCancelToReturn = false };
         var handler = BuildHandler(orders, runner, ignoredFacts, store);
 
-        var fact = BuildFact("stock.rejected.v1", order.Id.Value);
+        var fact = BuildFact("credit.approved.v1", order.Id.Value);
         var result = await handler.HandleAsync(fact, CancellationToken.None);
 
         Assert.Equal(SagaFactOutcome.Processed, result.Outcome);
-        Assert.Equal(OrderStatus.Cancelled, order.Status);
-        Assert.Empty(store.HasPendingCompensationCalls);
+        Assert.Equal(OrderStatus.Confirmed, order.Status);
+        Assert.True(orders.SaveChangesCalled);
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.DespatchCreate, enqueued.Command);
+        Assert.Contains(order.Id.Value, store.HasAcceptedOperatorCancelCalls);
+        Assert.Empty(ignoredFacts.Records);
     }
 
     private static SagaFactHandler BuildHandler(FakeOrderRepository orders, FakeIdempotentSagaRunner runner, FakeSagaIgnoredFactRecorder ignoredFacts, FakeSagaCommandStore store, FakeSagaCompletionRecorder? completionRecorder = null) =>
-        new(orders, runner, ignoredFacts, store, completionRecorder ?? new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        new(orders, runner, ignoredFacts, store, completionRecorder ?? new FakeSagaCompletionRecorder(), new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
 
     /// <summary>Shared with <c>SagaFactCommandHandlerTests</c>' own private nested copy — this one is exposed (not private) so <c>SagaCompletionMetricTests</c> can inspect <see cref="Recorded"/> after driving <see cref="BuildHandler"/> through a real transition.</summary>
     internal sealed class FakeSagaCompletionRecorder : ISagaCompletionRecorder
@@ -684,16 +774,17 @@ public sealed class SagaFactHandlerTests
         public List<Guid> FindOperatorCancelNoteCalls { get; } = [];
 
         /// <summary>
-        /// Id 62 — what <see cref="HasPendingCompensationAsync"/> returns,
-        /// settable per test; defaults <see langword="false"/> so every
-        /// EXISTING test (none of which is about this guard) is unaffected.
-        /// <see cref="HasPendingCompensationCalls"/> records every
-        /// <c>orderId</c> asked for, so a test can prove the guard actually
-        /// ran — never merely that the fact was ignored for some reason.
+        /// Id 62/SA-4 — what <see cref="HasAcceptedOperatorCancelAsync"/>
+        /// returns, settable per test; defaults <see langword="false"/> so
+        /// every EXISTING test (none of which is about the late-approval
+        /// unwind) is unaffected. <see cref="HasAcceptedOperatorCancelCalls"/>
+        /// records every <c>orderId</c> asked for, so a test can prove the
+        /// query actually ran — never merely that the fact was handled some
+        /// way.
         /// </summary>
-        public bool PendingCompensationToReturn { get; set; }
+        public bool AcceptedOperatorCancelToReturn { get; set; }
 
-        public List<Guid> HasPendingCompensationCalls { get; } = [];
+        public List<Guid> HasAcceptedOperatorCancelCalls { get; } = [];
 
         public Task<EnqueueOutcome> EnqueueAsync(Guid orderId, string orderReference, SagaCommandKind command, string payload, Guid triggeringEventId, byte[]? triggeringEventEnvelope, string? triggeringEventTopic, CancellationToken cancellationToken)
         {
@@ -721,10 +812,10 @@ public sealed class SagaFactHandlerTests
             return Task.FromResult(NoteToReturn);
         }
 
-        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken)
+        public Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken)
         {
-            HasPendingCompensationCalls.Add(orderId);
-            return Task.FromResult(PendingCompensationToReturn);
+            HasAcceptedOperatorCancelCalls.Add(orderId);
+            return Task.FromResult(AcceptedOperatorCancelToReturn);
         }
     }
 }

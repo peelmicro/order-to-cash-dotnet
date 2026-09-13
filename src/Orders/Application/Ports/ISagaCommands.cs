@@ -1,4 +1,4 @@
-using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Application.Ports;
@@ -18,11 +18,12 @@ public readonly record struct SagaCommandMeta(UniqueId CorrelationId, UniqueId R
 /// <summary>
 /// The five outbound saga commands over the RPC transport (design.md §6.1).
 /// Request/reply payload records are transcribed from
-/// <c>specs/shared/asyncapi.yaml</c> into
-/// <c>Infrastructure/Messaging/Rpc/SagaCommandPayloads.cs</c>, referenced
-/// directly here rather than duplicated behind a second, port-local DTO
-/// shape — the same reuse this feature's design explicitly chooses (design.md
-/// §6.1's own snippet). Every method now carries a <see cref="SagaCommandMeta"/>
+/// <c>specs/shared/asyncapi.yaml</c> into <c>Contracts/Rpc/*.cs</c> — feature
+/// 76 (<c>application_layer_depends_on_infrastructure_unguarded</c>) moved
+/// them out of this service's own <c>Infrastructure/Messaging/Rpc</c> and
+/// unified them with Billing's/Fulfillment's own copies of the same wire
+/// shapes, referenced directly here rather than duplicated behind a second,
+/// port-local DTO shape. Every method now carries a <see cref="SagaCommandMeta"/>
 /// (feature 17, `FS2`) so the responder on the other end can stamp
 /// <c>correlationId</c>/<c>causationId</c> on any fact it emits (`R12`).
 /// </summary>

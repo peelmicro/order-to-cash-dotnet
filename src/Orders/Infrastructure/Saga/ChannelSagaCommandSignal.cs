@@ -12,12 +12,24 @@ namespace OrderToCash.Orders.Infrastructure.Saga;
 /// either succeeds immediately or drops immediately — there is no awaited
 /// path here at all.
 /// </summary>
+/// <remarks>
+/// <see cref="Reader"/> is consumed by <see cref="SagaCommandDispatchWorker"/>'s
+/// <c>OrdersSagaDispatchOptions.DegreeOfParallelism</c> PARALLEL consumer
+/// loops (backlog id 80), so <c>SingleReader</c> is deliberately
+/// <see langword="false"/> — it was <see langword="true"/> before this fix,
+/// which is exactly what made the single-worker predecessor's assumption
+/// (one reader draining strictly in order) a correctness requirement rather
+/// than an accident: the fix could not simply add more reader loops without
+/// this flag also changing, or it would have been undefined behaviour
+/// rather than a supported concurrent-read configuration
+/// (<c>System.Threading.Channels</c>' own contract).
+/// </remarks>
 public sealed class ChannelSagaCommandSignal : ISagaCommandSignal
 {
     private const int Capacity = 1_024;
 
     private readonly Channel<SagaCommandRef> _channel = Channel.CreateBounded<SagaCommandRef>(
-        new BoundedChannelOptions(Capacity) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true, SingleWriter = false });
+        new BoundedChannelOptions(Capacity) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = false, SingleWriter = false });
 
     private readonly ILogger<ChannelSagaCommandSignal> _logger;
 

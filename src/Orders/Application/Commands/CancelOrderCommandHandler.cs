@@ -1,32 +1,36 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Domain;
-using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Application.Commands;
 
 /// <summary>
 /// The <c>orders.cancel</c> command handler (feature
-/// <c>orders_cancel_responder</c>) — operator-initiated cancellation, a NEW
-/// saga trigger distinct from the fact-driven R19-R29 flow this Application
-/// layer already has: an RPC request, not a consumed fact. <c>saga.md</c>
-/// §4.3's generalisation table is the exact spec this class transcribes,
-/// branching on the order's CURRENT status at the moment of the request:
+/// <c>orders_cancel_responder</c>, its <c>credit_approved</c>/<c>confirmed</c>
+/// branch redesigned by SA-4 — the human-gated shared-spec amendment ruled
+/// 2026-09-11, closing feature
+/// <c>operator_cancel_races_saga_forward_progress</c>, id 62) —
+/// operator-initiated cancellation, a NEW saga trigger distinct from the
+/// fact-driven R19-R29 flow this Application layer already has: an RPC
+/// request, not a consumed fact. <c>saga.md</c> §4.3's generalisation table
+/// is the exact spec this class transcribes, branching on the order's
+/// CURRENT status at the moment of the request:
 /// <list type="bullet">
-/// <item><c>credit_approved</c>/<c>confirmed</c> — releases the credit hold
-/// FIRST (reverse order of acquisition: it was acquired SECOND, after
-/// stock), then stock, via the SAME durable <see cref="ISagaCommandStore"/>
-/// mechanism every other saga command uses. The order stays where it is
-/// until <c>credit.released.v1</c> then <c>stock.released.v1</c> arrive —
-/// the EXISTING, EXTENDED <see cref="SagaStepTable"/> completes the chain
-/// (no orchestration written here for the second step).</item>
-/// <item><c>stock_reserved</c> — releases stock directly (reason
-/// <c>order_cancelled</c>). The order stays <c>stock_reserved</c> until
-/// <c>stock.released.v1</c> arrives; that fact's EXISTING <c>stock_reserved</c>
-/// variant (R28/SO7, already reason-parametric via <see cref="SagaStepTable.MapReason"/>)
-/// completes the cancellation with ZERO changes needed for THIS branch.</item>
+/// <item><c>stock_reserved</c>, <c>credit_approved</c> or <c>confirmed</c> —
+/// releases stock FIRST (reason <c>order_cancelled</c>), via the SAME
+/// durable <see cref="ISagaCommandStore"/> mechanism every other saga
+/// command uses. At <c>stock_reserved</c> that is the ONLY acquisition; at
+/// <c>credit_approved</c>/<c>confirmed</c> stock is also the CONTESTED
+/// resource — a <c>despatch.create</c> may already be in flight for this
+/// same reservation (§4.3's "The despatch already requested") — so
+/// Fulfillment's own one-lock arbitration decides which of the two wins,
+/// never this handler. The order stays where it is until the compensating
+/// fact(s) arrive; the EXISTING, EXTENDED <see cref="SagaStepTable"/>
+/// completes the chain (no orchestration written here for the second
+/// step).</item>
 /// <item><c>placed</c>, or a terminal status — <see cref="Order.Cancel"/> is
 /// the ONE guard for both outcomes, reused VERBATIM (bullet 2's own acceptance
 /// text: "no new domain modeling"): the immediate branch calls it and it
@@ -38,38 +42,44 @@ namespace OrderToCash.Orders.Application.Commands;
 /// </summary>
 /// <remarks>
 /// <b>A disclosed race — CLOSED by feature <c>operator_cancel_races_saga_forward_progress</c>
-/// (id 62).</b> Every fact-driven saga step (<see cref="SagaFactHandler"/>)
-/// defends its precondition with R25's equality-only check: a fact that
-/// finds the order somewhere other than the expected status is safely
-/// ignored. This handler reads the order's status and enqueues a
-/// compensating command inside ONE transaction, while the saga's own
-/// FORWARD progress (e.g. <c>credit.approved.v1</c> arriving and advancing
+/// (id 62), by SA-4's arbitration, not by a broad supersede guard.</b> Every
+/// fact-driven saga step (<see cref="SagaFactHandler"/>) defends its
+/// precondition with R25's equality-only check: a fact that finds the order
+/// somewhere other than the expected status is safely ignored. This handler
+/// reads the order's status and enqueues a compensating command inside ONE
+/// transaction, while the saga's own FORWARD progress (e.g.
+/// <c>credit.approved.v1</c> arriving and advancing
 /// <c>stock_reserved</c> -&gt; <c>confirmed</c>, or <c>order.despatched.v1</c>
 /// advancing past <c>confirmed</c>) runs in an INDEPENDENT transaction on an
-/// INDEPENDENT consumer. Two defences now close the window id 62's own
-/// remarks here used to describe as open: (1) <see cref="IOrderRepository.GetByIdAsync"/>
-/// takes an explicit <c>UPDLOCK, ROWLOCK</c> on the order row
-/// (<c>EfCoreOrderRepository</c>'s own remarks), serialising this handler's
-/// read against any TRUE-CONCURRENT <see cref="SagaFactHandler"/> transaction
-/// for the SAME order; (2) <see cref="SagaFactHandler"/> itself checks, for
-/// every genuine forward-progress <c>Advance</c> step, whether an
-/// operator-cancel compensation is ALREADY enqueued for this order
-/// (<see cref="ISagaCommandStore.HasPendingCompensationAsync"/>) and
-/// SUPERSEDES the fact (records it <c>SagaIgnoredFactMarker.Superseded</c>,
-/// never applies it) rather than letting it advance the order out from
-/// under a pending compensation — closing the WIDE, non-concurrent window
-/// too (the despatch.create command the saga dispatched on reaching
-/// <c>confirmed</c>, BEFORE the operator ever cancelled, can still reply
-/// seconds later; superseding, not locking, is what stops THAT reply from
-/// stranding the compensation). This is the SAME class of race #7 found
-/// live and disclosed for the identical mechanism (its own
+/// INDEPENDENT consumer. Id 62's first pass closed this with two mechanisms:
+/// the row lock below, unchanged, plus a broad "supersede any forward-progress
+/// Advance step while a compensation is pending" guard in
+/// <see cref="SagaFactHandler"/>. SA-4 (the human-gated shared-spec
+/// amendment ruled 2026-09-11) found that guard strands a hold when a late
+/// <c>credit.approved.v1</c> arrives AFTER the compensation has already
+/// completed, and RETIRED it in favour of two narrower mechanisms: (1)
+/// <see cref="IOrderRepository.GetByIdAsync"/> takes an explicit
+/// <c>UPDLOCK, ROWLOCK</c> on the order row (<c>EfCoreOrderRepository</c>'s
+/// own remarks), serialising this handler's read against any
+/// TRUE-CONCURRENT <see cref="SagaFactHandler"/> transaction for the SAME
+/// order — UNCHANGED from the first pass; (2) at <c>credit_approved</c>/<c>confirmed</c>
+/// this handler now releases stock FIRST (the CONTESTED resource — a
+/// <c>despatch.create</c> already in flight wants the SAME reservation) and
+/// lets Fulfillment's own one-lock arbitration decide which of the two
+/// wins (saga.md §4.3, "The despatch already requested") — no supersede
+/// needed, because there is no longer a forward-progress step left for it
+/// to race; and a late <c>credit.approved.v1</c> for an order whose
+/// operator cancellation was already accepted (<c>stock_reserved</c> with
+/// the compensation under way, or already <c>cancelled</c>) is handled
+/// directly by <see cref="SagaFactHandler"/> (issues <c>credit.release</c>
+/// only — §4.3, "A credit approval that arrives after the cancellation").
+/// This closes the SAME class of race #7 found live and disclosed for the
+/// identical mechanism (its own
 /// <c>orders-cancel.integration.spec.ts:70-82</c>/<c>:138-152</c>) and
-/// never fixed — worse on the <c>credit_approved</c>/<c>confirmed</c> branch
-/// than the <c>stock_reserved</c> one (see
-/// <c>progress/impl_orders_cancel_responder.md</c>'s "a genuinely new
-/// finding" section, and id 62's own
+/// never fixed — see id 62's own
 /// <c>progress/impl_operator_cancel_races_saga_forward_progress.md</c> for
-/// the full reproduction/fix/arming record).
+/// the full reproduction/fix/arming record, including the "Rework pass 2 —
+/// SA-4" section this SA-4 redesign is recorded under.
 ///
 /// <b>The operator note reaches the read-model timeline on EVERY branch —
 /// feature <c>operator_note_reaches_the_timeline</c> (SA-2) closed the
@@ -87,8 +97,9 @@ namespace OrderToCash.Orders.Application.Commands;
 /// the cancellation. Neither <c>StockReleaseRequestPayload</c> nor
 /// <c>CreditReleaseRequestPayload</c> carries a note (SA-2 touched only
 /// <c>OrderCancelledPayload</c>), so the note cannot travel on the RPC wire
-/// — instead <see cref="BeginCreditReleaseCompensationAsync"/> and
-/// <see cref="BeginStockReleaseCompensationAsync"/> both store it inside the
+/// — instead <see cref="BeginStockReleaseCompensationAsync"/> (the ONE
+/// direct enqueue site since SA-4 — both the <c>stock_reserved</c> and the
+/// <c>credit_approved</c>/<c>confirmed</c> branch call it) stores it inside the
 /// synthetic <c>orders.cancel.requested</c> envelope, in the SAME
 /// <c>saga_commands.triggering_event_envelope</c> column feature 27 added
 /// (design.md §4.1, not §4.2 — §4.2 is fact-triggered threading through
@@ -110,6 +121,7 @@ public sealed class CancelOrderCommandHandler(
     IOrderRepository orders,
     ISagaCommandStore commandStore,
     ISagaCommandSignal signal,
+    IRpcRequestSerializer serializer,
     IClock clock) : ICommandHandler<CancelOrderCommand, CancelOrderResult>
 {
     public async Task<CancelOrderResult> HandleAsync(CancelOrderCommand command, CancellationToken cancellationToken)
@@ -125,13 +137,22 @@ public sealed class CancelOrderCommandHandler(
 
                 switch (order.Status)
                 {
-                    case OrderStatus.CreditApproved or OrderStatus.Confirmed:
-                        fastPathSignal = await BeginCreditReleaseCompensationAsync(order, command.Note, ct).ConfigureAwait(false);
-                        return new CancelOrderResult(order.Id.Value, order.OrderReference.Value, order.Status, CancellationReason: null, CompensationPlanned: ["credit_release", "stock_release"]);
-
-                    case OrderStatus.StockReserved:
+                    // SA-4 — the SAME direct enqueue for all three
+                    // compensating statuses: stock is released FIRST always
+                    // (the only acquisition at stock_reserved; the
+                    // CONTESTED resource at credit_approved/confirmed,
+                    // where Fulfillment's own one-lock arbitration decides
+                    // it against a despatch.create already in flight —
+                    // saga.md §4.3, "The despatch already requested"). The
+                    // reply's compensationPlanned names ONE hop from
+                    // stock_reserved, TWO — stock then credit, in release
+                    // order — from credit_approved/confirmed.
+                    case OrderStatus.StockReserved or OrderStatus.CreditApproved or OrderStatus.Confirmed:
                         fastPathSignal = await BeginStockReleaseCompensationAsync(order, command.Note, ct).ConfigureAwait(false);
-                        return new CancelOrderResult(order.Id.Value, order.OrderReference.Value, order.Status, CancellationReason: null, CompensationPlanned: ["stock_release"]);
+                        IReadOnlyList<string> compensationPlanned = order.Status == OrderStatus.StockReserved
+                            ? ["stock_release"]
+                            : ["stock_release", "credit_release"];
+                        return new CancelOrderResult(order.Id.Value, order.OrderReference.Value, order.Status, CancellationReason: null, CompensationPlanned: compensationPlanned);
 
                     default:
                         // `placed`, OR a terminal status Order.Cancel itself
@@ -164,59 +185,30 @@ public sealed class CancelOrderCommandHandler(
     }
 
     /// <summary>
-    /// <c>credit_approved</c>/<c>confirmed</c> branch, first step: enqueues
-    /// <c>credit.release</c> — reason is not a caller-supplied field on
-    /// <see cref="CreditReleaseRequestPayload"/> at all (the RPC always
-    /// releases with <c>order_cancelled</c>, <c>asyncapi.yaml</c>'s own
-    /// description). Built inline, NOT through
-    /// <see cref="SagaCommandRequestFactory"/>: that factory builds requests
-    /// FROM a triggering fact (design.md §6.3), and this enqueue has none —
-    /// it is RPC-triggered, exactly the "own enqueue path" the factory's own
-    /// header comment named as this feature's job, not its own. The
-    /// <c>triggeringEventEnvelope</c>/<c>Topic</c> pair below is a SEPARATE
-    /// concern from the RPC request payload above: id 71's synthetic
-    /// <c>orders.cancel.requested</c> envelope, R29's dead-letter bookkeeping
-    /// and this order's operator note, never the real request.
-    /// </summary>
-    private async Task<SagaCommandKind?> BeginCreditReleaseCompensationAsync(Order order, string? note, CancellationToken cancellationToken)
-    {
-        var payload = new CreditReleaseRequestPayload(order.OrderReference.Value, order.RetailerCode, order.CompanyCode);
-        var payloadJson = System.Text.Encoding.UTF8.GetString(RpcJson.Serialize(payload));
-
-        var requestId = UniqueId.New();
-        var envelope = OperatorCancelRequestedEnvelope.Build(order.Id, requestId, clock.UtcNow, note);
-
-        var outcome = await commandStore.EnqueueAsync(
-            order.Id.Value,
-            order.OrderReference.Value,
-            SagaCommandKind.CreditRelease,
-            payloadJson,
-            triggeringEventId: requestId.Value,
-            triggeringEventEnvelope: envelope,
-            triggeringEventTopic: OperatorCancelRequestedEnvelope.Topic,
-            cancellationToken).ConfigureAwait(false);
-
-        return outcome == EnqueueOutcome.Enqueued ? SagaCommandKind.CreditRelease : null;
-    }
-
-    /// <summary>
-    /// <c>stock_reserved</c> branch: enqueues <c>stock.release</c> with
-    /// reason <c>order_cancelled</c> — distinct from R27's fact-driven
+    /// SA-4 — the ONE direct enqueue site: enqueues <c>stock.release</c>
+    /// with reason <c>order_cancelled</c> — distinct from R27's fact-driven
     /// <c>credit_rejected</c> reason, the exact contextual split
     /// <see cref="SagaCommandRequestFactory.StockReleaseReasonFor"/> makes
     /// for the fact-driven caller. This caller has no triggering fact at
     /// all, so it builds the request inline rather than going through that
-    /// factory. The <c>triggeringEventEnvelope</c>/<c>Topic</c> pair below
-    /// is the SAME id-71 synthetic envelope <see cref="BeginCreditReleaseCompensationAsync"/>
-    /// stores, never the real request.
+    /// factory. Called from BOTH the <c>stock_reserved</c> branch (the only
+    /// acquisition) and the <c>credit_approved</c>/<c>confirmed</c> branch
+    /// (the contested resource, released first — §4.3, "The despatch
+    /// already requested"); when the latter's release actually wins the
+    /// race, <c>stock.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c>
+    /// Advance variant (<see cref="SagaStepTable"/>) owes <c>credit.release</c>
+    /// next, completing the chain with NO orchestration written here. The
+    /// <c>triggeringEventEnvelope</c>/<c>Topic</c> pair below is id 71's
+    /// synthetic <c>orders.cancel.requested</c> envelope, R29's dead-letter
+    /// bookkeeping and this order's operator note, never the real request.
     /// </summary>
     private async Task<SagaCommandKind?> BeginStockReleaseCompensationAsync(Order order, string? note, CancellationToken cancellationToken)
     {
         var payload = new StockReleaseRequestPayload(order.OrderReference.Value, "order_cancelled");
-        var payloadJson = System.Text.Encoding.UTF8.GetString(RpcJson.Serialize(payload));
+        var payloadJson = System.Text.Encoding.UTF8.GetString(serializer.Serialize(payload));
 
         var requestId = UniqueId.New();
-        var envelope = OperatorCancelRequestedEnvelope.Build(order.Id, requestId, clock.UtcNow, note);
+        var envelope = OperatorCancelRequestedEnvelope.Build(order.Id, requestId, clock.UtcNow, note, serializer);
 
         var outcome = await commandStore.EnqueueAsync(
             order.Id.Value,

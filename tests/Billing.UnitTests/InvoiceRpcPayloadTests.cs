@@ -1,6 +1,6 @@
 using System.Text.Json;
-using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Contracts.Facts;
+using OrderToCash.Contracts.Rpc;
 using Xunit;
 
 namespace OrderToCash.Billing.UnitTests;

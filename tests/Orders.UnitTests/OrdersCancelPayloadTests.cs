@@ -45,18 +45,18 @@ public sealed class OrdersCancelPayloadTests
         Assert.Equal(0, json.RootElement.GetProperty("compensationPlanned").GetArrayLength());
     }
 
-    /// <summary>The compensation-pending branches: <c>cancellationReason</c> OMITTED (not null) — the order has not reached <c>cancelled</c> yet — while <c>compensationPlanned</c> names what will be released, in reverse order of acquisition.</summary>
+    /// <summary>The compensation-pending branches: <c>cancellationReason</c> OMITTED (not null) — the order has not reached <c>cancelled</c> yet — while <c>compensationPlanned</c> names what will be released, in release order (SA-4: the contested resource, stock, first at <c>credit_approved</c>/<c>confirmed</c> — saga.md §4.3).</summary>
     [Fact]
     public void OrdersCancelReplyPayload_CompensationPending_OmitsCancellationReasonAndNamesThePlannedReleasesInOrder()
     {
-        var payload = new OrdersCancelReplyPayload(Guid.NewGuid(), "ORD-000001", "confirmed", CompensationPlanned: ["credit_release", "stock_release"]);
+        var payload = new OrdersCancelReplyPayload(Guid.NewGuid(), "ORD-000001", "confirmed", CompensationPlanned: ["stock_release", "credit_release"]);
         var json = RoundTrip(payload);
 
         AssertKeys(json, "orderId", "orderReference", "status", "compensationPlanned");
         Assert.False(json.RootElement.TryGetProperty("cancellationReason", out _), "an absent CancellationReason must be omitted, not written as null");
         var planned = json.RootElement.GetProperty("compensationPlanned");
-        Assert.Equal("credit_release", planned[0].GetString());
-        Assert.Equal("stock_release", planned[1].GetString());
+        Assert.Equal("stock_release", planned[0].GetString());
+        Assert.Equal("credit_release", planned[1].GetString());
     }
 
     /// <summary>Backlog id 51, `BC23`'s discipline — this file's hand-retyped key lists agree with the sets parsed from <c>specs/shared/asyncapi.yaml</c> via <see cref="AsyncApiSchema"/>.</summary>

@@ -2,11 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Infrastructure;
-using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Infrastructure.Outbox;
 using Xunit;
 
@@ -301,6 +301,6 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
 
         public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => inner.FindOperatorCancelNoteAsync(orderId, cancellationToken);
 
-        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => inner.HasPendingCompensationAsync(orderId, cancellationToken);
+        public Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken) => inner.HasAcceptedOperatorCancelAsync(orderId, cancellationToken);
     }
 }

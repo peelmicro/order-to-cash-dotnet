@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure;
 using OrderToCash.Orders.Infrastructure.Messaging;
@@ -300,7 +301,7 @@ public sealed class NatsSagaCommandsAdapterTests
         RpcSubjectUnderTest.StockReserve => adapter.ReserveStockAsync(SampleStockReserveRequest(), meta, CancellationToken.None),
         RpcSubjectUnderTest.StockRelease => adapter.ReleaseStockAsync(new StockReleaseRequestPayload("ORD-000001", "credit_rejected"), meta, CancellationToken.None),
         RpcSubjectUnderTest.DespatchCreate => adapter.CreateDespatchAsync(new DespatchCreateRequestPayload("ORD-000001"), meta, CancellationToken.None),
-        RpcSubjectUnderTest.CreditHold => adapter.HoldCreditAsync(new CreditHoldRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", new SagaMoney(1000, "EUR")), meta, CancellationToken.None),
+        RpcSubjectUnderTest.CreditHold => adapter.HoldCreditAsync(new CreditHoldRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", new CreditMoney(1000, "EUR")), meta, CancellationToken.None),
         RpcSubjectUnderTest.InvoiceIssue => adapter.IssueInvoiceAsync(new InvoiceIssueRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", []), meta, CancellationToken.None),
         RpcSubjectUnderTest.CreditRelease => adapter.ReleaseCreditAsync(new CreditReleaseRequestPayload("ORD-000001", "RETAILER1", "COMPANY1"), meta, CancellationToken.None),
         _ => throw new ArgumentOutOfRangeException(nameof(subject)),

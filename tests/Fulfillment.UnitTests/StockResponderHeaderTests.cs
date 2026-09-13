@@ -1,4 +1,5 @@
 using NATS.Client.Core;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using OrderToCash.Fulfillment.Presentation;

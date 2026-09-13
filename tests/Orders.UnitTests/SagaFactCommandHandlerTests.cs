@@ -1,8 +1,10 @@
+using OrderToCash.Contracts.Facts.Payloads;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Domain;
+using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.SharedKernel;
 using Xunit;
 
@@ -74,7 +76,7 @@ public sealed class SagaFactCommandHandlerTests
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var store = new FakeSagaCommandStore();
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
         var handler = new HandleInvoiceIssuedFactCommandHandler(sagaHandler);
 
         await handler.HandleAsync(new HandleInvoiceIssuedFactCommand(BuildFact("invoice.issued.v1", order.Id.Value)), CancellationToken.None);
@@ -83,57 +85,118 @@ public sealed class SagaFactCommandHandlerTests
     }
 
     /// <summary>
-    /// Feature <c>orders_cancel_responder</c>: <c>credit.released.v1</c>'s
-    /// ORIGINAL <c>paid</c> variant (R24) still owes nothing — its handler
-    /// must not publish just because it is no longer a plain delegation.
-    /// </summary>
-    [Fact]
-    public async Task CreditReleasedV1_PaidVariant_OwesNothingAndPublishesNothing()
-    {
-        var order = OrderTestData.RehydratedOrder(OrderStatus.Paid);
-        var orders = new FakeOrderRepository { OrderToReturn = order };
-        var runner = new FakeIdempotentSagaRunner();
-        var store = new FakeSagaCommandStore();
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
-        var dispatcher = new RecordingDispatcher();
-        var handler = new HandleCreditReleasedFactCommandHandler(sagaHandler, dispatcher);
-
-        await handler.HandleAsync(new HandleCreditReleasedFactCommand(BuildFact("credit.released.v1", order.Id.Value)), CancellationToken.None);
-
-        Assert.Empty(store.Enqueued);
-        Assert.Empty(dispatcher.Published);
-    }
-
-    /// <summary>
-    /// Feature <c>orders_cancel_responder</c>: <c>credit.released.v1</c>'s
-    /// NEW <c>credit_approved</c>/<c>confirmed</c> variant owes
-    /// <c>stock.release</c> — the handler publishes
-    /// <c>CreditReleasedForCancellationRecorded</c>, a DIFFERENT event type
-    /// from <c>CreditRejectionRecorded</c> (which the fact-driven
-    /// <c>credit.rejected.v1</c> handler publishes for the same owed
-    /// command), so a reader can tell which branch fired.
+    /// SA-4: <c>credit.released.v1</c> owes nothing on ANY variant now —
+    /// its <c>credit_approved</c>/<c>confirmed</c> variant is the COMPLETING
+    /// <c>Cancel</c> step (SA-4 moved the owed command to
+    /// <c>stock.released.v1</c>); its <c>paid</c> variant (R24) never owed
+    /// anything either. Proven by constructing the handler with NO
+    /// <see cref="IDispatcher"/> at all — a plain delegation, not merely a
+    /// conditional publish that happens not to fire.
     /// </summary>
     [Theory]
-    [InlineData(OrderStatus.CreditApproved)]
-    [InlineData(OrderStatus.Confirmed)]
-    public async Task CreditReleasedV1_CreditApprovedOrConfirmedVariant_PublishesCreditReleasedForCancellationRecorded(OrderStatus status)
+    [InlineData(OrderStatus.Paid, "invoice_paid")]
+    [InlineData(OrderStatus.CreditApproved, "order_cancelled")]
+    [InlineData(OrderStatus.Confirmed, "order_cancelled")]
+    public async Task CreditReleasedV1_EveryVariant_OwesNothing(OrderStatus status, string reason)
     {
         var order = OrderTestData.RehydratedOrder(status);
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner();
         var store = new FakeSagaCommandStore();
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
-        var dispatcher = new RecordingDispatcher();
-        var handler = new HandleCreditReleasedFactCommandHandler(sagaHandler, dispatcher);
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var handler = new HandleCreditReleasedFactCommandHandler(sagaHandler);
 
-        await handler.HandleAsync(new HandleCreditReleasedFactCommand(BuildFact("credit.released.v1", order.Id.Value)), CancellationToken.None);
+        var payload = new CreditReleasedPayload("ORD-000001", "RETAILER1", "COMPANY1", "EUR", 2_450, 100_000, reason, "CR-000001");
+        await handler.HandleAsync(new HandleCreditReleasedFactCommand(BuildFactWithPayload("credit.released.v1", order.Id.Value, payload)), CancellationToken.None);
+
+        Assert.Empty(store.Enqueued);
+    }
+
+    /// <summary>
+    /// SA-4: <c>stock.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c>
+    /// variant now owes <c>credit.release</c> — the handler publishes
+    /// <c>StockReleasedForCancellationRecorded</c>, its own dedicated event
+    /// type (moved here from <c>credit.released.v1</c>, which used to own
+    /// this conditional-publish shape before SA-4).
+    /// </summary>
+    [Theory]
+    [InlineData(OrderStatus.CreditApproved)]
+    [InlineData(OrderStatus.Confirmed)]
+    public async Task StockReleasedV1_CreditApprovedOrConfirmedVariant_PublishesStockReleasedForCancellationRecorded(OrderStatus status)
+    {
+        var order = OrderTestData.RehydratedOrder(status);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var store = new FakeSagaCommandStore();
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var dispatcher = new RecordingDispatcher();
+        var handler = new HandleStockReleasedFactCommandHandler(sagaHandler, dispatcher);
+
+        await handler.HandleAsync(new HandleStockReleasedFactCommand(BuildFact("stock.released.v1", order.Id.Value)), CancellationToken.None);
 
         var enqueued = Assert.Single(store.Enqueued);
-        Assert.Equal(SagaCommandKind.StockRelease, enqueued.Command);
+        Assert.Equal(SagaCommandKind.CreditRelease, enqueued.Command);
 
         var published = Assert.Single(dispatcher.Published);
-        var @event = Assert.IsType<CreditReleasedForCancellationRecorded>(published);
+        var @event = Assert.IsType<StockReleasedForCancellationRecorded>(published);
         Assert.Equal(order.Id.Value, @event.OrderId);
+    }
+
+    /// <summary>
+    /// The ORDINARY <c>credit.approved.v1</c> path — precondition
+    /// <c>StockReserved</c>, no accepted operator cancel — still publishes
+    /// <c>OrderConfirmedBySaga</c>, unaffected by F1's fix: the choice is
+    /// driven by what was actually enqueued (<c>DespatchCreate</c> here),
+    /// not by a branch removed.
+    /// </summary>
+    [Fact]
+    public async Task CreditApprovedV1_NormalAdvance_PublishesOrderConfirmedBySaga()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.StockReserved);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var store = new FakeSagaCommandStore { AcceptedOperatorCancelToReturn = false };
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var dispatcher = new RecordingDispatcher();
+        var handler = new HandleCreditApprovedFactCommandHandler(sagaHandler, dispatcher);
+
+        await handler.HandleAsync(new HandleCreditApprovedFactCommand(BuildFact("credit.approved.v1", order.Id.Value)), CancellationToken.None);
+
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.DespatchCreate, enqueued.Command);
+        var published = Assert.Single(dispatcher.Published);
+        Assert.IsType<OrderConfirmedBySaga>(published);
+    }
+
+    /// <summary>
+    /// Id 62 fix round 1, F1 — the LATE-approval branch (order already
+    /// <c>StockReserved</c> with an accepted operator cancel) enqueues
+    /// <c>CreditRelease</c>, never <c>DespatchCreate</c>, so the handler
+    /// must publish <see cref="LateCreditApprovalForCancellationRecorded"/>,
+    /// never <see cref="OrderConfirmedBySaga"/> — armed by reverting the
+    /// late path back to always publishing <c>OrderConfirmedBySaga</c>
+    /// (record's arming table, F1 guard 1).
+    /// </summary>
+    [Fact]
+    public async Task CreditApprovedV1_LateForAnAcceptedOperatorCancel_PublishesLateCreditApprovalForCancellationRecorded_NeverOrderConfirmedBySaga()
+    {
+        var order = OrderTestData.RehydratedOrder(OrderStatus.StockReserved);
+        var orders = new FakeOrderRepository { OrderToReturn = order };
+        var runner = new FakeIdempotentSagaRunner();
+        var store = new FakeSagaCommandStore { AcceptedOperatorCancelToReturn = true };
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var dispatcher = new RecordingDispatcher();
+        var handler = new HandleCreditApprovedFactCommandHandler(sagaHandler, dispatcher);
+
+        await handler.HandleAsync(new HandleCreditApprovedFactCommand(BuildFact("credit.approved.v1", order.Id.Value)), CancellationToken.None);
+
+        var enqueued = Assert.Single(store.Enqueued);
+        Assert.Equal(SagaCommandKind.CreditRelease, enqueued.Command);
+
+        var published = Assert.Single(dispatcher.Published);
+        var @event = Assert.IsType<LateCreditApprovalForCancellationRecorded>(published);
+        Assert.Equal(order.Id.Value, @event.OrderId);
+        Assert.DoesNotContain(dispatcher.Published, e => e is OrderConfirmedBySaga);
     }
 
     private static (HandleOrderPlacedFactCommandHandler Handler, RecordingDispatcher Dispatcher) BuildOrderPlacedHandler(Order order, bool duplicate, bool alreadyEnqueued)
@@ -141,7 +204,7 @@ public sealed class SagaFactCommandHandlerTests
         var orders = new FakeOrderRepository { OrderToReturn = order };
         var runner = new FakeIdempotentSagaRunner { ReturnDuplicate = duplicate };
         var store = new FakeSagaCommandStore { OutcomeToReturn = alreadyEnqueued ? EnqueueOutcome.AlreadyEnqueued : EnqueueOutcome.Enqueued };
-        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
+        var sagaHandler = new SagaFactHandler(orders, runner, new FakeSagaIgnoredFactRecorder(), store, new FakeSagaCompletionRecorder(), new SagaCommandRequestFactory(new RpcJsonRequestSerializer()), new FakeClock(OrderTestData.Now), Microsoft.Extensions.Logging.Abstractions.NullLogger<SagaFactHandler>.Instance);
         var dispatcher = new RecordingDispatcher();
 
         return (new HandleOrderPlacedFactCommandHandler(sagaHandler, dispatcher), dispatcher);
@@ -155,6 +218,16 @@ public sealed class SagaFactCommandHandlerTests
         CausationId: Guid.NewGuid(),
         OccurredAt: OrderTestData.Now.AddMinutes(5),
         Payload: new object());
+
+    /// <summary>Same shape as <see cref="BuildFact"/>, for <c>credit.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c> <c>Cancel</c> variant, whose <c>Reason</c> delegate (<see cref="SagaStepTable.MapCreditReleaseReason"/>) casts <see cref="SagaFact.Payload"/> to <see cref="OrderToCash.Contracts.Facts.Payloads.CreditReleasedPayload"/>.</summary>
+    private static SagaFact BuildFactWithPayload(string eventType, Guid correlationId, object payload) => new(
+        EventId: Guid.NewGuid(),
+        EventType: eventType,
+        AggregateId: correlationId,
+        CorrelationId: correlationId,
+        CausationId: Guid.NewGuid(),
+        OccurredAt: OrderTestData.Now.AddMinutes(5),
+        Payload: payload);
 
     private sealed class FakeSagaCompletionRecorder : ISagaCompletionRecorder
     {
@@ -242,7 +315,9 @@ public sealed class SagaFactCommandHandlerTests
 
         public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 
-        /// <summary>Id 62 — always "no compensation pending"; none of this file's cases is about the supersede guard.</summary>
-        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => Task.FromResult(false);
+        /// <summary>Id 62/F1 — settable per test; defaults <see langword="false"/> so every EXISTING case (none of which is about the late-approval branch) is unaffected.</summary>
+        public bool AcceptedOperatorCancelToReturn { get; set; }
+
+        public Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken) => Task.FromResult(AcceptedOperatorCancelToReturn);
     }
 }

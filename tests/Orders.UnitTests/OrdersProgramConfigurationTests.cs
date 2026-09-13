@@ -16,6 +16,7 @@ namespace OrderToCash.Orders.UnitTests;
 /// eleven environment reads spread across them fails a named test instead
 /// of leaving the suite green.
 /// </summary>
+[Collection(OrdersEnvironmentVariableTestCollection.Name)]
 public sealed class OrdersProgramConfigurationTests
 {
     private static readonly string[] _envVars =

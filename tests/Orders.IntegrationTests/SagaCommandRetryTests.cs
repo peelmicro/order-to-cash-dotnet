@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
@@ -156,7 +157,7 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
             var placed = await SagaIntegrationTestSupport.PlaceOrderAsync(host);
             var orderId = placed.OrderId.Value;
 
-            var payload = Encoding.UTF8.GetString(RpcJson.Serialize(new CreditHoldRequestPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.RetailerCode, OrderPersistenceTestSupport.CompanyCode, new SagaMoney(2_450, "EUR"))));
+            var payload = Encoding.UTF8.GetString(RpcJson.Serialize(new CreditHoldRequestPayload(placed.OrderReference.Value, OrderPersistenceTestSupport.RetailerCode, OrderPersistenceTestSupport.CompanyCode, new CreditMoney(2_450, "EUR"))));
             var now = DateTime.UtcNow;
             await using (var db = mssql.CreateDbContext(connectionString))
             {
@@ -305,6 +306,6 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
 
         public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => inner.FindOperatorCancelNoteAsync(orderId, cancellationToken);
 
-        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => inner.HasPendingCompensationAsync(orderId, cancellationToken);
+        public Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken) => inner.HasAcceptedOperatorCancelAsync(orderId, cancellationToken);
     }
 }

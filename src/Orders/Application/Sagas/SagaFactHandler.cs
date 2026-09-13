@@ -19,18 +19,22 @@ public sealed class SagaFactHandler(
     ISagaIgnoredFactRecorder ignoredFactRecorder,
     ISagaCommandStore commandStore,
     ISagaCompletionRecorder completionRecorder,
+    SagaCommandRequestFactory requestFactory,
     IClock clock,
     ILogger<SagaFactHandler> logger)
 {
     /// <summary>
-    /// Id 62's ONE exemption from the "supersede forward progress" guard
-    /// below — <c>credit.released.v1</c>'s two <see cref="SagaStep.Advance"/>
-    /// variants (<see cref="SagaStepTable"/>'s <c>CreditApproved</c>/<c>Confirmed</c>
-    /// rows) ARE the operator-cancel compensation's own first hop, never a
-    /// competitor to it; blocking them would strand the compensation
-    /// forever (its own <c>stock.release</c> would never be owed).
+    /// Id 62/SA-4 — the one <c>eventType</c> that needs a check BEFORE the
+    /// generic status-precondition dispatch below: an order whose operator
+    /// cancellation was already accepted can still receive a late
+    /// <c>credit.approved.v1</c> for the hold issued before that
+    /// cancellation (saga.md §4.3, "A credit approval that arrives after the
+    /// cancellation"). Left to the generic dispatch, a <c>StockReserved</c>
+    /// order would silently take the ORDINARY Advance (approve, confirm,
+    /// dispatch <c>despatch.create</c>) — exactly the fact this feature
+    /// exists to stop stranding a hold or resurrecting a cancelled order.
     /// </summary>
-    private const string CreditReleasedEventType = "credit.released.v1";
+    private const string CreditApprovedEventType = "credit.approved.v1";
 
     public async Task<SagaFactResult> HandleAsync(SagaFact fact, CancellationToken cancellationToken)
     {
@@ -73,14 +77,75 @@ public sealed class SagaFactHandler(
                     return;
                 }
 
+                // Id 62/SA-4 — checked BEFORE the generic precondition
+                // dispatch (see CreditApprovedEventType's own remarks): a
+                // late credit.approved.v1 for an order whose operator
+                // cancellation was already accepted issues credit.release
+                // and NOTHING else — no transition, no order.confirmed.v1,
+                // no despatch.create. Two shapes: the order is STILL
+                // StockReserved with its own operator-cancel row already
+                // enqueued (the compensation's stock.release is under way
+                // but has not yet completed), or the order is ALREADY
+                // Cancelled with reason OperatorCancelled (the compensation
+                // finished before this late fact arrived). Every OTHER
+                // stale combination — Cancelled/stock_rejected,
+                // Cancelled/credit_rejected, or any status with no accepted
+                // operator cancel — falls through to the generic dispatch
+                // below, which R25 ignores exactly as before.
+                if (fact.EventType == CreditApprovedEventType)
+                {
+                    var lateForAnAcceptedOperatorCancel = order.Status == Domain.OrderStatus.Cancelled
+                        ? order.CancellationReason == Domain.CancellationReason.OperatorCancelled
+                        : order.Status == Domain.OrderStatus.StockReserved
+                            && await commandStore.HasAcceptedOperatorCancelAsync(order.Id.Value, ct).ConfigureAwait(false);
+
+                    if (lateForAnAcceptedOperatorCancel)
+                    {
+                        var creditReleasePayloadJson = requestFactory.BuildJson(SagaCommandKind.CreditRelease, order);
+                        var lateEnqueueOutcome = await commandStore.EnqueueAsync(
+                            order.Id.Value,
+                            order.OrderReference.Value,
+                            SagaCommandKind.CreditRelease,
+                            creditReleasePayloadJson,
+                            fact.EventId,
+                            fact.TriggeringEventEnvelope,
+                            fact.TriggeringEventTopic,
+                            ct).ConfigureAwait(false);
+
+                        if (lateEnqueueOutcome == EnqueueOutcome.Enqueued)
+                        {
+                            enqueued = new SagaCommandRef(order.Id.Value, SagaCommandKind.CreditRelease);
+                        }
+                        else
+                        {
+                            logger.LogWarning(
+                                "Saga command {Command} for order {OrderId} was already enqueued; not signalling a second dispatch.",
+                                SagaCommandKind.CreditRelease,
+                                order.Id);
+                        }
+
+                        logger.LogInformation(
+                            "Saga processed a LATE {EventType} ({EventId}) for order {OrderId}: an operator cancellation was already accepted, so only credit.release is owed — no transition, no despatch.",
+                            fact.EventType,
+                            fact.EventId,
+                            order.Id);
+
+                        // Processed, not ignored (R25's bookkeeping is for a
+                        // fact whose effect is genuinely nothing) — this one
+                        // has a real, durable effect even though the order's
+                        // own Advance/Cancel machinery is bypassed entirely.
+                        return;
+                    }
+                }
+
                 // R25, generalised: for a single-variant eventType this is
                 // exactly the original equality check. For credit.released.v1
-                // and stock.released.v1 (feature orders_cancel_responder,
-                // more than one legal precondition each) this picks the ONE
-                // variant whose precondition matches the order's CURRENT
-                // status — null means none of the catalogued preconditions
-                // are met, the same "ignored" outcome, generalised rather
-                // than restricted to a single expected value.
+                // and stock.released.v1 (more than one legal precondition
+                // each) this picks the ONE variant whose precondition
+                // matches the order's CURRENT status — null means none of
+                // the catalogued preconditions are met, the same "ignored"
+                // outcome, generalised rather than restricted to a single
+                // expected value.
                 var matchedStep = SagaStepTable.ForStatus(fact.EventType, order.Status);
 
                 if (matchedStep is null)
@@ -109,47 +174,16 @@ public sealed class SagaFactHandler(
                     return;
                 }
 
-                // Id 62 — a SECOND, generalised precondition, checked only
-                // for Advance steps (genuine forward progress; a Cancel
-                // step is itself a compensation completion and must always
-                // be allowed to apply): even though the status precondition
-                // matched, this fact is superseded when an operator-cancel
-                // compensation is already enqueued for this order — applying
-                // it would leave that compensation's own completion fact
-                // stranded (the PreconditionUnmet branch above would later
-                // find the order has moved past the status it expects, and
-                // correctly-but-harmfully ignore it — the exact mechanism
-                // #7's orders-cancel.integration.spec.ts disclosed and never
-                // fixed; see CancelOrderCommandHandler's own remarks).
-                // credit.released.v1's own two Advance variants are EXEMPT —
-                // they ARE the compensation's own first hop (SagaStepTable:
-                // "owes stock.release next"), never a competitor to it.
-                // Checked AFTER this transaction's own UPDLOCK read of the
-                // order row (EfCoreOrderRepository.GetByIdAsync), so a
-                // concurrent CancelOrderCommandHandler enqueue racing this
-                // exact moment is either already visible here (it committed
-                // first, unblocking this read) or this call is the one that
-                // was blocked waiting for OUR transaction to finish — either
-                // way this statement's own snapshot is never half-committed.
-                if (matchedStep is SagaStep.Advance && fact.EventType != CreditReleasedEventType)
-                {
-                    var superseded = await commandStore.HasPendingCompensationAsync(order.Id.Value, ct).ConfigureAwait(false);
-
-                    if (superseded)
-                    {
-                        await ignoredFactRecorder.RecordAsync(
-                            new SagaIgnoredFactRecord(fact.EventId, fact.EventType, order.Id.Value, fact.CorrelationId, SagaIgnoredFactMarker.Superseded, order.Status),
-                            ct).ConfigureAwait(false);
-                        logger.LogInformation(
-                            "Saga ignored {EventType} ({EventId}) for order {OrderId}: an operator-cancel compensation is already pending for this order — forward progress superseded, not applied.",
-                            fact.EventType,
-                            fact.EventId,
-                            order.Id);
-                        ignored = true;
-                        return;
-                    }
-                }
-
+                // Id 62's first pass had a broad "supersede any Advance"
+                // guard here (HasPendingCompensationAsync). SA-4 (the
+                // human-gated shared-spec amendment ruled 2026-09-11)
+                // retired it: the credit_approved/confirmed race is now
+                // resolved by releasing the CONTESTED resource (stock)
+                // first and letting Fulfillment's own one-lock arbitration
+                // decide against a despatch already requested (saga.md
+                // §4.3, "The despatch already requested"), and the
+                // stock_reserved race is resolved by the CreditApprovedEventType
+                // check above. No Advance step needs superseding any more.
                 var owedCommand = await ApplyStepAsync(matchedStep, order, fact, ct).ConfigureAwait(false);
 
                 await orders.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -180,8 +214,8 @@ public sealed class SagaFactHandler(
                     // TRIGGERING fact's own eventType (never inferred any
                     // other way).
                     var payloadJson = command == SagaCommandKind.StockRelease
-                        ? SagaCommandRequestFactory.BuildStockReleaseJson(order, fact.EventType)
-                        : SagaCommandRequestFactory.BuildJson(command, order);
+                        ? requestFactory.BuildStockReleaseJson(order, fact.EventType)
+                        : requestFactory.BuildJson(command, order);
                     var enqueueOutcome = await commandStore.EnqueueAsync(
                         order.Id.Value,
                         order.OrderReference.Value,
@@ -233,12 +267,17 @@ public sealed class SagaFactHandler(
     /// id 71) because the <see cref="SagaStep.Cancel"/> branch now reads
     /// <see cref="commandStore"/> for the operator's note — see
     /// <see cref="ISagaCommandStore.FindOperatorCancelNoteAsync"/>. Every
-    /// OTHER caller of this same branch (<c>stock.rejected.v1</c>'s direct
-    /// cancel, and <c>stock.released.v1</c>'s <c>credit_rejected</c>
-    /// variant) enqueued no operator-cancel row at all, so the lookup
-    /// returns <see langword="null"/> for them — no branch on WHICH cancel
-    /// this is needs writing here; the store already disambiguates by
-    /// envelope content.
+    /// SAGA-DECIDED caller of this same branch (<c>stock.rejected.v1</c>'s
+    /// direct cancel, and <c>stock.released.v1</c>'s <c>StockReserved</c>
+    /// variant with reason <c>credit_rejected</c>, R27) enqueued no
+    /// operator-cancel row at all, so the lookup returns
+    /// <see langword="null"/> for them; every OPERATOR-INITIATED caller
+    /// (<c>stock.released.v1</c>'s <c>StockReserved</c> variant with reason
+    /// <c>order_cancelled</c>, and — SA-4 — <c>credit.released.v1</c>'s
+    /// <c>CreditApproved</c>/<c>Confirmed</c> variants) finds the note on
+    /// the <c>stock.release</c> row <see cref="OrderToCash.Orders.Application.Commands.CancelOrderCommandHandler"/>
+    /// enqueued directly. No branch on WHICH cancel this is needs writing
+    /// here; the store already disambiguates by envelope content.
     /// </summary>
     private async Task<SagaCommandKind?> ApplyStepAsync(SagaStep step, Domain.Order order, SagaFact fact, CancellationToken cancellationToken)
     {

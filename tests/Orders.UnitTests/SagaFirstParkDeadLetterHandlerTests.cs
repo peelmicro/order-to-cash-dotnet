@@ -190,6 +190,6 @@ public sealed class SagaFirstParkDeadLetterHandlerTests
 
         public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

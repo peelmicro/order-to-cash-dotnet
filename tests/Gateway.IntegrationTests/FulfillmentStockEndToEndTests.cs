@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using NATS.Client.Core;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using OrderToCash.Fulfillment.Infrastructure.Persistence.Entities;
 using OrderToCash.Fulfillment.Presentation.Rpc;
@@ -164,7 +165,10 @@ public sealed class FulfillmentStockEndToEndTests(KafkaContainerFixture kafka, M
         var response = await gateway.Client.PostAsJsonAsync(
             "/stock/replenish",
             new { companyCode = "IBERFOODS", lines = new[] { new { productCode = "PRD-GWIT-002", units = 25 } } });
-        response.EnsureSuccessStatusCode();
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.IsSuccessStatusCode,
+            $"expected /stock/replenish to succeed; got {(int)response.StatusCode} {response.StatusCode}: {responseBody}");
 
         await using var verifyDb = mssql.CreateDbContext(connectionString);
         var updated = verifyDb.Stocks.AsNoTracking().Single(s => s.ProductCode == "PRD-GWIT-002");

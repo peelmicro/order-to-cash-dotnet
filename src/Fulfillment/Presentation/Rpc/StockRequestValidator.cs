@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
+using OrderToCash.Contracts.Rpc;
 
 namespace OrderToCash.Fulfillment.Presentation.Rpc;
 

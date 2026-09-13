@@ -10,8 +10,19 @@ public sealed class FakeNotificationSender : INotificationSender
     /// <summary>When set, <see cref="SendAsync"/> throws this instead of recording the send — the send-failure probe.</summary>
     public Exception? ThrowOnSend { get; set; }
 
+    /// <summary>
+    /// Every <see cref="SendAsync"/> call, whether it throws or not —
+    /// backlog id 73's retry-count proof
+    /// (<c>DegradingNotificationSenderTests</c>'s layer-2 tests) needs to
+    /// count attempts against a sender that throws on EVERY call, which
+    /// <see cref="SentMessages"/> alone cannot do.
+    /// </summary>
+    public int SendCallCount { get; private set; }
+
     public Task SendAsync(NotificationMessage message, CancellationToken cancellationToken)
     {
+        SendCallCount++;
+
         if (ThrowOnSend is { } exception)
         {
             throw exception;

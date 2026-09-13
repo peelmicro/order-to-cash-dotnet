@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using NATS.Client.Core;
 using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Billing.Presentation.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.SharedKernel;
 using Xunit;
 

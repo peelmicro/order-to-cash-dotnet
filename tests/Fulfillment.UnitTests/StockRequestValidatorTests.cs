@@ -1,4 +1,4 @@
-using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Fulfillment.Presentation.Rpc;
 using Xunit;
 

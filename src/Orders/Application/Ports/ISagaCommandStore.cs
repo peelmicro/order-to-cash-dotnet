@@ -18,13 +18,15 @@ public enum EnqueueOutcome
 /// verbatim at enqueue time — <see langword="null"/> for a row enqueued
 /// before this feature's columns existed, or for any other enqueue site
 /// that genuinely supplies no envelope (none exists today).
-/// <c>CancelOrderCommandHandler</c>'s operator-cancel compensation rows are
+/// <c>CancelOrderCommandHandler</c>'s operator-cancel compensation row is
 /// NOT such a row: since feature
-/// <c>operator_note_survives_the_compensation_branches</c> (id 71) both of
-/// its enqueue sites carry the synthetic <c>orders.cancel.requested</c>
-/// envelope, and a parked row of theirs is republished on first park
-/// exactly like any other row — see <see cref="FindOperatorCancelNoteAsync"/>'s
-/// own remarks for the write.
+/// <c>operator_note_survives_the_compensation_branches</c> (id 71) it
+/// carries the synthetic <c>orders.cancel.requested</c> envelope, and a
+/// parked row of its is republished on first park exactly like any other
+/// row — see <see cref="FindOperatorCancelNoteAsync"/>'s own remarks for
+/// the write. SA-4 (ruled 2026-09-11) leaves exactly ONE such enqueue site,
+/// <c>BeginStockReleaseCompensationAsync</c> — the credit-first branch's
+/// own separate enqueue was retired with it.
 /// Defaulted here (not on <see cref="ISagaCommandStore.EnqueueAsync"/>,
 /// which forces every caller to be explicit) so callers that do not care
 /// about them need not be touched by this addition.
@@ -155,22 +157,21 @@ public interface ISagaCommandStore
     /// <c>(order_id, command)</c> enqueue leaves the existing row's envelope
     /// untouched (<see cref="EnqueueOutcome.AlreadyEnqueued"/>). No code
     /// path anywhere rewrites an envelope once inserted.
-    /// <see cref="OrderToCash.Orders.Application.Commands.CancelOrderCommandHandler"/>'s
-    /// <c>credit_approved</c>/<c>confirmed</c> branch inserts
-    /// <c>credit.release</c>'s row directly, carrying the synthetic
-    /// <c>orders.cancel.requested</c> envelope (and the note, when
-    /// supplied); the same branch's <c>stock.release</c> row does not exist
-    /// yet at that point and is inserted LATER, once <c>credit.released.v1</c>
-    /// arrives, carrying THAT real fact's own bytes (no note) — a NEW row,
-    /// never a rewrite of an old one. This checks <c>credit.release</c>
-    /// FIRST, then <c>stock.release</c> — the <c>stock_reserved</c> branch's
-    /// own (and only) note-bearing row — and returns the first envelope
-    /// whose <c>eventType</c> is the synthetic <c>orders.cancel.requested</c>
-    /// one, so a <c>credit.release</c> row that DOES carry a synthetic
-    /// envelope always wins over a <c>stock.release</c> row that also does
-    /// (the ordinary case has at most one; both is a race outside today's
-    /// known reachable paths, guarded defensively rather than left to
-    /// coincidence). <see langword="null"/> when neither row exists, neither
+    /// <see cref="OrderToCash.Orders.Application.Commands.CancelOrderCommandHandler"/>
+    /// inserts <c>stock.release</c>'s row directly (SA-4 — from EITHER the
+    /// <c>stock_reserved</c> or the <c>credit_approved</c>/<c>confirmed</c>
+    /// branch), carrying the synthetic <c>orders.cancel.requested</c>
+    /// envelope (and the note, when supplied); a <c>credit_approved</c>/<c>confirmed</c>
+    /// cancellation's <c>credit.release</c> row does not exist yet at that
+    /// point and is inserted LATER, once <c>stock.released.v1</c> arrives,
+    /// carrying THAT real fact's own bytes (no note) — a NEW row, never a
+    /// rewrite of an old one. This checks BOTH commands and returns the
+    /// first envelope whose <c>eventType</c> is the synthetic
+    /// <c>orders.cancel.requested</c> one — content, never position, decides
+    /// (armed by substituting "the row that sorts/was inserted first" —
+    /// record's arming table, A5); the ordinary case has at most one such
+    /// row, both is a race outside today's known reachable paths, guarded
+    /// defensively rather than left to coincidence. <see langword="null"/> when neither row exists, neither
     /// carries the synthetic envelope (a saga-decided
     /// <c>stock_rejected</c>/<c>credit_rejected</c> cancellation), or the
     /// operator supplied no note.
@@ -178,21 +179,24 @@ public interface ISagaCommandStore
     Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Feature <c>operator_cancel_races_saga_forward_progress</c> (id 62) —
-    /// a bare, read-only existence check: does ANY <c>credit.release</c> or
-    /// <c>stock.release</c> row already exist for <paramref name="orderId"/>,
-    /// regardless of status (<c>pending</c>, <c>parked</c>, <c>sent</c> —
-    /// even <c>rejected</c>)? Existence alone is the signal
-    /// <see cref="Sagas.SagaFactHandler"/> needs: once EITHER row has been
-    /// enqueued, an operator cancel (or a fact-driven rejection — this check
-    /// does not distinguish the two, unlike <see cref="FindOperatorCancelNoteAsync"/>)
-    /// is under way for this order, and no UNRELATED forward-progress
-    /// <c>Advance</c> step may apply on top of it — see
-    /// <see cref="Application.Sagas.SagaFactHandler.HandleAsync"/>'s own
-    /// remarks for why <c>credit.released.v1</c> itself is exempt from this
-    /// check (its own <c>Advance</c> variants ARE the compensation, never a
-    /// competitor to it). Never a claim, never a mutation — safe to call
-    /// from a read-only ambient transaction.
+    /// Feature <c>operator_cancel_races_saga_forward_progress</c> (id 62,
+    /// SA-4) — has an OPERATOR-INITIATED cancellation already been accepted
+    /// for <paramref name="orderId"/>? Selected by envelope CONTENT, never by
+    /// command name alone (armed by substituting "any <c>stock.release</c>
+    /// row" — record's arming table, A3): a <c>credit.release</c> or
+    /// <c>stock.release</c> row carrying the synthetic
+    /// <c>orders.cancel.requested</c> envelope (<see cref="Commands.CancelOrderCommandHandler"/>'s
+    /// own direct enqueue — under SA-4 always <c>stock.release</c>, from
+    /// EITHER the <c>stock_reserved</c> or the <c>credit_approved</c>/<c>confirmed</c>
+    /// branch) counts; a row of either command carrying a REAL fact's
+    /// envelope — R27's <c>credit_rejected</c> path also enqueues
+    /// <c>stock.release</c>, with <c>credit.rejected.v1</c>'s own bytes —
+    /// must NOT. Used by <see cref="Sagas.SagaFactHandler"/> to decide
+    /// whether a late <c>credit.approved.v1</c> for a <c>stock_reserved</c>
+    /// order is ordinary forward progress or the unwind of an operator
+    /// cancellation already under way (saga.md §4.3, "A credit approval that
+    /// arrives after the cancellation"). Never a claim, never a mutation —
+    /// safe to call from a read-only ambient transaction.
     /// </summary>
-    Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken);
+    Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken);
 }

@@ -5,6 +5,7 @@ using OpenTelemetry.Trace;
 using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Billing.Infrastructure.Observability;
 using OrderToCash.Billing.Presentation.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.SharedKernel;
 using Xunit;
 

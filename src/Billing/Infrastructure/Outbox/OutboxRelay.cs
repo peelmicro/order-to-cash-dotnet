@@ -65,7 +65,20 @@ public sealed class OutboxRelay(
         await dlqDepthGauge.RecordAsync(cancellationToken).ConfigureAwait(false);
 
         var relayOptions = options.Value;
-        var strategy = db.Database.CreateExecutionStrategy();
+
+        // Backlog id 87 — NOT db.Database.CreateExecutionStrategy(): this
+        // write model's plain UseSqlServer(...) registration (no
+        // EnableRetryOnFailure — the unit-of-work's own remarks forbid
+        // enabling it there) makes that call return a non-retrying
+        // strategy whose ExecuteAsync only WRAPS a transient SqlException
+        // (deadlock victim, error 1205, included) in an
+        // InvalidOperationException before rethrowing it — never retrying.
+        // DeadlockRetryExecutionStrategy is scoped to THIS call site alone:
+        // it changes nothing about the write model's own registration, so
+        // the unit-of-work's transactions are unaffected. See its own
+        // remarks for the full mechanism and why retrying this delegate on
+        // error 1205 is safe.
+        var strategy = new DeadlockRetryExecutionStrategy(db);
 
         return await strategy.ExecuteAsync(async () =>
         {

@@ -59,20 +59,36 @@ public sealed class OrderMarkedDespatchedHandler(ISagaCommandSignal signal) : IE
 }
 
 /// <summary>
-/// The sixth of these classes (feature <c>orders_cancel_responder</c>) — the
-/// SECOND step of the reverse-order-of-acquisition operator-cancel
-/// compensation: <c>credit.release</c> has already been processed (the FIRST
-/// step, enqueued directly by <c>CancelOrderCommandHandler</c>, outside this
-/// fast-path mechanism entirely), and the resulting <c>credit.released.v1</c>
-/// fact's <c>credit_approved</c>/<c>confirmed</c> variant now owes
-/// <c>stock.release</c> — the SAME owed command <see cref="CreditRejectionRecordedHandler"/>
-/// signals for R27's unrelated branch.
+/// The sixth of these classes — SA-4's own second step of the
+/// stock-then-credit operator-cancel compensation: <c>stock.release</c> has
+/// already been processed (the FIRST step, enqueued directly by
+/// <c>CancelOrderCommandHandler</c>, outside this fast-path mechanism
+/// entirely), and the resulting <c>stock.released.v1</c> fact's
+/// <c>credit_approved</c>/<c>confirmed</c> variant now owes
+/// <c>credit.release</c>.
 /// </summary>
-public sealed class CreditReleasedForCancellationRecordedHandler(ISagaCommandSignal signal) : IEventHandler<CreditReleasedForCancellationRecorded>
+public sealed class StockReleasedForCancellationRecordedHandler(ISagaCommandSignal signal) : IEventHandler<StockReleasedForCancellationRecorded>
 {
-    public Task HandleAsync(CreditReleasedForCancellationRecorded @event, CancellationToken cancellationToken)
+    public Task HandleAsync(StockReleasedForCancellationRecorded @event, CancellationToken cancellationToken)
     {
-        signal.Signal(new SagaCommandRef(@event.OrderId, SagaCommandKind.StockRelease));
+        signal.Signal(new SagaCommandRef(@event.OrderId, SagaCommandKind.CreditRelease));
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// The seventh of these classes — id 62 fix round 1, F1. Signals
+/// <see cref="SagaCommandKind.CreditRelease"/>, never
+/// <see cref="SagaCommandKind.DespatchCreate"/>: this event exists
+/// specifically so <c>HandleCreditApprovedFactCommandHandler</c> never has
+/// to route a late-approval enqueue through <see cref="OrderConfirmedBySagaHandler"/>'s
+/// own hard-coded despatch signal.
+/// </summary>
+public sealed class LateCreditApprovalForCancellationRecordedHandler(ISagaCommandSignal signal) : IEventHandler<LateCreditApprovalForCancellationRecorded>
+{
+    public Task HandleAsync(LateCreditApprovalForCancellationRecorded @event, CancellationToken cancellationToken)
+    {
+        signal.Signal(new SagaCommandRef(@event.OrderId, SagaCommandKind.CreditRelease));
         return Task.CompletedTask;
     }
 }

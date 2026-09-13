@@ -1,5 +1,5 @@
 using OrderToCash.Contracts.Envelopes;
-using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
+using OrderToCash.Orders.Application.Ports;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Application.Commands;
@@ -24,17 +24,21 @@ namespace OrderToCash.Orders.Application.Commands;
 public sealed record OperatorCancelRequestedPayload(Guid OrderId, string Reason, string? Note);
 
 /// <summary>
-/// Builds the synthetic envelope both operator-cancel compensation enqueue
-/// sites (<see cref="CancelOrderCommandHandler.BeginCreditReleaseCompensationAsync"/>,
-/// <see cref="CancelOrderCommandHandler.BeginStockReleaseCompensationAsync"/>)
-/// share — the SAME diagnostic shape either way, exactly as #7's single
-/// <c>buildTriggeringEnvelope</c> is shared by both of its own branches.
+/// Builds the synthetic envelope <see cref="CancelOrderCommandHandler.BeginStockReleaseCompensationAsync"/>
+/// stores — SA-4 made this the ONE direct enqueue site (both the
+/// <c>stock_reserved</c> and the <c>credit_approved</c>/<c>confirmed</c>
+/// branch call it; the credit-first branch's own separate enqueue,
+/// <c>BeginCreditReleaseCompensationAsync</c>, was retired with it), so
+/// there is no longer a second call site to share this shape with — #7's
+/// own single <c>buildTriggeringEnvelope</c> was already shared by both of
+/// ITS branches, which is the precedent this now matches exactly, not
+/// merely mirrors.
 /// </summary>
 public static class OperatorCancelRequestedEnvelope
 {
     public const string EventType = "orders.cancel.requested";
 
-    public static byte[] Build(UniqueId orderId, UniqueId requestId, DateTimeOffset occurredAt, string? note)
+    public static byte[] Build(UniqueId orderId, UniqueId requestId, DateTimeOffset occurredAt, string? note, IRpcRequestSerializer serializer)
     {
         var envelope = new Envelope<OperatorCancelRequestedPayload>(
             requestId.Value,
@@ -45,26 +49,27 @@ public static class OperatorCancelRequestedEnvelope
             occurredAt,
             new OperatorCancelRequestedPayload(orderId.Value, "operator_cancelled", note));
 
-        return RpcJson.Serialize(envelope);
+        return serializer.Serialize(envelope);
     }
 
     /// <summary>
     /// The topic the built envelope is stored against — #7's own
     /// <c>ordersFactsTopic</c> (<c>cancel-order.handler.ts:89</c>, <c>:176</c>,
     /// <c>:235</c>), which #7 injects into its handler's constructor rather
-    /// than importing a producer-side constant. A DELIBERATE third literal
+    /// than importing a producer-side constant. A DELIBERATE second literal
     /// copy of <c>"otc.orders.facts.v1"</c> — review round 1's A1: this
     /// Application-layer file must not reference
     /// <c>Infrastructure.Outbox.OrdersFactTopic</c> (a NEW Application →
-    /// Infrastructure edge). Application → <c>Infrastructure.Messaging.Rpc</c>
-    /// has FOUR references, this file's own <c>using</c> (for
-    /// <c>RpcJson</c>, below) among them, alongside <c>ISagaCommands.cs</c>,
+    /// Infrastructure edge). Feature 76
+    /// (<c>application_layer_depends_on_infrastructure_unguarded</c>) closed
+    /// the four Application → <c>Infrastructure.Messaging.Rpc</c> references
+    /// this comment used to name (this file's own <c>using</c> for
+    /// <c>RpcJson</c> among them, alongside <c>ISagaCommands.cs</c>,
     /// <c>SagaCommandRequestFactory.cs</c> and
-    /// <c>CancelOrderCommandHandler.cs</c> — corrected from this comment's
-    /// own earlier "three pre-existing", which miscounted by not counting
-    /// this file's own import. All four are routed to backlog id 76
-    /// (<c>application_layer_depends_on_infrastructure_unguarded</c>), not
-    /// refactored here. Guarded against
+    /// <c>CancelOrderCommandHandler.cs</c>): the RPC payload records moved to
+    /// <c>Contracts/Rpc</c>, and this file's own serialisation now goes
+    /// through <see cref="IRpcRequestSerializer"/> rather than
+    /// <c>RpcJson</c> directly. Guarded against
     /// drift by <c>OperatorCancelRequestedEnvelopeTests.Topic_EqualsOrdersFactTopicName</c>
     /// (a parity assertion, in the TEST file, which may reference
     /// Infrastructure freely).

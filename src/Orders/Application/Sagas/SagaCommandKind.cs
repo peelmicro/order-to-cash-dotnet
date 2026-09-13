@@ -14,12 +14,21 @@ public enum SagaCommandKind
 
     /// <summary>
     /// The sixth saga command — feature <c>orders_cancel_responder</c>'s
-    /// reverse-order-of-acquisition compensation (<c>saga.md</c> §4.3): the
-    /// credit hold is released FIRST when an operator cancels an order that
-    /// is <c>credit_approved</c>/<c>confirmed</c>, before <c>stock.release</c>
-    /// follows. No fact-driven <see cref="SagaStepTable"/> row ever names
-    /// this as a <c>CommandAfter</c> — <c>CancelOrderCommandHandler</c>
-    /// enqueues it directly, over the SAME durable mechanism every other
+    /// reverse-order-of-acquisition compensation, SA-4 (the human-gated
+    /// shared-spec amendment ruled 2026-09-11; <c>saga.md</c> §4.3): when an
+    /// operator cancels an order that is <c>credit_approved</c>/
+    /// <c>confirmed</c>, <c>stock.release</c> — the CONTESTED resource,
+    /// arbitrated by Fulfillment's one lock against a despatch already
+    /// requested — is released FIRST; <c>credit.release</c> follows SECOND,
+    /// as a <c>CommandAfter</c> a fact-driven <see cref="SagaStepTable"/>
+    /// row DOES name (its <c>stock.released.v1</c> row's
+    /// <c>credit_approved</c>/<c>confirmed</c> variants, <c>:224-225</c>).
+    /// <c>CancelOrderCommandHandler</c> never enqueues this command
+    /// directly — it enqueues only <see cref="StockRelease"/>
+    /// (<c>CancelOrderCommandHandler.cs:215</c>); every
+    /// <see cref="CreditRelease"/> row is enqueued from a FACT-DRIVEN path
+    /// (<see cref="SagaFactHandler"/>'s ordinary Advance above, or its
+    /// late-approval branch), over the SAME durable mechanism every other
     /// saga command uses.
     /// </summary>
     CreditRelease,

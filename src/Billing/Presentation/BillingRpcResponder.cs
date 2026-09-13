@@ -11,6 +11,7 @@ using OrderToCash.Billing.Infrastructure;
 using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Billing.Infrastructure.Observability;
 using OrderToCash.Billing.Presentation.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.SharedKernel;
 

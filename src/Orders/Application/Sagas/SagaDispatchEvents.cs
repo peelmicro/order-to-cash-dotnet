@@ -21,16 +21,32 @@ public sealed record OrderConfirmedBySaga(Guid OrderId, Guid CorrelationId);
 public sealed record OrderMarkedDespatched(Guid OrderId, Guid CorrelationId);
 
 /// <summary>
-/// The sixth dispatch-owed event (feature <c>orders_cancel_responder</c>) —
-/// published by <c>HandleCreditReleasedFactCommandHandler</c> ONLY when the
-/// <c>credit.released.v1</c> fact matched its <c>credit_approved</c>/
-/// <c>confirmed</c> variant (<see cref="SagaStepTable"/>) and therefore owed
-/// <see cref="SagaCommandKind.StockRelease"/> next — deliberately NOT the
-/// same type as <see cref="CreditRejectionRecorded"/> even though both map
-/// to the identical owed command: the triggering fact and the branch of the
-/// saga they belong to are genuinely different (R27's credit rejection vs.
-/// the operator-cancel reverse-order-of-acquisition compensation), and
-/// collapsing them into one type would make a reader unable to tell which
-/// branch actually fired from the event alone.
+/// The sixth dispatch-owed event — SA-4 (the human-gated shared-spec
+/// amendment ruled 2026-09-11) moved this from <c>credit.released.v1</c> to
+/// <c>stock.released.v1</c>: published by <c>HandleStockReleasedFactCommandHandler</c>
+/// ONLY when the fact matched its <c>credit_approved</c>/<c>confirmed</c>
+/// variant (<see cref="SagaStepTable"/>) and therefore owed
+/// <see cref="SagaCommandKind.CreditRelease"/> next — the CONTESTED resource
+/// (stock) having just been released is what makes credit due, the reverse
+/// of the pre-SA-4 shape. Deliberately its OWN type, not reused from any
+/// other owed-command event: the triggering fact and the branch of the saga
+/// it belongs to are what a reader needs to tell apart.
 /// </summary>
-public sealed record CreditReleasedForCancellationRecorded(Guid OrderId, Guid CorrelationId);
+public sealed record StockReleasedForCancellationRecorded(Guid OrderId, Guid CorrelationId);
+
+/// <summary>
+/// The seventh dispatch-owed event — id 62 fix round 1, F1. <c>credit.approved.v1</c>
+/// is the ONE fact type whose <see cref="SagaFactHandler"/> handling is NOT
+/// fully described by <see cref="SagaStepTable"/> alone: SA-4's late-approval
+/// branch (<c>SagaFactHandler.HandleAsync</c>'s own
+/// <c>lateForAnAcceptedOperatorCancel</c> check, run BEFORE <see cref="SagaStepTable.ForStatus"/>
+/// is ever consulted) enqueues <see cref="SagaCommandKind.CreditRelease"/>
+/// directly, never going through the ordinary Advance's own
+/// <c>SagaCommandKind.DespatchCreate</c> at all. <c>HandleCreditApprovedFactCommandHandler</c>
+/// publishes THIS event, never <see cref="OrderConfirmedBySaga"/>, when that
+/// is the branch that fired — <c>OrderConfirmedBySagaHandler</c>'s own
+/// hard-coded <c>SagaCommandKind.DespatchCreate</c> signal would otherwise
+/// claim a saga_commands row that was never enqueued, stranding the real
+/// <c>credit.release</c> row for the sweeper alone to find.
+/// </summary>
+public sealed record LateCreditApprovalForCancellationRecorded(Guid OrderId, Guid CorrelationId);

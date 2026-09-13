@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NATS.Client.Core;
 using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using OrderToCash.Fulfillment.Presentation.Rpc;

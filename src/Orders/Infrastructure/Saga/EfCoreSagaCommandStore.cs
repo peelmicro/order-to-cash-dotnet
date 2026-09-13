@@ -285,10 +285,17 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
 
     /// <summary>
     /// Feature <c>operator_note_survives_the_compensation_branches</c> (id
-    /// 71) — see <see cref="ISagaCommandStore.FindOperatorCancelNoteAsync"/>
-    /// for why <c>credit.release</c> is checked first. A bare
-    /// <c>AsNoTracking</c> read, never a claim/lease, so it never contends
-    /// with <see cref="TryClaimAsync"/>/<see cref="ClaimDueAsync"/>.
+    /// 71) — checks <c>credit.release</c> before <c>stock.release</c>
+    /// (arbitrary but fixed precedence for the "both rows carry a synthetic
+    /// envelope" defensive case — <see cref="SagaCommandStoreTests"/>'s own
+    /// precedence test pins it); selection between the two is by envelope
+    /// CONTENT (<see cref="ExtractOperatorCancelNote"/>), never by which
+    /// command name or insertion position happens to carry the synthetic
+    /// envelope — under SA-4 that is <c>stock.release</c> for BOTH the
+    /// <c>stock_reserved</c> and the <c>credit_approved</c>/<c>confirmed</c>
+    /// branch (<see cref="ISagaCommandStore.FindOperatorCancelNoteAsync"/>'s
+    /// own remarks). A bare <c>AsNoTracking</c> read, never a claim/lease,
+    /// so it never contends with <see cref="TryClaimAsync"/>/<see cref="ClaimDueAsync"/>.
     /// </summary>
     public async Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken)
     {
@@ -317,48 +324,66 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
     /// <c>eventType</c>, or the synthetic envelope with no <c>note</c> key
     /// (JsonWire's own null-omission — the operator supplied none).
     /// </summary>
-    private static string? ExtractOperatorCancelNote(string? envelopeJson)
+    private static string? ExtractOperatorCancelNote(string? envelopeJson) =>
+        IsOperatorCancelEnvelope(envelopeJson, out var root) && root.TryGetProperty("payload", out var payload) && payload.TryGetProperty("note", out var note)
+            ? note.GetString()
+            : null;
+
+    /// <summary>
+    /// Content, never position or command name, decides whether
+    /// <paramref name="envelopeJson"/> is the synthetic
+    /// <c>orders.cancel.requested</c> envelope
+    /// (<see cref="Application.Commands.CancelOrderCommandHandler"/>'s own
+    /// direct enqueue) rather than a real fact's bytes — shared by
+    /// <see cref="ExtractOperatorCancelNote"/> and
+    /// <see cref="HasAcceptedOperatorCancelAsync"/> so both read the SAME
+    /// content test, never two independently-maintained ones.
+    /// </summary>
+    private static bool IsOperatorCancelEnvelope(string? envelopeJson, out JsonElement root)
     {
         if (envelopeJson is null)
         {
-            return null;
+            root = default;
+            return false;
         }
 
         using var document = JsonDocument.Parse(envelopeJson);
-        var root = document.RootElement;
-
-        if (!root.TryGetProperty("eventType", out var eventType) || eventType.GetString() != "orders.cancel.requested")
-        {
-            return null;
-        }
-
-        return root.TryGetProperty("payload", out var payload) && payload.TryGetProperty("note", out var note)
-            ? note.GetString()
-            : null;
+        root = document.RootElement.Clone();
+        return root.TryGetProperty("eventType", out var eventType) && eventType.GetString() == "orders.cancel.requested";
     }
 
     /// <summary>
-    /// Id 62 — a plain <c>EXISTS</c>-shaped <c>AnyAsync</c>, no status
-    /// filter (see the port's own remarks for why: a <c>sent</c> or even
-    /// <c>rejected</c> row still means "a compensation was requested for
-    /// this order", which is all <see cref="SagaFactHandler"/> needs
-    /// to know before applying an UNRELATED forward-progress fact). Reads
-    /// through the SAME ambient <see cref="OrdersDbContext"/> every other
-    /// method here uses — under this database's <c>READ_COMMITTED_SNAPSHOT
-    /// ON</c>, executed AFTER the caller's own <c>UPDLOCK</c> read of the
-    /// order row (<see cref="Persistence.EfCoreOrderRepository.GetByIdAsync"/>)
-    /// has already waited out any concurrent enqueue for the SAME order, so
-    /// this statement's own snapshot is guaranteed fresh relative to it.
+    /// Id 62 (SA-4) — an <c>EXISTS</c>-shaped check over <c>credit.release</c>
+    /// and <c>stock.release</c> rows for <paramref name="orderId"/>,
+    /// narrowed to envelope CONTENT (<see cref="IsOperatorCancelEnvelope"/>):
+    /// a row carrying the synthetic <c>orders.cancel.requested</c> envelope
+    /// means an operator cancellation has been accepted; a row of either
+    /// command carrying a REAL fact's envelope (R27's <c>credit_rejected</c>
+    /// path also enqueues <c>stock.release</c>) must not count — armed by
+    /// substituting "any <c>stock.release</c> row" (record's arming table,
+    /// A3). No status filter: a <c>sent</c> or even <c>rejected</c> row
+    /// still means "an operator cancellation was requested for this order".
+    /// Reads through the SAME ambient <see cref="OrdersDbContext"/> every
+    /// other method here uses — under this database's
+    /// <c>READ_COMMITTED_SNAPSHOT ON</c>, executed AFTER the caller's own
+    /// <c>UPDLOCK</c> read of the order row
+    /// (<see cref="Persistence.EfCoreOrderRepository.GetByIdAsync"/>) has
+    /// already waited out any concurrent enqueue for the SAME order, so this
+    /// statement's own snapshot is guaranteed fresh relative to it.
     /// </summary>
-    public async Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken)
+    public async Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken)
     {
         const string CreditReleaseToken = "credit.release";
         const string StockReleaseToken = "stock.release";
 
-        return await db.SagaCommands
+        var envelopes = await db.SagaCommands
             .AsNoTracking()
-            .AnyAsync(c => c.OrderId == orderId && (c.Command == CreditReleaseToken || c.Command == StockReleaseToken), cancellationToken)
+            .Where(c => c.OrderId == orderId && (c.Command == CreditReleaseToken || c.Command == StockReleaseToken))
+            .Select(c => c.TriggeringEventEnvelope)
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        return envelopes.Any(envelope => IsOperatorCancelEnvelope(envelope, out _));
     }
 
     private static SagaCommandRecord ToRecord(SagaCommand row) => new(

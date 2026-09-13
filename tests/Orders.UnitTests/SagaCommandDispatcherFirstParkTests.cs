@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Infrastructure;
@@ -120,7 +121,7 @@ public sealed class SagaCommandDispatcherFirstParkTests
 
         public Task<string?> FindOperatorCancelNoteAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<bool> HasPendingCompensationAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<bool> HasAcceptedOperatorCancelAsync(Guid orderId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class FakeSagaCommands(Func<int, Task<StockReserveReplyPayload>> reserveStock) : ISagaCommands

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using NATS.Client.Core;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using OrderToCash.Fulfillment.Presentation.Rpc;
 using OrderToCash.SharedKernel;

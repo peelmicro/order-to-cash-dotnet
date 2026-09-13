@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Infrastructure.Observability;

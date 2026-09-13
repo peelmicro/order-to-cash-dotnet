@@ -1,4 +1,5 @@
 using NATS.Client.Core;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 
 namespace OrderToCash.Orders.IntegrationTests;

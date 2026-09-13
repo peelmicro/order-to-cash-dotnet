@@ -118,31 +118,58 @@ public static class SagaStepTable
         [new OrderCompensationStep(CompensationStepKind.StockReleased, UniqueId.From(fact.EventId), fact.EventType, fact.OccurredAt, Summary: null)];
 
     /// <summary>
-    /// <c>stock.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c>
-    /// variants (feature <c>orders_cancel_responder</c>) unwind TWO
-    /// acquisitions, not one — credit hold, then stock reservation, reverse
-    /// order of acquisition (saga.md §4.3 point 3: "both steps must be
-    /// visible"). This function has no cross-fact state anywhere in this
-    /// codebase to source the EARLIER <c>credit.released.v1</c> fact's own
-    /// <c>eventId</c>/<c>occurredAt</c> from — <see cref="SagaFact"/> only
-    /// ever carries the ONE fact currently being processed (here,
-    /// <c>stock.released.v1</c> itself). The synthesised <c>credit_released</c>
-    /// entry below therefore carries NO <c>eventId</c> (the wire schema's own
-    /// field is optional, <c>CompensationStep.eventId</c>) and reuses the
-    /// CURRENT fact's <c>occurredAt</c> rather than fabricate an earlier one
-    /// — a disclosed limitation, not a silent gap, matching #7's identical
-    /// trade-off (<c>saga-steps.ts:79-97</c>'s own header comment, ledger row
-    /// below).
+    /// <c>credit.released.v1</c>'s reason mapping — the Cancel variant's
+    /// mirror of <see cref="MapReason"/> for the OTHER completing fact SA-4
+    /// introduces. <c>order_cancelled</c> is the only reason ever legal at
+    /// <c>credit_approved</c>/<c>confirmed</c> (Billing's <c>CreditReleaseService</c>
+    /// always releases with it — the RPC has no caller-chosen reason at all);
+    /// <c>invoice_paid</c> reaches this fact type too, but on the SEPARATE
+    /// <c>Paid</c> Advance variant, which never calls this mapping.
     /// </summary>
-    public static IReadOnlyList<OrderCompensationStep> CompensationStepsFromCreditThenStockRelease(SagaFact fact) =>
+    public static CancellationReason MapCreditReleaseReason(SagaFact fact)
+    {
+        var payload = (CreditReleasedPayload)fact.Payload;
+
+        return payload.Reason switch
+        {
+            "order_cancelled" => CancellationReason.OperatorCancelled,
+            _ => throw new ArgumentOutOfRangeException(nameof(fact), payload.Reason, "credit.released.v1 carried a reason outside the closed set {order_cancelled} at credit_approved/confirmed."),
+        };
+    }
+
+    /// <summary>
+    /// <c>credit.released.v1</c>'s <c>credit_approved</c>/<c>confirmed</c>
+    /// variants (SA-4) unwind TWO acquisitions, not one — the CONTESTED
+    /// resource (stock) released first, then credit, per saga.md §4.3's "The
+    /// despatch already requested": releasing credit first would strand it
+    /// on an order that then despatches. This function has no cross-fact
+    /// state anywhere in this codebase to source the EARLIER
+    /// <c>stock.released.v1</c> fact's own <c>eventId</c>/<c>occurredAt</c>
+    /// from — <see cref="SagaFact"/> only ever carries the ONE fact
+    /// currently being processed (here, <c>credit.released.v1</c> itself).
+    /// The synthesised <c>stock_released</c> entry below therefore carries
+    /// NO <c>eventId</c> (the wire schema's own field is optional,
+    /// <c>CompensationStep.eventId</c>) and reuses the CURRENT fact's
+    /// <c>occurredAt</c> rather than fabricate an earlier one — a disclosed
+    /// limitation, not a silent gap, matching #7's identical trade-off
+    /// (<c>saga-steps.ts:79-97</c>'s own header comment, ledger row below) —
+    /// SA-4 inverted which fact is "current" and which is synthesised, the
+    /// trade-off itself is unchanged.
+    /// </summary>
+    public static IReadOnlyList<OrderCompensationStep> CompensationStepsFromStockThenCreditRelease(SagaFact fact) =>
     [
         new OrderCompensationStep(
-            CompensationStepKind.CreditReleased,
+            CompensationStepKind.StockReleased,
             EventId: null,
-            EventType: "credit.released.v1",
+            EventType: "stock.released.v1",
             OccurredAt: fact.OccurredAt,
-            Summary: "credit released — reason: order_cancelled (reverse order of acquisition, released before stock)"),
-        .. CompensationStepsFrom(fact),
+            Summary: "stock released — reason: order_cancelled (the contested resource, released first so Fulfillment's own lock can arbitrate against a despatch already requested — saga.md §4.3)"),
+        new OrderCompensationStep(
+            CompensationStepKind.CreditReleased,
+            EventId: UniqueId.From(fact.EventId),
+            EventType: fact.EventType,
+            OccurredAt: fact.OccurredAt,
+            Summary: null),
     ];
 
     private static IEnumerable<KeyValuePair<string, IReadOnlyList<SagaStep>>> BuildRows()
@@ -180,20 +207,22 @@ public static class SagaStepTable
             "credit.rejected.v1",
             new SagaStep.Advance(OrderStatus.StockReserved, Apply: null, SagaCommandKind.StockRelease));
 
-        // stock.released.v1 — three variants (feature orders_cancel_responder).
-        // The original stock_reserved variant (R28/SO7) is UNCHANGED; the two
-        // new ones complete the operator-cancel compensation for an order
-        // that already held a credit hold when the operator cancelled it —
-        // credit.release was issued and processed FIRST (the next row down),
-        // and this fact arrives while the order is STILL credit_approved/
-        // confirmed (that earlier step's own apply is a no-op, mirroring
-        // credit.rejected.v1's R27 no-op).
+        // stock.released.v1 — three variants. The original stock_reserved
+        // variant (R28/SO7) is UNCHANGED. SA-4 makes the credit_approved/
+        // confirmed variants an ADVANCE, not a Cancel: stock is the
+        // CONTESTED resource (Fulfillment's own lock arbitrates it against a
+        // despatch already requested — saga.md §4.3's "The despatch already
+        // requested"), released FIRST by CancelOrderCommandHandler's direct
+        // enqueue, and this fact — the release actually winning the race —
+        // owes credit.release next. No Apply: the order's status stays
+        // exactly where it is (mirroring credit.rejected.v1's R27 no-op)
+        // until credit.released.v1 completes the cancellation below.
         yield return PairVariants(
             "stock.released.v1",
             [
                 new SagaStep.Cancel(OrderStatus.StockReserved, MapReason, CompensationStepsFrom),
-                new SagaStep.Cancel(OrderStatus.CreditApproved, MapReason, CompensationStepsFromCreditThenStockRelease),
-                new SagaStep.Cancel(OrderStatus.Confirmed, MapReason, CompensationStepsFromCreditThenStockRelease),
+                new SagaStep.Advance(OrderStatus.CreditApproved, Apply: null, SagaCommandKind.CreditRelease),
+                new SagaStep.Advance(OrderStatus.Confirmed, Apply: null, SagaCommandKind.CreditRelease),
             ]);
 
         yield return Pair(
@@ -217,14 +246,12 @@ public static class SagaStepTable
                 (order, fact) => order.MarkPaid(fact.OccurredAt),
                 CommandAfter: null));
 
-        // credit.released.v1 — three variants (feature orders_cancel_responder).
-        // The original paid variant (R24) is UNCHANGED. The two new ones are
-        // the FIRST step of the credit_approved/confirmed operator-cancel
-        // compensation (saga.md §4.3): apply is a no-op (status stays where
-        // it is, mirroring credit.rejected.v1's R27 no-op) and the step owes
-        // stock.release next — the reverse-order-of-acquisition chain
-        // completes when THAT fact's own stock.released.v1 variant (above)
-        // fires the cancellation.
+        // credit.released.v1 — three variants. The original paid variant
+        // (R24) is UNCHANGED. SA-4 makes the credit_approved/confirmed
+        // variants the COMPLETING Cancel step (stock.released.v1's own
+        // Advance variant above owes this command; this fact arriving is
+        // what actually completes the cancellation) — the inverse of the
+        // pre-SA-4 shape, where this fact type was the no-op first hop.
         yield return PairVariants(
             "credit.released.v1",
             [
@@ -232,8 +259,8 @@ public static class SagaStepTable
                     OrderStatus.Paid,
                     (order, fact) => order.Complete(fact.OccurredAt, UniqueId.From(fact.EventId)),
                     CommandAfter: null),
-                new SagaStep.Advance(OrderStatus.CreditApproved, Apply: null, SagaCommandKind.StockRelease),
-                new SagaStep.Advance(OrderStatus.Confirmed, Apply: null, SagaCommandKind.StockRelease),
+                new SagaStep.Cancel(OrderStatus.CreditApproved, MapCreditReleaseReason, CompensationStepsFromStockThenCreditRelease),
+                new SagaStep.Cancel(OrderStatus.Confirmed, MapCreditReleaseReason, CompensationStepsFromStockThenCreditRelease),
             ]);
 
         // SO2 — the four facts the orchestrator produces itself. Consuming

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OrderToCash.Contracts.Facts;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using Xunit;

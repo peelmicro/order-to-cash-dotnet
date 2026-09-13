@@ -5,6 +5,7 @@ using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Messaging;
 using OrderToCash.Orders.Infrastructure.Messaging.Consumers;
 using OrderToCash.Orders.Infrastructure.Messaging.DeadLetter;
+using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using OrderToCash.Orders.Infrastructure.Observability;
 using OrderToCash.Orders.Infrastructure.Saga;
 using OrderToCash.Orders.Presentation;
@@ -79,6 +80,13 @@ public static class OrdersSagaServiceCollectionExtensions
 
         // OR5/design.md §7 — otc_saga_completion_ms.
         services.AddSingleton<ISagaCompletionRecorder, SagaCompletionRecorder>();
+
+        // Feature 76 (application_layer_depends_on_infrastructure_unguarded)
+        // — the port that lets Application build a saga command's/the
+        // synthetic orders.cancel.requested envelope's wire body without
+        // depending on Infrastructure.Messaging.Rpc.RpcJson directly.
+        services.AddScoped<IRpcRequestSerializer, RpcJsonRequestSerializer>();
+        services.AddScoped<Application.Sagas.SagaCommandRequestFactory>();
 
         // The transactional unit and the RPC issuer.
         services.AddScoped<Application.Sagas.SagaFactHandler>();

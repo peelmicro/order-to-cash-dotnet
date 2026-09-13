@@ -1,6 +1,7 @@
 using NATS.Client.Core;
 using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Billing.Presentation.Rpc;
+using OrderToCash.Contracts.Rpc;
 using Xunit;
 
 namespace OrderToCash.Billing.IntegrationTests;

@@ -11,6 +11,7 @@ using MongoDB.Driver;
 using NATS.Client.Core;
 using OrderToCash.Contracts.Envelopes;
 using OrderToCash.Contracts.Facts.Payloads;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Orders;
 using OrderToCash.Orders.Application.Ports;
@@ -333,6 +334,17 @@ public sealed class OperatorNoteReachesTimelineEndToEndTests(
             var response = await gateway.Client.PostAsJsonAsync($"/orders/{orderId}/cancel", new { note });
             Assert.Equal((System.Net.HttpStatusCode)202, response.StatusCode);
 
+            // SA-4 (the human-gated shared-spec amendment ruled 2026-09-11):
+            // at credit_approved/confirmed the operator cancellation
+            // releases stock FIRST — the CONTESTED resource, per saga.md
+            // §4.3 "The despatch already requested" — and only THAT fact's
+            // own Advance variant owes credit.release next. Order flipped
+            // from this test's pre-SA-4 shape (credit first, then stock).
+            await WaitForSagaCommandSentAsync(connectionString, orderId, "stock.release", TimeSpan.FromSeconds(30));
+            await PublishFactAsync(
+                SagaFactTopics.FulfillmentFacts, "stock.released.v1", orderId,
+                new StockReleasedPayload("ORD-BRANCH", CompanyCode, [], "order_cancelled"));
+
             if (needsCreditRelease)
             {
                 await WaitForSagaCommandSentAsync(connectionString, orderId, "credit.release", TimeSpan.FromSeconds(30));
@@ -340,11 +352,6 @@ public sealed class OperatorNoteReachesTimelineEndToEndTests(
                     SagaFactTopics.BillingFacts, "credit.released.v1", orderId,
                     new CreditReleasedPayload("ORD-BRANCH", RetailerCode, CompanyCode, "EUR", 2_450, 100_000, "order_cancelled", "CR-000001"));
             }
-
-            await WaitForSagaCommandSentAsync(connectionString, orderId, "stock.release", TimeSpan.FromSeconds(30));
-            await PublishFactAsync(
-                SagaFactTopics.FulfillmentFacts, "stock.released.v1", orderId,
-                new StockReleasedPayload("ORD-BRANCH", CompanyCode, [], "order_cancelled"));
 
             var collection = mongo.FreshCollection(mongoDatabase);
             var doc = await PollForCancelledDocumentAsync(collection, orderId, TimeSpan.FromSeconds(60));

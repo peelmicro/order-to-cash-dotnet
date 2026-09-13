@@ -2,7 +2,7 @@ using OrderToCash.Billing.Application.Commands;
 using OrderToCash.Billing.Application.Ports;
 using OrderToCash.Billing.Domain;
 using OrderToCash.Billing.Domain.Errors;
-using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Billing.Application;

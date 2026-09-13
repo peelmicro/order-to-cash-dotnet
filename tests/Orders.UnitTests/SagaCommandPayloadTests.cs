@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OrderToCash.Contracts.Facts;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Contracts.Wire;
 using OrderToCash.Orders.Infrastructure.Messaging.Rpc;
 using Xunit;
@@ -91,7 +92,7 @@ public sealed class SagaCommandPayloadTests
     [Fact]
     public void CreditHoldRequestPayload_CarriesANestedMoneyObjectWithAmountAndCurrency()
     {
-        var payload = new CreditHoldRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", new SagaMoney(124_250, "EUR"));
+        var payload = new CreditHoldRequestPayload("ORD-000001", "RETAILER1", "COMPANY1", new CreditMoney(124_250, "EUR"));
 
         var json = RoundTrip(payload);
 
@@ -158,8 +159,9 @@ public sealed class SagaCommandPayloadTests
         var order = OrderTestData.PlacedOrder();
         Assert.NotEqual(0, order.InitialDiscount.MinorUnits); // the comparison below means nothing against a zero discount.
 
-        var invoiceJson = OrderToCash.Orders.Application.Sagas.SagaCommandRequestFactory.BuildJson(OrderToCash.Orders.Application.Sagas.SagaCommandKind.InvoiceIssue, order);
-        var creditHoldJson = OrderToCash.Orders.Application.Sagas.SagaCommandRequestFactory.BuildJson(OrderToCash.Orders.Application.Sagas.SagaCommandKind.CreditHold, order);
+        var requestFactory = new OrderToCash.Orders.Application.Sagas.SagaCommandRequestFactory(new RpcJsonRequestSerializer());
+        var invoiceJson = requestFactory.BuildJson(OrderToCash.Orders.Application.Sagas.SagaCommandKind.InvoiceIssue, order);
+        var creditHoldJson = requestFactory.BuildJson(OrderToCash.Orders.Application.Sagas.SagaCommandKind.CreditHold, order);
 
         var invoiceRequest = JsonSerializer.Deserialize<InvoiceIssueRequestPayload>(invoiceJson, JsonWire.Options)!;
         var creditHoldRequest = JsonSerializer.Deserialize<CreditHoldRequestPayload>(creditHoldJson, JsonWire.Options)!;
@@ -176,7 +178,7 @@ public sealed class SagaCommandPayloadTests
     /// Every payload record the `BC23` theory below covers — the completeness
     /// set `orders_wire_key_theory_compares_a_hand_typed_list_to_itself`'s own
     /// enumeration bullet asks for. Re-review (round 2) found this set had
-    /// dropped <see cref="SagaMoney"/> (the record backing `asyncapi.yaml`'s
+    /// dropped <see cref="CreditMoney"/> (the record backing `asyncapi.yaml`'s
     /// <c>Money</c> schema) — see `progress/impl_guard_hardening.md`'s
     /// "Fix round — re-review's three items" section for the full
     /// <c>grep -n "record "</c> enumeration this row was reconstructed from.
@@ -194,7 +196,7 @@ public sealed class SagaCommandPayloadTests
         { "StockReleaseReplyPayload", typeof(StockReleaseReplyPayload) },
         { "DespatchCreateRequestPayload", typeof(DespatchCreateRequestPayload) },
         { "DespatchCreateReplyPayload", typeof(DespatchCreateReplyPayload) },
-        { "Money", typeof(SagaMoney) },
+        { "Money", typeof(CreditMoney) },
         { "CreditHoldRequestPayload", typeof(CreditHoldRequestPayload) },
         { "CreditHoldReplyPayload", typeof(CreditHoldReplyPayload) },
         { "InvoiceIssueRequestPayload", typeof(InvoiceIssueRequestPayload) },

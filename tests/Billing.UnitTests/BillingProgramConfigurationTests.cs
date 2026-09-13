@@ -15,6 +15,7 @@ namespace OrderToCash.Billing.UnitTests;
 /// leaving the suite green (feature 20's review finding, reproduced against
 /// <c>src/Billing/Program.cs:23</c>).
 /// </summary>
+[Collection(BillingEnvironmentVariableTestCollection.Name)]
 public sealed class BillingProgramConfigurationTests
 {
     private static readonly string[] _envVars =

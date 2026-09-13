@@ -1,8 +1,8 @@
 using OrderToCash.Contracts.Facts;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Fulfillment.Application.Ports;
 using OrderToCash.Fulfillment.Domain;
-using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Fulfillment.Application;

@@ -2,6 +2,7 @@ using NATS.Client.Core;
 using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Billing.Presentation;
 using OrderToCash.Billing.Presentation.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using Xunit;
 

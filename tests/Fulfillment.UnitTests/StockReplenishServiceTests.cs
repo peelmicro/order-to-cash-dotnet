@@ -1,6 +1,6 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Fulfillment.Application;
 using OrderToCash.Fulfillment.Domain;
-using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using Xunit;
 
 namespace OrderToCash.Fulfillment.UnitTests;

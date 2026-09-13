@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OrderToCash.Billing.Application.Ports;
 using OrderToCash.Billing.Domain;
-using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
+using OrderToCash.Contracts.Rpc;
 
 namespace OrderToCash.Billing.Infrastructure.Persistence;
 

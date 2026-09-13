@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.SharedKernel;
 
@@ -13,12 +14,12 @@ public sealed record RegisterPaymentCommand(
     DateTimeOffset ValueDate,
     string Source,
     UniqueId CorrelationId,
-    UniqueId RequestId) : ICommand<Infrastructure.Messaging.Rpc.PaymentRegisterReplyPayload>;
+    UniqueId RequestId) : ICommand<PaymentRegisterReplyPayload>;
 
 /// <summary>Thin delegation to <see cref="PaymentRegisterService.RegisterAsync"/> — the split that keeps the transactional unit a plain class a unit test can <c>new</c> with fakes (mirrors <c>IssueInvoiceCommandHandler</c>).</summary>
 public sealed class RegisterPaymentCommandHandler(PaymentRegisterService service)
-    : ICommandHandler<RegisterPaymentCommand, Infrastructure.Messaging.Rpc.PaymentRegisterReplyPayload>
+    : ICommandHandler<RegisterPaymentCommand, PaymentRegisterReplyPayload>
 {
-    public Task<Infrastructure.Messaging.Rpc.PaymentRegisterReplyPayload> HandleAsync(RegisterPaymentCommand command, CancellationToken cancellationToken) =>
+    public Task<PaymentRegisterReplyPayload> HandleAsync(RegisterPaymentCommand command, CancellationToken cancellationToken) =>
         service.RegisterAsync(command, cancellationToken);
 }

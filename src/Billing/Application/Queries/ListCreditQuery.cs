@@ -1,5 +1,5 @@
 using OrderToCash.Billing.Application.Ports;
-using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 
 namespace OrderToCash.Billing.Application.Queries;

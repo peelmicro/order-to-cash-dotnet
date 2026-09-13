@@ -9,6 +9,7 @@ using OrderToCash.Billing.Infrastructure.Messaging.Rpc;
 using OrderToCash.Billing.Infrastructure.Persistence;
 using OrderToCash.Billing.Infrastructure.Persistence.Entities;
 using OrderToCash.Billing.Presentation.Rpc;
+using OrderToCash.Contracts.Rpc;
 
 namespace OrderToCash.Billing.IntegrationTests;
 

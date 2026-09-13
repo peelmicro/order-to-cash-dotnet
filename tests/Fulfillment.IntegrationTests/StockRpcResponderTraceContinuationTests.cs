@@ -2,6 +2,7 @@ using System.Diagnostics;
 using NATS.Client.Core;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Fulfillment.Infrastructure.Messaging.Rpc;
 using OrderToCash.Fulfillment.Infrastructure.Observability;
 using OrderToCash.Fulfillment.Presentation.Rpc;

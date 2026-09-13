@@ -6,8 +6,10 @@ namespace OrderToCash.Orders.UnitTests;
 
 /// <summary>
 /// design.md §5.5 — <c>SO3_EachDispatchOwedEvent_SignalsItsOwnSagaCommandAndNothingElse</c>:
-/// all six event-to-signal mappings (feature <c>orders_cancel_responder</c>
-/// adds the sixth), against a recording <see cref="ISagaCommandSignal"/>.
+/// all SEVEN event-to-signal mappings (the sixth moved from
+/// <c>credit.released.v1</c> to <c>stock.released.v1</c> by SA-4; the
+/// seventh, <c>LateCreditApprovalForCancellationRecorded</c>, added by id
+/// 62 fix round 1's F1), against a recording <see cref="ISagaCommandSignal"/>.
 /// </summary>
 public sealed class OrderSagasTests
 {
@@ -22,7 +24,8 @@ public sealed class OrderSagasTests
         await AssertSignalsExactlyOne(new CreditRejectionRecorded(orderId, correlationId), SagaCommandKind.StockRelease, signal => new CreditRejectionRecordedHandler(signal));
         await AssertSignalsExactlyOne(new OrderConfirmedBySaga(orderId, correlationId), SagaCommandKind.DespatchCreate, signal => new OrderConfirmedBySagaHandler(signal));
         await AssertSignalsExactlyOne(new OrderMarkedDespatched(orderId, correlationId), SagaCommandKind.InvoiceIssue, signal => new OrderMarkedDespatchedHandler(signal));
-        await AssertSignalsExactlyOne(new CreditReleasedForCancellationRecorded(orderId, correlationId), SagaCommandKind.StockRelease, signal => new CreditReleasedForCancellationRecordedHandler(signal));
+        await AssertSignalsExactlyOne(new StockReleasedForCancellationRecorded(orderId, correlationId), SagaCommandKind.CreditRelease, signal => new StockReleasedForCancellationRecordedHandler(signal));
+        await AssertSignalsExactlyOne(new LateCreditApprovalForCancellationRecorded(orderId, correlationId), SagaCommandKind.CreditRelease, signal => new LateCreditApprovalForCancellationRecordedHandler(signal));
 
         async Task AssertSignalsExactlyOne<TEvent>(TEvent @event, SagaCommandKind expectedCommand, Func<RecordingSagaCommandSignal, OrderToCash.Cqrs.IEventHandler<TEvent>> buildHandler)
         {
