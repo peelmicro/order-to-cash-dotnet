@@ -291,6 +291,40 @@ each pulling ~260 metadata references (dominated by gathering/loading
 those references once, shared via `Lazy<IReadOnlyList<MetadataReference>>`
 across all six, per the class doc comment on `_metadataReferences`).
 
+**The instrument that produced the figure, preserved here so it is reproducible.** A throwaway console probe was written at the repository root during this round and left untracked; it is recorded below and the file deleted, because it hard-codes this machine's checkout path and points into a `bin/` directory that is not in git, so it is worthless as a file and useful only as a method. To re-measure, drop it into a scratch project referencing `Microsoft.CodeAnalysis.CSharp` and fix the two paths:
+
+```csharp
+var repoRoot = "<repository root>";
+var binDir = Path.Combine(repoRoot, "tests/Architecture.Tests/bin/Debug/net10.0");
+var srcDir = Path.Combine(repoRoot, "src/Billing");
+
+var sw = Stopwatch.StartNew();
+
+var refPaths = Directory.GetFiles(binDir, "*.dll").ToList();
+var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
+refPaths.AddRange(tpa);
+var refs = refPaths.Distinct().Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
+Console.WriteLine("Refs: " + refs.Count + " gathered in " + sw.ElapsedMilliseconds + "ms");
+
+var files = Directory.GetFiles(srcDir, "*.cs", SearchOption.AllDirectories)
+    .Where(p => !p.Contains("/bin/") && !p.Contains("/obj/"))
+    .ToArray();
+Console.WriteLine("Files: " + files.Length);
+
+var opts = new CSharpParseOptions(LanguageVersion.Latest);
+var trees = files.Select(f => CSharpSyntaxTree.ParseText(File.ReadAllText(f), opts, path: f)).ToArray();
+Console.WriteLine("Parsed in " + sw.ElapsedMilliseconds + "ms");
+
+var compilation = CSharpCompilation.Create("BillingProbe", trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+Console.WriteLine("Compilation created in " + sw.ElapsedMilliseconds + "ms");
+
+var diags = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+Console.WriteLine("Diagnostics computed in " + sw.ElapsedMilliseconds + "ms, errors=" + diags.Count);
+foreach (var d in diags.Take(20)) Console.WriteLine("ERR: " + d);
+```
+
+It isolates the four stages the guard performs per service — reference gathering, parse, compilation construction, diagnostics — which is how the cost was attributed to reference loading rather than to parsing.
+
 ## 5. Defeat list — run row by row against the NEW instrument
 
 Per `CLAUDE.md`'s "changing a guard's instrument is a new implementation"

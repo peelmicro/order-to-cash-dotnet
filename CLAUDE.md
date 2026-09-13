@@ -162,6 +162,21 @@ Five backlog entries were grouped into one loop because they shared a cause — 
 
 So: **when a loop's theme is a defect class rather than a defect, its first task is one repository-wide enumeration of that class — as a search result, before any fix.** The instances named in the backlog are where the class was *noticed*, never where it *ends*, and an entry filed from one sighting will otherwise be closed while the class is still live. This is the same lesson as *a fix prescribed at a line closes a line; a fix prescribed at a class closes a class* — arrived at from the other direction, and it has now cost a rejection each way.
 
+### An audit phase needs a stopping rule, written before it starts
+
+**Phase 14 found defects faster than it closed them, and nothing in this harness noticed.** It closed nine features and filed ten new entries; the backlog grew from 77 to 89 while the work itself went well. Every entry filed was real — that was never in question, and several were production defects (a saga fast path that stalled every order behind one dead responder; a deadlock victim escaping the outbox relay; an architecture rule blind to the dominant shape of two services' business logic). The phase ended only because the maintainer stopped it, and eleven entries were then **dispositioned with documented evidence rather than worked**.
+
+The failure is not that the audit found things. It is that **"is this defect real?" and "is this defect worth the budget?" are different questions, and only the first was ever being asked.** An entry that passes the first test gets filed, briefed, implemented, reviewed and closed — and at this project's measured rate that is **200k–800k tokens each** (one entry cost 432k). Fifteen open entries is therefore a multi-million-token commitment that nobody ever decided to make, arrived at one reasonable filing at a time.
+
+So, for any phase whose theme is auditing rather than building:
+
+- **Write the stopping rule at the start, in the phase's own plan**: how many entries it may open, or what class of finding closes it, or a budget. Any of the three works; having none does not.
+- **Give every filed entry a disposition, not just a status.** *Fix*, or *accept with evidence*, or *re-open only if X*. "Pending" is not a disposition — it is a decision deferred, and deferred decisions accumulate silently because each one looks free.
+- **When you accept rather than fix, say so where the status is read.** This backlog has no `accepted` status, so dispositioned entries carry `done` plus an explicit **"ACCEPTED, NOT FIXED"** note with its own reason and, where one exists, a re-open trigger. A reader who sees `done` and assumes "implemented" must be contradicted by the entry itself, not by a paragraph somewhere else.
+- **A re-open trigger is a real artefact and belongs in the entry.** The sharpest from this phase: *re-open the moment `DegreeOfParallelism` is bound to an environment variable* — unreachable today, and the instant it is configurable a value ≤ 0 makes the host report healthy while dispatching nothing at all.
+
+**The general form, which is the same guard-that-does-not-guard shape one level up:** a process that measures whether each finding is *correct* and never whether the set of findings is *affordable* will always terminate by exhaustion rather than by judgement.
+
 ### A disclosure whose root cause is `specs/shared/` becomes a numbered backlog entry, always
 
 **Approval prose may never discharge such a gap by deferring to "the next feature that touches X."** That sentence has now failed twice across two assessments, on the same defect.
