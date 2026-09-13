@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Gateway.Application.Ports;
 using OrderToCash.Gateway.Application.Rpc;
 using OrderToCash.Gateway.Domain.Projection;
@@ -184,9 +185,9 @@ public sealed class MoneyRepresentationHttpTests
             JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync()).RootElement);
 
         // ── GET /invoices — billing.invoice.list is stubbed. ────────────
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload(
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload(
             [
-                new InvoiceViewPayload(
+                new GatewayInvoiceViewPayload(
                     Guid.NewGuid(), "INV-000091", DateTimeOffset.Parse("2026-08-18T09:00:00.000Z"), "ORD-000778",
                     "CarrefourEs", "IBERFOODS", "EUR", 217_450, 3_500, 213_950, "issued", null, null),
             ],

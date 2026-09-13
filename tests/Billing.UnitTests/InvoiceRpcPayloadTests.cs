@@ -32,10 +32,15 @@ public sealed class InvoiceRpcPayloadTests
     [MemberData(nameof(RequestAndReplySchemas))]
     public void BI28_EveryInvoiceRequestAndReplyRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ParsedFromTheSpecNeverRetyped(string schemaName, Type payloadType)
     {
-        var expected = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var actual = payloadType.GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
+        AsyncApiSchema.AssertRecordCarriesExactlyTheSchemasProperties(schemaName, payloadType);
+    }
 
-        Assert.Equal(expected, actual);
+    /// <summary>Backlog id 70, bullet 3 — the schema NAME each row above claims is guarded too, not only its key set.</summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BI28_EveryRowsSchemaNameNamesTheRecordThatRowClaims(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertTheRowsSchemaNameNamesTheRecordItClaims(schemaName, payloadType);
     }
 
     [Fact]

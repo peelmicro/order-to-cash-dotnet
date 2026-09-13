@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Gateway.Application.Ports;
 using OrderToCash.Gateway.Application.Rpc;
@@ -12,16 +13,16 @@ public sealed record ListInvoicesQuery(
     string? RetailerCode,
     string? CompanyCode,
     string? OrderReference,
-    int? IssuedBeforeMinutes) : IQuery<InvoiceListReplyPayload>;
+    int? IssuedBeforeMinutes) : IQuery<GatewayInvoiceListReplyPayload>;
 
-public sealed class ListInvoicesQueryHandler(IRpcClient rpc) : IQueryHandler<ListInvoicesQuery, InvoiceListReplyPayload>
+public sealed class ListInvoicesQueryHandler(IRpcClient rpc) : IQueryHandler<ListInvoicesQuery, GatewayInvoiceListReplyPayload>
 {
-    public Task<InvoiceListReplyPayload> HandleAsync(ListInvoicesQuery query, CancellationToken cancellationToken)
+    public Task<GatewayInvoiceListReplyPayload> HandleAsync(ListInvoicesQuery query, CancellationToken cancellationToken)
     {
         var payload = new InvoiceListRequestPayload(
             query.Page, query.PageSize, query.Status, query.RetailerCode, query.CompanyCode, query.OrderReference, query.IssuedBeforeMinutes);
         var requestId = Guid.NewGuid();
-        return rpc.CallAsync<InvoiceListRequestPayload, InvoiceListReplyPayload>(
+        return rpc.CallAsync<InvoiceListRequestPayload, GatewayInvoiceListReplyPayload>(
             GatewaySubjects.InvoiceList, payload, new RpcCallMeta(requestId, requestId), cancellationToken);
     }
 }

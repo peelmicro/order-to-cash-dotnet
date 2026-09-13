@@ -223,10 +223,23 @@ public sealed class SagaCommandPayloadTests
     [MemberData(nameof(RequestAndReplySchemas))]
     public void BC23_EveryPayloadRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ParsedFromTheSpecNeverRetyped(string schemaName, Type payloadType)
     {
-        var expected = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var actual = payloadType.GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
+        AsyncApiSchema.AssertRecordCarriesExactlyTheSchemasProperties(schemaName, payloadType);
+    }
 
-        Assert.Equal(expected, actual);
+    /// <summary>
+    /// Backlog id 70, bullet 3 — the schema NAME each row above claims is
+    /// guarded too, not only its key set. This table is the sharpest case
+    /// in the repository for it: <c>StockReleaseRequestPayload</c> and
+    /// <c>CreditReleaseRequestPayload</c> sit three rows apart, and the
+    /// key-set comparison alone cannot tell a row that names the wrong one
+    /// of two sibling schemas from a row that names the right one whenever
+    /// the two declare the same keys.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryRowsSchemaNameNamesTheRecordThatRowClaims(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertTheRowsSchemaNameNamesTheRecordItClaims(schemaName, payloadType);
     }
 
     /// <summary>

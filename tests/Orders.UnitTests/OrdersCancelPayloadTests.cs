@@ -8,11 +8,14 @@ namespace OrderToCash.Orders.UnitTests;
 
 /// <summary>
 /// The <c>StockRpcPayloadTests</c>/<c>CatalogReferenceListPayloadTests</c>
-/// instrument, applied to <c>orders.cancel</c>'s own payload records: every
-/// one round-trips through the ONE shared <see cref="JsonWire.Options"/>
-/// (camelCase, nulls omitted) with exactly the keys this file hand-retypes,
-/// pinned against <c>specs/shared/asyncapi.yaml</c> itself (BC23's
-/// discipline).
+/// instrument, applied to <c>orders.cancel</c>'s own payload records: the
+/// <c>[Fact]</c> cases serialise a real instance and assert the keys that
+/// actually REACH the wire through the ONE shared
+/// <see cref="JsonWire.Options"/> (camelCase, nulls omitted), and the two
+/// <c>BC23</c> theories assert the CONTRACT — the record's own property
+/// set, read by reflection, against the set parsed from
+/// <c>specs/shared/asyncapi.yaml</c> (backlog id 70, which replaced this
+/// file's hand-retyped key lists with that reading).
 /// </summary>
 public sealed class OrdersCancelPayloadTests
 {
@@ -59,16 +62,56 @@ public sealed class OrdersCancelPayloadTests
         Assert.Equal("credit_release", planned[1].GetString());
     }
 
-    /// <summary>Backlog id 51, `BC23`'s discipline — this file's hand-retyped key lists agree with the sets parsed from <c>specs/shared/asyncapi.yaml</c> via <see cref="AsyncApiSchema"/>.</summary>
-    [Theory]
-    [InlineData("OrdersCancelRequestPayload", new[] { "orderId", "orderReference", "reason", "note" })]
-    [InlineData("OrdersCancelReplyPayload", new[] { "orderId", "orderReference", "status", "cancellationReason", "compensationPlanned" })]
-    public void BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi(string schemaName, string[] handRetypedKeys)
+    /// <summary>
+    /// The rows this file's two <c>BC23</c> theories below walk: an
+    /// <c>asyncapi.yaml</c> schema name paired with the RECORD that claims
+    /// it. The record is <c>OrderToCash.Orders.Presentation.Rpc</c>'s —
+    /// Orders is the service that ANSWERS <c>orders.cancel</c>, so its
+    /// Presentation copy is the one that shapes the wire. The Gateway
+    /// declares its own caller-side <c>OrdersCancelReplyPayload</c>
+    /// (<c>src/Gateway/Application/Rpc/GatewayRpcPayloads.cs</c>, kept
+    /// because <c>src/Contracts/Rpc</c> has no counterpart for this
+    /// subject — backlog id 84), and that second definition has its own
+    /// row in <c>tests/Gateway.UnitTests/GatewayRpcPayloadTests.cs</c>.
+    /// </summary>
+    public static TheoryData<string, Type> RequestAndReplySchemas() => new()
     {
-        var parsed = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var retyped = handRetypedKeys.ToHashSet(StringComparer.Ordinal);
+        { "OrdersCancelRequestPayload", typeof(OrdersCancelRequestPayload) },
+        { "OrdersCancelReplyPayload", typeof(OrdersCancelReplyPayload) },
+    };
 
-        Assert.Equal(parsed, retyped);
+    /// <summary>
+    /// Backlog id 51, `BC23`'s discipline — and backlog id 70, which
+    /// retired this theory's previous HAND-RETYPED key list. It compared
+    /// two pieces of text (a literal array here against the sets parsed
+    /// from <c>specs/shared/asyncapi.yaml</c>) and never read the payload
+    /// record at all, so an UNDECLARED property added to
+    /// <see cref="OrdersCancelReplyPayload"/> left this file — and the
+    /// whole of <c>Orders.UnitTests</c> — green: nulls are OMITTED by
+    /// <see cref="JsonWire.Options"/>, so the serialised-key cases above
+    /// could not see it either. The key set is now read off the record by
+    /// reflection, the shape
+    /// <c>tests/Billing.UnitTests/CreditRpcPayloadTests.cs</c> established.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryOrdersCancelRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ReadFromTheRecordNeverRetyped(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertRecordCarriesExactlyTheSchemasProperties(schemaName, payloadType);
+    }
+
+    /// <summary>
+    /// Backlog id 70, bullet 3 — the schema NAME each row claims is
+    /// guarded too, not only the key set: substituting a real sibling
+    /// schema name fails here, naming both halves of the row, including
+    /// where two sibling schemas declare identical keys and the key-set
+    /// case above therefore cannot see the swap.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryRowsSchemaNameNamesTheRecordThatRowClaims(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertTheRowsSchemaNameNamesTheRecordItClaims(schemaName, payloadType);
     }
 
     /// <summary>`G5` — the arming that proves the guard has teeth: a SCRATCH copy of the real spec (never the real, read-only <c>specs/shared/asyncapi.yaml</c>) with <c>OrdersCancelRequestPayload</c>'s <c>orderReference</c> renamed.</summary>
@@ -89,9 +132,11 @@ public sealed class OrdersCancelPayloadTests
 
             var scratchText = File.ReadAllText(scratchPath);
             var parsedFromScratch = AsyncApiSchema.PropertyNamesOf(scratchText, "OrdersCancelRequestPayload").ToHashSet(StringComparer.Ordinal);
-            var handRetyped = new[] { "orderId", "orderReference", "reason", "note" }.ToHashSet(StringComparer.Ordinal);
+            var declaredByRecord = AsyncApiSchema.PropertyNamesOfRecord(typeof(OrdersCancelRequestPayload));
 
-            Assert.NotEqual(handRetyped, parsedFromScratch);
+            Assert.NotEqual(declaredByRecord, parsedFromScratch);
+            Assert.DoesNotContain("orderReference", parsedFromScratch);
+            Assert.Contains("orderReferenceRenamed", parsedFromScratch);
         }
         finally
         {

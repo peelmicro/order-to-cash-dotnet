@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Gateway.Application.Commands;
 using OrderToCash.Gateway.Application.Queries;
 using OrderToCash.Gateway.Application.Rpc;
@@ -43,8 +44,8 @@ public sealed class ReadOnlyQueryHandlerTests
     public async Task ListInvoicesQueryHandler_TranslatesToBillingInvoiceList_AndPassesThePageThrough()
     {
         var rpc = new FakeRpcClient();
-        var reply = new InvoiceListReplyPayload(
-            [new InvoiceViewPayload(Guid.NewGuid(), "INV-000027", DateTimeOffset.UtcNow, "ORD-000042", "CarrefourEs", "IBERFOODS", "EUR", 100, 0, 100, "issued", null, null)],
+        var reply = new GatewayInvoiceListReplyPayload(
+            [new GatewayInvoiceViewPayload(Guid.NewGuid(), "INV-000027", DateTimeOffset.UtcNow, "ORD-000042", "CarrefourEs", "IBERFOODS", "EUR", 100, 0, 100, "issued", null, null)],
             new InvoicePageInfo(1, 25, 1));
         rpc.EnqueueReply(GatewaySubjects.InvoiceList, reply);
         var handler = new ListInvoicesQueryHandler(rpc);

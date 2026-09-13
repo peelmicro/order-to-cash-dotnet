@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Gateway.Application.Ports;
 using OrderToCash.Gateway.Application.Rpc;
 using OrderToCash.Gateway.Domain.Projection;
@@ -70,7 +71,7 @@ public sealed class InvoicesHttpTests
             Task.FromResult(new OrderListResult([], 0));
     }
 
-    private static InvoiceViewPayload Invoice(Guid invoiceId, string orderReference) => new(
+    private static GatewayInvoiceViewPayload Invoice(Guid invoiceId, string orderReference) => new(
         invoiceId, "INV-000027", DateTimeOffset.UtcNow, orderReference, "CarrefourEs", "IBERFOODS", "EUR", 100, 0, 100, "issued", null, null);
 
     private static OrderReadModelDocument OrderDocument(Guid orderId, string orderReference) => new(
@@ -119,7 +120,7 @@ public sealed class InvoicesHttpTests
         var (gateway, rpc, _) = await StartAuthenticatedAsync();
         await using var disposeGateway = gateway;
         var invoiceId = Guid.NewGuid();
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload([Invoice(Guid.NewGuid(), "ORD-OTHER")], new InvoicePageInfo(1, 200, 1)));
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload([Invoice(Guid.NewGuid(), "ORD-OTHER")], new InvoicePageInfo(1, 200, 1)));
 
         var response = await PostPaymentAsync(gateway, invoiceId);
 
@@ -137,7 +138,7 @@ public sealed class InvoicesHttpTests
         var invoiceId = Guid.NewGuid();
         for (var page = 1; page <= 5; page++)
         {
-            rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload(
+            rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload(
                 Enumerable.Range(0, 200).Select(_ => Invoice(Guid.NewGuid(), "ORD-OTHER")).ToList(), new InvoicePageInfo(page, 200, 2000)));
         }
 
@@ -155,7 +156,7 @@ public sealed class InvoicesHttpTests
         var (gateway, rpc, _) = await StartAuthenticatedAsync();
         await using var disposeGateway = gateway;
         var invoiceId = Guid.NewGuid();
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
 
         var response = await PostPaymentAsync(gateway, invoiceId);
 
@@ -172,7 +173,7 @@ public sealed class InvoicesHttpTests
         await using var disposeGateway = gateway;
         var invoiceId = Guid.NewGuid();
         var orderId = Guid.NewGuid();
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
         rpc.EnqueueReply(GatewaySubjects.PaymentRegister, new PaymentRegisterReplyPayload("accepted", "PAY-1", "INV-000027", "ORD-000042", "paid", DateTimeOffset.UtcNow));
         readModel.ByOrderReference = OrderDocument(orderId, "ORD-000042");
 

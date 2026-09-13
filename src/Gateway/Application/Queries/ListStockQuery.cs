@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Gateway.Application.Ports;
 using OrderToCash.Gateway.Application.Rpc;

@@ -8,16 +8,22 @@ using Xunit;
 namespace OrderToCash.Fulfillment.UnitTests;
 
 /// <summary>
-/// The <c>SagaCommandPayloadTests</c> instrument: every one of the ten
-/// <c>fulfillment.stock.*</c> payload records round-trips through the ONE
-/// shared <see cref="JsonWire.Options"/> (camelCase, nulls omitted) with
-/// exactly the keys this file hand-retypes below — a cheap, readable check
-/// that catches UNILATERAL drift of the code. <see cref="BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi"/>
-/// is the ONE case that actually reads <c>specs/shared/asyncapi.yaml</c> as
-/// text (backlog id 51, `BC23`, design.md §10.2) and closes the gap this
-/// file's hand-retyping alone cannot: a CORRELATED authoring error where
-/// the schema and this file's copy are changed together, wrongly, and stay
-/// green.
+/// The <c>SagaCommandPayloadTests</c> instrument, in two halves.
+///
+/// <para>The <c>[Fact]</c> cases below serialise a real instance and assert
+/// the keys that actually REACH the wire for that instance — which optional
+/// was omitted, which was present — through the ONE shared
+/// <see cref="JsonWire.Options"/> (camelCase, nulls omitted).</para>
+///
+/// <para>The two <c>BC23</c> theories
+/// (<see cref="BC23_EveryStockAndDespatchRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ReadFromTheRecordNeverRetyped"/>
+/// and <see cref="BC23_EveryRowsSchemaNameNamesTheRecordThatRowClaims"/>)
+/// assert the CONTRACT: the record's own property set, read by reflection,
+/// against the set parsed from <c>specs/shared/asyncapi.yaml</c>. Backlog
+/// id 70 replaced this file's previous hand-retyped key lists with that
+/// reading — a literal key list can only restate an assumption, and cannot
+/// notice a property ADDED to the record, because a null optional never
+/// reaches the wire for the <c>[Fact]</c> cases to see.</para>
 /// </summary>
 public sealed class StockRpcPayloadTests
 {
@@ -146,34 +152,76 @@ public sealed class StockRpcPayloadTests
         AssertKeys(withLinesJson.RootElement.GetProperty("lines")[0], "productCode", "units");
     }
 
-    /// <summary>Backlog id 51, `BC23` — this file's hand-retyped key lists agree with the sets parsed from <c>specs/shared/asyncapi.yaml</c> via <see cref="AsyncApiSchema"/>, schema by schema. Existing cases above are kept; they catch a different defect.</summary>
-    [Theory]
-    [InlineData("StockCheckRequestPayload", new[] { "companyCode", "lines" })]
-    [InlineData("StockCheckReplyPayload", new[] { "available", "lines" })]
-    [InlineData("StockReserveRequestPayload", new[] { "orderReference", "retailerCode", "companyCode", "lines" })]
-    [InlineData("StockReserveReplyPayload", new[] { "outcome", "orderReference", "reservations", "shortages" })]
-    [InlineData("StockReleaseRequestPayload", new[] { "orderReference", "reason" })]
-    [InlineData("StockReleaseReplyPayload", new[] { "outcome", "orderReference", "released" })]
-    [InlineData("StockListRequestPayload", new[] { "page", "pageSize", "companyCode", "productCode", "belowThreshold" })]
-    [InlineData("StockListReplyPayload", new[] { "items", "page" })]
-    [InlineData("StockReplenishRequestPayload", new[] { "companyCode", "lines" })]
-    [InlineData("StockReplenishReplyPayload", new[] { "items" })]
-    [InlineData("DespatchCreateRequestPayload", new[] { "orderReference" })]
-    [InlineData("DespatchCreateReplyPayload", new[] { "orderReference", "despatchReference", "despatchDate", "created", "lines" })]
-    public void BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi(string schemaName, string[] handRetypedKeys)
+    /// <summary>
+    /// The rows this file's two <c>BC23</c> theories below walk: an
+    /// <c>asyncapi.yaml</c> schema name paired with the RECORD that claims
+    /// it. Every one of these twelve records lives in
+    /// <c>OrderToCash.Contracts.Rpc</c> — feature 76 moved them there and
+    /// unified Fulfillment's responder-side copy with Orders' caller-side
+    /// copy, so there is exactly ONE definition of each and this table
+    /// names it unambiguously (backlog id 70, bullet 2).
+    /// </summary>
+    public static TheoryData<string, Type> RequestAndReplySchemas() => new()
     {
-        var parsed = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var retyped = handRetypedKeys.ToHashSet(StringComparer.Ordinal);
+        { "StockCheckRequestPayload", typeof(StockCheckRequestPayload) },
+        { "StockCheckReplyPayload", typeof(StockCheckReplyPayload) },
+        { "StockReserveRequestPayload", typeof(StockReserveRequestPayload) },
+        { "StockReserveReplyPayload", typeof(StockReserveReplyPayload) },
+        { "StockReleaseRequestPayload", typeof(StockReleaseRequestPayload) },
+        { "StockReleaseReplyPayload", typeof(StockReleaseReplyPayload) },
+        { "StockListRequestPayload", typeof(StockListRequestPayload) },
+        { "StockListReplyPayload", typeof(StockListReplyPayload) },
+        { "StockReplenishRequestPayload", typeof(StockReplenishRequestPayload) },
+        { "StockReplenishReplyPayload", typeof(StockReplenishReplyPayload) },
+        { "DespatchCreateRequestPayload", typeof(DespatchCreateRequestPayload) },
+        { "DespatchCreateReplyPayload", typeof(DespatchCreateReplyPayload) },
+    };
 
-        Assert.Equal(parsed, retyped);
+    /// <summary>
+    /// Backlog id 51, `BC23` — and backlog id 70, which retired this
+    /// theory's previous HAND-RETYPED key list. That list compared a
+    /// literal array against the set parsed from
+    /// <c>specs/shared/asyncapi.yaml</c> and never read the payload record,
+    /// so an UNDECLARED property added to
+    /// <see cref="DespatchCreateReplyPayload"/> left the whole of
+    /// <c>Fulfillment.UnitTests</c> green: nulls are OMITTED by
+    /// <see cref="JsonWire.Options"/>, so the serialised-key cases above
+    /// could not see it either. Those cases are kept — they catch a
+    /// different defect (which keys actually reach the wire for a given
+    /// reply outcome).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryStockAndDespatchRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ReadFromTheRecordNeverRetyped(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertRecordCarriesExactlyTheSchemasProperties(schemaName, payloadType);
+    }
+
+    /// <summary>
+    /// Backlog id 70, bullet 3 — the schema NAME each row claims is
+    /// guarded too, not only the key set. This file is the reason that
+    /// bullet exists: <c>StockCheckRequestPayload</c> and
+    /// <c>StockReplenishRequestPayload</c> both declare exactly
+    /// <c>{ companyCode, lines }</c>, so transposing those two row labels
+    /// is COMPLETELY invisible to the key-set case above.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryRowsSchemaNameNamesTheRecordThatRowClaims(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertTheRowsSchemaNameNamesTheRecordItClaims(schemaName, payloadType);
     }
 
     /// <summary>
     /// `G5` — the arming that proves the guard has teeth. A SCRATCH copy of
     /// the real spec (never the real, read-only
     /// <c>specs/shared/asyncapi.yaml</c>) with <c>StockCheckRequestPayload</c>'s
-    /// <c>companyCode</c> renamed: this file's hand-retyped list for that
-    /// schema no longer agrees with the scratch copy.
+    /// <c>companyCode</c> renamed: the RECORD's own property set no longer
+    /// agrees with the scratch copy, and the rename is asserted in both
+    /// directions so the case cannot pass on any old inequality. Backlog
+    /// id 70 replaced the hand-retyped literal this used to compare against
+    /// — a literal cannot disagree with a spec for the reason the guard
+    /// exists to detect.
     /// </summary>
     [Fact]
     public void G5_TheGuardFailsAgainstAScratchCopyWhoseStockCheckRequestPayloadPropertyWasRenamed()
@@ -190,9 +238,11 @@ public sealed class StockRpcPayloadTests
 
             var scratchText = File.ReadAllText(scratchPath);
             var parsedFromScratch = AsyncApiSchema.PropertyNamesOf(scratchText, "StockCheckRequestPayload").ToHashSet(StringComparer.Ordinal);
-            var handRetyped = new[] { "companyCode", "lines" }.ToHashSet(StringComparer.Ordinal);
+            var declaredByRecord = AsyncApiSchema.PropertyNamesOfRecord(typeof(StockCheckRequestPayload));
 
-            Assert.NotEqual(handRetyped, parsedFromScratch);
+            Assert.NotEqual(declaredByRecord, parsedFromScratch);
+            Assert.DoesNotContain("companyCode", parsedFromScratch);
+            Assert.Contains("companyCodeRenamed", parsedFromScratch);
         }
         finally
         {

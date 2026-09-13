@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Gateway.Application.Ports;
 using OrderToCash.Gateway.Application.Rpc;
@@ -55,9 +56,11 @@ public sealed record RegisterPaymentResult(PaymentRegisterReplyPayload Reply, Gu
 /// model never learns <c>invoiceId</c> at all. Step 1 below is therefore a
 /// BOUNDED SCAN of <c>billing.invoice.list</c> — an RPC call to Billing's
 /// own read query, not a write-database read, but still O(invoices) rather
-/// than O(1). Once the matching <c>InvoiceViewPayload.OrderReference</c> is
-/// found, step 2 resolves the REAL order id from the read model's own
-/// <c>_id</c> (R54's read-model-only rule).
+/// than O(1). Once the matching
+/// <c>GatewayInvoiceViewPayload.OrderReference</c> is found — the Gateway's
+/// own, deliberately separate view record (backlog id 84; see
+/// <c>GatewayRpcPayloads.cs</c>'s header) — step 2 resolves the REAL order
+/// id from the read model's own <c>_id</c> (R54's read-model-only rule).
 /// </remarks>
 public sealed class RegisterPaymentCommandHandler(IRpcClient rpc, IOrderReadModel readModel) : ICommandHandler<RegisterPaymentCommand, RegisterPaymentResult>
 {
@@ -76,7 +79,7 @@ public sealed class RegisterPaymentCommandHandler(IRpcClient rpc, IOrderReadMode
 
         var payload = new PaymentRegisterRequestPayload(
             command.PaymentReference,
-            new GatewayRpcMoney(command.Amount, command.Currency),
+            new CreditMoney(command.Amount, command.Currency),
             command.ValueDate,
             command.Source,
             command.InvoiceId,
@@ -99,7 +102,7 @@ public sealed class RegisterPaymentCommandHandler(IRpcClient rpc, IOrderReadMode
         {
             var requestId = Guid.NewGuid();
             var listPayload = new InvoiceListRequestPayload(page, ScanPageSize, null, null, null, null, null);
-            var listReply = await rpc.CallAsync<InvoiceListRequestPayload, InvoiceListReplyPayload>(
+            var listReply = await rpc.CallAsync<InvoiceListRequestPayload, GatewayInvoiceListReplyPayload>(
                 GatewaySubjects.InvoiceList, listPayload, new RpcCallMeta(requestId, requestId), cancellationToken).ConfigureAwait(false);
 
             scannedCount += listReply.Items.Count;

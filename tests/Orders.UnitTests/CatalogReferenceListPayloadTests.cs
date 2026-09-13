@@ -8,12 +8,15 @@ namespace OrderToCash.Orders.UnitTests;
 
 /// <summary>
 /// The <c>StockRpcPayloadTests</c>/<c>CreditRpcPayloadTests</c> instrument,
-/// applied to <c>catalog.reference.list</c>'s own payload records: every one
-/// round-trips through the ONE shared <see cref="JsonWire.Options"/>
-/// (camelCase, nulls omitted) with exactly the keys this file hand-retypes,
-/// and <see cref="BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi"/>
-/// pins those hand-retyped lists against <c>specs/shared/asyncapi.yaml</c>
-/// itself, read as text.
+/// applied to <c>catalog.reference.list</c>'s own payload records: the
+/// <c>[Fact]</c> cases serialise a real instance and assert the keys that
+/// actually REACH the wire through the ONE shared
+/// <see cref="JsonWire.Options"/> (camelCase, nulls omitted), and
+/// <see cref="BC23_EveryCatalogReferenceListRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ReadFromTheRecordNeverRetyped"/>
+/// asserts the CONTRACT — the record's own property set, read by
+/// reflection, against the set parsed from
+/// <c>specs/shared/asyncapi.yaml</c> (backlog id 70, which replaced this
+/// file's hand-retyped key lists with that reading).
 /// </summary>
 public sealed class CatalogReferenceListPayloadTests
 {
@@ -91,19 +94,55 @@ public sealed class CatalogReferenceListPayloadTests
         AssertKeys(json, "products", "retailers", "companies", "currencies");
     }
 
-    /// <summary>Backlog id 51, `BC23`'s discipline — this file's hand-retyped key lists agree with the sets parsed from <c>specs/shared/asyncapi.yaml</c> via <see cref="AsyncApiSchema"/>.</summary>
-    [Theory]
-    [InlineData("CatalogReferenceListRequestPayload", new[] { "kinds", "includeDisabled" })]
-    [InlineData("Product", new[] { "code", "ean", "name", "description", "price", "currency", "enabled" })]
-    [InlineData("Party", new[] { "code", "name", "country", "vat", "gln", "currency", "enabled" })]
-    [InlineData("CurrencyView", new[] { "code", "isoNumber", "symbol", "decimalPoints" })]
-    [InlineData("CatalogReferenceListReplyPayload", new[] { "products", "retailers", "companies", "currencies" })]
-    public void BC23_TheRetypedKeyListsAgreeWithTheKeySetsParsedFromAsyncApi(string schemaName, string[] handRetypedKeys)
+    /// <summary>
+    /// The rows this file's two <c>BC23</c> theories below walk: an
+    /// <c>asyncapi.yaml</c> schema name paired with the RECORD that claims
+    /// it — <c>OrderToCash.Orders.Presentation.Rpc</c>'s, Orders being the
+    /// service that ANSWERS <c>catalog.reference.list</c>. The Gateway's
+    /// own caller-side copies of these five records
+    /// (<c>src/Gateway/Application/Rpc/GatewayRpcPayloads.cs</c>, kept
+    /// because <c>src/Contracts/Rpc</c> has no counterpart for this
+    /// subject — backlog id 84) have their own rows in
+    /// <c>tests/Gateway.UnitTests/GatewayRpcPayloadTests.cs</c>.
+    /// </summary>
+    public static TheoryData<string, Type> RequestAndReplySchemas() => new()
     {
-        var parsed = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var retyped = handRetypedKeys.ToHashSet(StringComparer.Ordinal);
+        { "CatalogReferenceListRequestPayload", typeof(CatalogReferenceListRequestPayload) },
+        { "Product", typeof(ProductPayload) },
+        { "Party", typeof(PartyPayload) },
+        { "CurrencyView", typeof(CurrencyViewPayload) },
+        { "CatalogReferenceListReplyPayload", typeof(CatalogReferenceListReplyPayload) },
+    };
 
-        Assert.Equal(parsed, retyped);
+    /// <summary>
+    /// Backlog id 51, `BC23`'s discipline — and backlog id 70, which
+    /// retired this theory's previous HAND-RETYPED key list. It compared a
+    /// literal array against the set parsed from
+    /// <c>specs/shared/asyncapi.yaml</c> and never read the payload record,
+    /// so an UNDECLARED property added to any of these five left the whole
+    /// of <c>Orders.UnitTests</c> green: nulls are OMITTED by
+    /// <see cref="JsonWire.Options"/>, so the serialised-key cases above
+    /// could not see it either.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryCatalogReferenceListRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ReadFromTheRecordNeverRetyped(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertRecordCarriesExactlyTheSchemasProperties(schemaName, payloadType);
+    }
+
+    /// <summary>
+    /// Backlog id 70, bullet 3 — the schema NAME each row claims is
+    /// guarded too, not only the key set. <c>Product</c> and <c>Party</c>
+    /// are exactly the pair this needs: both declare seven keys, five of
+    /// which are the same word, so transposing those two row labels is
+    /// nearly invisible to a key-set comparison alone.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryRowsSchemaNameNamesTheRecordThatRowClaims(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertTheRowsSchemaNameNamesTheRecordItClaims(schemaName, payloadType);
     }
 
     /// <summary>`G5` — the arming that proves the guard has teeth: a SCRATCH copy of the real spec (never the real, read-only <c>specs/shared/asyncapi.yaml</c>) with <c>Product</c>'s <c>ean</c> renamed.</summary>
@@ -122,9 +161,11 @@ public sealed class CatalogReferenceListPayloadTests
 
             var scratchText = File.ReadAllText(scratchPath);
             var parsedFromScratch = AsyncApiSchema.PropertyNamesOf(scratchText, "Product").ToHashSet(StringComparer.Ordinal);
-            var handRetyped = new[] { "code", "ean", "name", "description", "price", "currency", "enabled" }.ToHashSet(StringComparer.Ordinal);
+            var declaredByRecord = AsyncApiSchema.PropertyNamesOfRecord(typeof(ProductPayload));
 
-            Assert.NotEqual(handRetyped, parsedFromScratch);
+            Assert.NotEqual(declaredByRecord, parsedFromScratch);
+            Assert.DoesNotContain("ean", parsedFromScratch);
+            Assert.Contains("eanRenamed", parsedFromScratch);
         }
         finally
         {

@@ -1,24 +1,60 @@
+using OrderToCash.Contracts.Facts;
+using OrderToCash.Contracts.Rpc;
+
 namespace OrderToCash.Gateway.Application.Rpc;
 
-// The request/reply payload records of every subject the Gateway calls,
-// transcribed from specs/shared/asyncapi.yaml — the Gateway's OWN copy,
-// never a reference to Orders'/Fulfillment's/Billing's own Infrastructure
-// payload files, per the established repository rule that "RPC payloads
-// live in the service that speaks them" (design.md §4.3/§6.3 in those
-// services). Every property name below was cross-checked against the
-// PRODUCTION payload record it must be wire-compatible with:
-// src/Orders/Presentation/Rpc/OrdersCreatePayloads.cs,
-// src/Orders/Presentation/Rpc/OrdersCancelPayloads.cs,
-// src/Orders/Presentation/Rpc/CatalogReferenceListPayloads.cs,
-// src/Fulfillment/Infrastructure/Messaging/Rpc/StockRpcPayloads.cs,
-// src/Billing/Infrastructure/Messaging/Rpc/CreditRpcPayloads.cs,
-// src/Billing/Infrastructure/Messaging/Rpc/InvoiceRpcPayloads.cs. Property
-// names, not JSON attributes, are what make this wire-compatible: every
-// service in this repository serialises through the SAME
+// The request/reply payload records of the Gateway's own subjects that
+// src/Contracts/Rpc does NOT already declare, transcribed from
+// specs/shared/asyncapi.yaml.
+//
+// Backlog id 84 (gateway_keeps_a_third_copy_of_the_now_canonical_rpc_payloads)
+// — feature 76 moved the fulfillment.stock.*, billing.credit.*,
+// billing.invoice.* and billing.payment.register payload records into
+// src/Contracts/Rpc and unified the caller-side and responder-side copies
+// there, precisely so that two copies of one RPC contract cannot drift
+// apart. That argument does not stop at the Gateway boundary, so the
+// seventeen records this file used to declare for those subjects are gone:
+// the Gateway now CALLS them through the one canonical copy in
+// OrderToCash.Contracts.Rpc (and OrderToCash.Contracts.Facts.InvoiceLine),
+// exactly as Orders' own saga-side caller does. The enumeration that
+// classified every record here, one line each, is in
+// progress/impl_batch_d1_gateway_payload_dedup_and_key_set_guards.md.
+//
+// What remains is exactly two groups, and both are deliberate:
+//
+// 1. orders.create / orders.cancel / catalog.reference.list. Contracts/Rpc
+//    declares NO counterpart for any of these — the responder-side records
+//    live in src/Orders/Presentation/Rpc/, under the older repository rule
+//    that "RPC payloads live in the service that speaks them"
+//    (Orders design.md §4.3/§6.3), which feature 76 superseded only for the
+//    six subjects it actually moved. Unifying these would mean moving
+//    Orders' own Presentation records into Contracts, which is a different
+//    change against a different feature's design and is NOT part of id 84
+//    (its first acceptance bullet matches against src/Contracts/Rpc only).
+//
+// 2. GatewayInvoiceViewPayload / GatewayInvoiceListReplyPayload. These are
+//    the one genuine FIELD DIFFERENCE the id 84 enumeration found, so per
+//    its second acceptance bullet they are NOT unified: they are recorded
+//    here with their reason and left alone. Contracts' InvoiceViewPayload
+//    carries exactly asyncapi.yaml's InvoiceView (twelve properties); the
+//    Gateway's carries a thirteenth, the optional `lines` that
+//    openapi.yaml's own `Invoice` schema declares and Billing's responder
+//    never sends (review D8 of gateway_rest_auth, "a comment, not a
+//    change"). Adding `lines` to the Contracts copy would break Billing's
+//    BC23 exact-match case, and dropping it from the Gateway's would
+//    reverse a ruling taken in another feature's review — so the two copies
+//    stay distinct, and the `Gateway` prefix says so at every use site
+//    rather than leaving two same-named types in two namespaces for the
+//    compiler to disambiguate. GatewayInvoiceListReplyPayload follows it
+//    only because it is the wrapper whose `Items` are those views; its own
+//    two properties are identical to the Contracts copy's.
+//
+// Property names, not JSON attributes, are what make every record below
+// wire-compatible with the responder that answers it: every service in this
+// repository serialises through the SAME
 // OrderToCash.Contracts.Wire.JsonWire options (camelCase, nulls omitted),
 // so a PascalCase C# property name here reaches the wire as the exact
-// camelCase key the real responder's own record produces from its own,
-// separately-declared property of the same name.
+// camelCase key the real responder's own record produces.
 
 // -- orders.create ------------------------------------------------------
 
@@ -78,58 +114,18 @@ public sealed record CatalogReferenceListReplyPayload(
     IReadOnlyList<PartyPayload>? Companies,
     IReadOnlyList<CurrencyViewPayload>? Currencies);
 
-// -- fulfillment.stock.list -------------------------------------------------
+// -- billing.invoice.list, the DELIBERATELY separate pair (group 2 above) ----
 
-public sealed record StockPageInfo(int Page, int PageSize, int Total);
-
-public sealed record StockListRequestPayload(int? Page, int? PageSize, string? CompanyCode, string? ProductCode, bool? BelowThreshold);
-
-public sealed record StockViewPayload(string CompanyCode, string ProductCode, int Units, int ReservedUnits, int AvailableUnits, int LowStockThreshold);
-
-public sealed record StockListReplyPayload(IReadOnlyList<StockViewPayload> Items, StockPageInfo Page);
-
-// -- fulfillment.stock.replenish ---------------------------------------------
-
-public sealed record StockReplenishRequestLine(string ProductCode, int Units);
-
-public sealed record StockReplenishRequestPayload(string CompanyCode, IReadOnlyList<StockReplenishRequestLine> Lines);
-
-public sealed record StockReplenishReplyPayload(IReadOnlyList<StockViewPayload> Items);
-
-// -- billing.credit.list -----------------------------------------------------
-
-public sealed record CreditPageInfo(int Page, int PageSize, int Total);
-
-public sealed record CreditListRequestPayload(int? Page, int? PageSize, string? RetailerCode, string? CompanyCode);
-
-public sealed record CreditViewPayload(
-    string CreditCode,
-    string RetailerCode,
-    string CompanyCode,
-    string Currency,
-    long CreditLimit,
-    long ActiveHolds,
-    long OpenExposure,
-    long AvailableCredit);
-
-public sealed record CreditListReplyPayload(IReadOnlyList<CreditViewPayload> Items, CreditPageInfo Page);
-
-// -- billing.invoice.list -----------------------------------------------------
-
-public sealed record InvoicePageInfo(int Page, int PageSize, int Total);
-
-public sealed record InvoiceListRequestPayload(
-    int? Page,
-    int? PageSize,
-    string? Status,
-    string? RetailerCode,
-    string? CompanyCode,
-    string? OrderReference,
-    int? IssuedBeforeMinutes);
-
-public sealed record InvoiceLinePayload(string ProductCode, int Units, long UnitPrice);
-
-public sealed record InvoiceViewPayload(
+/// <summary>
+/// <c>asyncapi.yaml</c>'s <c>InvoiceView</c> PLUS the optional <c>lines</c>
+/// member <c>openapi.yaml</c>'s own <c>Invoice</c> schema declares — the one
+/// Gateway payload record that is NOT
+/// <see cref="OrderToCash.Contracts.Rpc.InvoiceViewPayload"/>, kept separate
+/// deliberately (backlog id 84, acceptance bullet 2 and 5; the reason is in
+/// this file's header). Billing's responder never sends <c>lines</c>, so the
+/// member round-trips to <see langword="null"/> and is omitted from the wire.
+/// </summary>
+public sealed record GatewayInvoiceViewPayload(
     Guid InvoiceId,
     string InvoiceReference,
     DateTimeOffset InvoiceDate,
@@ -142,27 +138,14 @@ public sealed record InvoiceViewPayload(
     long TotalAmount,
     string Status,
     DateTimeOffset? PaidAt,
-    IReadOnlyList<InvoiceLinePayload>? Lines);
+    IReadOnlyList<InvoiceLine>? Lines);
 
-public sealed record InvoiceListReplyPayload(IReadOnlyList<InvoiceViewPayload> Items, InvoicePageInfo Page);
-
-// -- billing.payment.register --------------------------------------------
-
-/// <summary>The nested <c>{ amount, currency }</c> object asyncapi.yaml's <c>Money</c> schema declares.</summary>
-public sealed record GatewayRpcMoney(long Amount, string Currency);
-
-public sealed record PaymentRegisterRequestPayload(
-    string PaymentReference,
-    GatewayRpcMoney Amount,
-    DateTimeOffset ValueDate,
-    string Source,
-    Guid? InvoiceId,
-    string? InvoiceReference);
-
-public sealed record PaymentRegisterReplyPayload(
-    string Outcome,
-    string PaymentReference,
-    string InvoiceReference,
-    string OrderReference,
-    string InvoiceStatus,
-    DateTimeOffset? PaidAt);
+/// <summary>
+/// <c>asyncapi.yaml</c>'s <c>InvoiceListReplyPayload</c>. Structurally
+/// identical to <see cref="OrderToCash.Contracts.Rpc.InvoiceListReplyPayload"/>
+/// property-for-property, and kept separate for ONE reason only: its
+/// <c>Items</c> are <see cref="GatewayInvoiceViewPayload"/>, the deliberately
+/// divergent view above. Unifying this wrapper alone would silently drop the
+/// <c>lines</c> member from the Gateway's deserialisation target.
+/// </summary>
+public sealed record GatewayInvoiceListReplyPayload(IReadOnlyList<GatewayInvoiceViewPayload> Items, InvoicePageInfo Page);

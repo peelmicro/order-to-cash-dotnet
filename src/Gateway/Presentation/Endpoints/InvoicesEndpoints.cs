@@ -24,7 +24,7 @@ public static class InvoicesEndpoints
             int? issuedBeforeMinutes = int.TryParse(context.Request.Query["issuedBeforeMinutes"].FirstOrDefault(), out var minutes) ? minutes : null;
 
             var query = new ListInvoicesQuery(page, pageSize, status, retailerCode, companyCode, orderReference, issuedBeforeMinutes);
-            var result = await dispatcher.QueryAsync<ListInvoicesQuery, InvoiceListReplyPayload>(query, cancellationToken).ConfigureAwait(false);
+            var result = await dispatcher.QueryAsync<ListInvoicesQuery, GatewayInvoiceListReplyPayload>(query, cancellationToken).ConfigureAwait(false);
 
             return Results.Json(result);
         });

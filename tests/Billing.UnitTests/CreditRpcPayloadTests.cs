@@ -22,16 +22,37 @@ public sealed class CreditRpcPayloadTests
         { "CreditListRequestPayload", typeof(CreditListRequestPayload) },
         { "CreditListReplyPayload", typeof(CreditListReplyPayload) },
         { "Money", typeof(CreditMoney) },
+        // Backlog id 84's own arming found these two MISSING: the
+        // billing.credit.list reply's two nested records — the ones that
+        // actually carry the money onto the Gateway's `GET /credits` wire —
+        // had no row here at all, so this theory covered the envelope of
+        // that subject and neither of its contents. Added with the rest of
+        // id 84's unification work; the repository-wide enumeration of
+        // every payload-key theory is in
+        // progress/impl_batch_d1_gateway_payload_dedup_and_key_set_guards.md.
+        { "CreditView", typeof(CreditViewPayload) },
+        { "PageInfo", typeof(CreditPageInfo) },
     };
 
     [Theory]
     [MemberData(nameof(RequestAndReplySchemas))]
     public void BC23_EveryCreditRequestAndReplyRecordCarriesExactlyThePropertyNamesAsyncApiDeclares_ParsedFromTheSpecNeverRetyped(string schemaName, Type payloadType)
     {
-        var expected = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var actual = payloadType.GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
+        AsyncApiSchema.AssertRecordCarriesExactlyTheSchemasProperties(schemaName, payloadType);
+    }
 
-        Assert.Equal(expected, actual);
+    /// <summary>
+    /// Backlog id 70, bullet 3 — the schema NAME each row above claims is
+    /// guarded too, not only its key set: substituting a real sibling
+    /// schema name fails here, naming both halves of the row, even where
+    /// the two schemas happen to declare identical keys and the key-set
+    /// case above therefore cannot see the swap.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void BC23_EveryRowsSchemaNameNamesTheRecordThatRowClaims(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertTheRowsSchemaNameNamesTheRecordItClaims(schemaName, payloadType);
     }
 
     [Fact]

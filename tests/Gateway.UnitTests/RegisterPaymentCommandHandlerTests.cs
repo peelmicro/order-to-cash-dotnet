@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Gateway.Application.Commands;
 using OrderToCash.Gateway.Application.Rpc;
 using OrderToCash.Gateway.Domain.Projection;
@@ -16,7 +17,7 @@ public sealed class RegisterPaymentCommandHandlerTests
         "invoiced", null, "EUR", new OrderReadModelTotals(100, 0, 100), [],
         new OrderReadModelReferences(null, "INV-000027", null), [], true, DateTimeOffset.UtcNow);
 
-    private static InvoiceViewPayload Invoice(Guid invoiceId, string orderReference) => new(
+    private static GatewayInvoiceViewPayload Invoice(Guid invoiceId, string orderReference) => new(
         invoiceId, "INV-000027", DateTimeOffset.UtcNow, orderReference, "CarrefourEs", "IBERFOODS", "EUR", 100, 0, 100, "issued", null, null);
 
     /// <summary>The payment.register RPC call's correlationId must be the ORDER id (saga.md's invariant), never the invoice id the caller supplied — the exact seam this feature's own known-risk section is about.</summary>
@@ -26,7 +27,7 @@ public sealed class RegisterPaymentCommandHandlerTests
         var invoiceId = Guid.NewGuid();
         var orderId = Guid.NewGuid();
         var rpc = new FakeRpcClient();
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
         rpc.EnqueueReply(GatewaySubjects.PaymentRegister, new PaymentRegisterReplyPayload("accepted", "PAY-1", "INV-000027", "ORD-000042", "paid", DateTimeOffset.UtcNow));
         var readModel = new FakeOrderReadModel();
         readModel.Seed(OrderDocument(orderId, "ORD-000042"));
@@ -47,10 +48,10 @@ public sealed class RegisterPaymentCommandHandlerTests
         var orderId = Guid.NewGuid();
         var rpc = new FakeRpcClient();
         // Page 1: full (200 items), none matching.
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload(
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload(
             Enumerable.Range(0, 200).Select(_ => Invoice(Guid.NewGuid(), "ORD-OTHER")).ToList(), new InvoicePageInfo(1, 200, 500)));
         // Page 2: the match.
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload([Invoice(invoiceId, "ORD-000099")], new InvoicePageInfo(2, 200, 500)));
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload([Invoice(invoiceId, "ORD-000099")], new InvoicePageInfo(2, 200, 500)));
         rpc.EnqueueReply(GatewaySubjects.PaymentRegister, new PaymentRegisterReplyPayload("accepted", "PAY-1", "INV-000099", "ORD-000099", "paid", DateTimeOffset.UtcNow));
         var readModel = new FakeOrderReadModel();
         readModel.Seed(OrderDocument(orderId, "ORD-000099"));
@@ -68,7 +69,7 @@ public sealed class RegisterPaymentCommandHandlerTests
     public async Task HandleAsync_Throws_InvoiceNotFoundError_WhenTheScanReachesAShortPageWithNoMatch()
     {
         var rpc = new FakeRpcClient();
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload([Invoice(Guid.NewGuid(), "ORD-OTHER")], new InvoicePageInfo(1, 200, 1)));
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload([Invoice(Guid.NewGuid(), "ORD-OTHER")], new InvoicePageInfo(1, 200, 1)));
         var handler = new RegisterPaymentCommandHandler(rpc, new FakeOrderReadModel());
 
         await Assert.ThrowsAsync<InvoiceNotFoundError>(
@@ -82,7 +83,7 @@ public sealed class RegisterPaymentCommandHandlerTests
         var rpc = new FakeRpcClient();
         for (var page = 1; page <= 5; page++)
         {
-            rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload(
+            rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload(
                 Enumerable.Range(0, 200).Select(_ => Invoice(Guid.NewGuid(), "ORD-OTHER")).ToList(), new InvoicePageInfo(page, 200, 2000)));
         }
 
@@ -97,7 +98,7 @@ public sealed class RegisterPaymentCommandHandlerTests
     {
         var invoiceId = Guid.NewGuid();
         var rpc = new FakeRpcClient();
-        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new InvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
+        rpc.EnqueueReply(GatewaySubjects.InvoiceList, new GatewayInvoiceListReplyPayload([Invoice(invoiceId, "ORD-000042")], new InvoicePageInfo(1, 200, 1)));
         var handler = new RegisterPaymentCommandHandler(rpc, new FakeOrderReadModel());
 
         await Assert.ThrowsAsync<OrderNotYetProjectedError>(

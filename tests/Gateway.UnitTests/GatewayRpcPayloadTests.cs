@@ -1,3 +1,5 @@
+using OrderToCash.Contracts.Facts;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Gateway.Application.Rpc;
 using Xunit;
 
@@ -9,10 +11,13 @@ namespace OrderToCash.Gateway.UnitTests;
 /// <c>specs/shared/asyncapi.yaml</c> declares for its matching schema,
 /// parsed from the spec via reflection over the record's own properties
 /// (never a hand-typed key list — the shape
-/// <c>tests/Billing.UnitTests/CreditRpcPayloadTests.cs:29-35</c>
-/// establishes, chosen over <c>StockRpcPayloadTests</c>'s hand-retyped-list
-/// shape specifically so a transcription slip cannot be "confirmed" against
-/// a second, independently wrong, hand-typed copy — backlog id 64). Before
+/// <c>tests/Billing.UnitTests/CreditRpcPayloadTests.cs</c> establishes,
+/// chosen specifically so a transcription slip cannot be "confirmed"
+/// against a second, independently wrong, hand-typed copy — backlog id 64.
+/// <c>StockRpcPayloadTests</c>, <c>OrdersCancelPayloadTests</c> and
+/// <c>CatalogReferenceListPayloadTests</c> kept the retyped-list shape
+/// until backlog id 70 converted all three; every payload-key theory in the
+/// solution now reads the record). Before
 /// this file, six of the Gateway's eight subjects (every one except
 /// <c>fulfillment.stock.list</c>/<c>fulfillment.stock.replenish</c>, which
 /// <c>FulfillmentStockEndToEndTests</c> exercises against a real
@@ -51,10 +56,10 @@ public sealed class GatewayRpcPayloadTests
         { "CreditListReplyPayload", typeof(CreditListReplyPayload) },
         { "PageInfo", typeof(CreditPageInfo) },
         { "InvoiceListRequestPayload", typeof(InvoiceListRequestPayload) },
-        { "InvoiceLine", typeof(InvoiceLinePayload) },
-        { "InvoiceListReplyPayload", typeof(InvoiceListReplyPayload) },
+        { "InvoiceLine", typeof(InvoiceLine) },
+        { "InvoiceListReplyPayload", typeof(GatewayInvoiceListReplyPayload) },
         { "PageInfo", typeof(InvoicePageInfo) },
-        { "Money", typeof(GatewayRpcMoney) },
+        { "Money", typeof(CreditMoney) },
         { "PaymentRegisterRequestPayload", typeof(PaymentRegisterRequestPayload) },
         { "PaymentRegisterReplyPayload", typeof(PaymentRegisterReplyPayload) },
     };
@@ -63,15 +68,23 @@ public sealed class GatewayRpcPayloadTests
     [MemberData(nameof(RequestAndReplySchemas))]
     public void GatewayPayload_CarriesExactlyThePropertyNamesAsyncApiDeclares_ParsedFromTheSpecNeverRetyped(string schemaName, Type payloadType)
     {
-        var expected = AsyncApiSchema.PropertyNamesOf(schemaName).ToHashSet(StringComparer.Ordinal);
-        var actual = payloadType.GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
+        AsyncApiSchema.AssertRecordCarriesExactlyTheSchemasProperties(schemaName, payloadType);
+    }
 
-        Assert.Equal(expected, actual);
+    /// <summary>Backlog id 70, bullet 3 — the schema NAME each row above claims is guarded too, not only its key set.</summary>
+    [Theory]
+    [MemberData(nameof(RequestAndReplySchemas))]
+    public void GatewayPayload_EveryRowsSchemaNameNamesTheRecordThatRowClaims(string schemaName, Type payloadType)
+    {
+        AsyncApiSchema.AssertTheRowsSchemaNameNamesTheRecordItClaims(schemaName, payloadType);
     }
 
     /// <summary>
-    /// <c>InvoiceViewPayload</c> is the one deliberate exception (review
-    /// D8, "a comment, not a change"): it carries an extra <c>lines</c>
+    /// <c>GatewayInvoiceViewPayload</c> is the one deliberate exception
+    /// (review D8, "a comment, not a change"; backlog id 84's second and
+    /// fifth acceptance bullets, which is why it now carries the
+    /// <c>Gateway</c> prefix that says so at every use site): it carries an
+    /// extra <c>lines</c>
     /// member Billing's own responder never sends and
     /// <c>asyncapi.yaml</c>'s <c>InvoiceView</c> does not declare — legal
     /// because <c>openapi.yaml</c>'s <c>Invoice</c> schema DOES declare
@@ -82,10 +95,10 @@ public sealed class GatewayRpcPayloadTests
     /// unlike every other schema above.
     /// </summary>
     [Fact]
-    public void InvoiceViewPayload_CarriesEveryAsyncApiPropertyPlusTheDocumentedOptionalLinesExtra()
+    public void GatewayInvoiceViewPayload_CarriesEveryAsyncApiPropertyPlusTheDocumentedOptionalLinesExtra()
     {
         var expected = AsyncApiSchema.PropertyNamesOf("InvoiceView").ToHashSet(StringComparer.Ordinal);
-        var actual = typeof(InvoiceViewPayload).GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
+        var actual = typeof(GatewayInvoiceViewPayload).GetProperties().Select(ToCamelCase).ToHashSet(StringComparer.Ordinal);
 
         Assert.Subset(actual, expected);
         Assert.Equal(new HashSet<string>(StringComparer.Ordinal) { "lines" }, actual.Except(expected).ToHashSet(StringComparer.Ordinal));
