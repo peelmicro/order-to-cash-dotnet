@@ -205,20 +205,32 @@ public sealed class FactRetryDispatcherTests
     /// D6 (review round 3) — the three <c>KafkaDeadLetterPublisherTests</c>
     /// cases (one per service) SUPPLY <c>FirstFailedAt</c> as a publication
     /// input; none proves the DISPATCHER itself captures the FIRST
-    /// failure's own clock reading rather than the LAST one. Drives the
-    /// real dispatcher with a fake clock ADVANCED between attempts (t0,
-    /// t1, t2) and a process that always fails: <c>FirstFailedAt</c> must
-    /// be t0 (the first attempt's own reading, captured by
-    /// <c>firstFailedAt ??= clock.UtcNow</c> — a plain <c>=</c> would
-    /// re-stamp it on every attempt and report t2 instead), while
-    /// <c>FailedAt</c> must be t2, the LAST attempt's reading.
+    /// failure's own clock reading rather than the LAST one. SA-3
+    /// (backlog id 75) sharpens this further: <c>x-first-failed-at</c> is
+    /// the instant the FIRST processing attempt FAILED, never the instant
+    /// processing BEGAN
+    /// (<c>enteredAt</c>/<paramref name="cancellationToken"/>-scoped entry
+    /// read at the top of <c>DispatchAsync</c>) — a distinction the
+    /// dispatcher's own entry read and its first catch-block read could
+    /// otherwise share the SAME clock value and make indistinguishable.
+    /// So the fake here advances the clock DURING attempt 1, before it
+    /// throws — <c>enteredAt</c> and attempt 1's own failure instant are
+    /// therefore two DIFFERENT values (t0 != t1), and the clock keeps
+    /// advancing on every subsequent attempt (t1, t2, t3) so the LAST
+    /// attempt's reading (t3) is distinct again. <c>FirstFailedAt</c> must
+    /// be t1 — the first attempt's OWN reading, captured by
+    /// <c>firstFailedAt ??= clock.UtcNow</c> inside the catch block, never
+    /// the entry read (t0) and never a later one (a plain <c>=</c> would
+    /// re-stamp it on every attempt and report t3 instead) — while
+    /// <c>FailedAt</c> must be t3, the LAST attempt's reading.
     /// </summary>
     [Fact]
-    public async Task DeadLetterPublication_FirstFailedAt_IsTheFirstAttemptsClockReading_NeverALaterOne()
+    public async Task DeadLetterPublication_FirstFailedAt_IsTheFirstAttemptsFailureInstant_NeverTheEntryInstantNorALaterOne()
     {
-        var t0 = DateTimeOffset.Parse("2026-09-11T10:00:00.0000000+00:00");
-        var t1 = t0.AddSeconds(1);
+        var t0 = DateTimeOffset.Parse("2026-09-11T10:00:00.0000000+00:00"); // entry — must NOT surface as FirstFailedAt.
+        var t1 = t0.AddSeconds(1); // attempt 1's own failure instant — the expected FirstFailedAt.
         var t2 = t0.AddSeconds(2);
+        var t3 = t0.AddSeconds(3); // attempt 3's own failure instant — the expected FailedAt.
         var clock = new FakeClock(t0);
         var delay = new RecordingFactRetryDelay();
         var deadLetters = new RecordingDeadLetterPublisher();
@@ -228,29 +240,69 @@ public sealed class FactRetryDispatcherTests
             deadLetters,
             Options.Create(new FactRetryOptions { MaxAttempts = 3, BackoffMs = 500 }),
             NullLogger<FactRetryDispatcher>.Instance);
-        var process = new AdvancingClockFailingProcess(clock, [t1, t2]);
+        var process = new AdvancingClockFailingProcess(clock, [t1, t2, t3]);
 
         await dispatcher.DispatchAsync(SourceTopic, BuildMessage(), _eventId, EventType, _correlationId, ConsumerName.OrdersSaga, process.InvokeAsync, CancellationToken.None);
 
         Assert.Equal(3, process.Invocations);
         var published = Assert.Single(deadLetters.Published);
-        Assert.Equal(t0, published.FirstFailedAt);
-        Assert.Equal(t2, published.FailedAt);
+        Assert.Equal(t1, published.FirstFailedAt); // NOT t0 (entry) and NOT t3 (last attempt).
+        Assert.Equal(t3, published.FailedAt);
     }
 
-    private sealed class AdvancingClockFailingProcess(FakeClock clock, IReadOnlyList<DateTimeOffset> advanceOnAttemptTwoOnward)
+    /// <summary>
+    /// SA-3's second clause: "[<c>x-first-failed-at</c>] equals
+    /// <c>x-failed-at</c> only when a single attempt was made." With
+    /// <c>MaxAttempts = 1</c> the loop runs exactly once, so the catch
+    /// block's <c>firstFailedAt ??= clock.UtcNow</c> reading and the
+    /// post-loop <c>failedAt</c> reading are necessarily the SAME clock
+    /// call's instant — proven here by advancing the clock during that
+    /// one attempt so BOTH fields must equal the advanced instant, not the
+    /// entry instant.
+    /// </summary>
+    [Fact]
+    public async Task DeadLetterPublication_FirstFailedAt_EqualsFailedAt_WhenOnlyOneAttemptWasMade()
+    {
+        var enteredAt = DateTimeOffset.Parse("2026-09-11T10:00:00.0000000+00:00");
+        var failureAt = enteredAt.AddSeconds(1);
+        var clock = new FakeClock(enteredAt);
+        var delay = new RecordingFactRetryDelay();
+        var deadLetters = new RecordingDeadLetterPublisher();
+        var dispatcher = new FactRetryDispatcher(
+            clock,
+            delay,
+            deadLetters,
+            Options.Create(new FactRetryOptions { MaxAttempts = 1, BackoffMs = 500 }),
+            NullLogger<FactRetryDispatcher>.Instance);
+        var process = new AdvancingClockFailingProcess(clock, [failureAt]);
+
+        await dispatcher.DispatchAsync(SourceTopic, BuildMessage(), _eventId, EventType, _correlationId, ConsumerName.OrdersSaga, process.InvokeAsync, CancellationToken.None);
+
+        Assert.Equal(1, process.Invocations);
+        var published = Assert.Single(deadLetters.Published);
+        Assert.Equal(failureAt, published.FirstFailedAt);
+        Assert.Equal(failureAt, published.FailedAt);
+        Assert.Equal(published.FailedAt, published.FirstFailedAt);
+    }
+
+    /// <summary>
+    /// Advances the clock to <paramref name="advanceOnEachAttempt"/>'s
+    /// entry for the CURRENT invocation number BEFORE throwing — so every
+    /// attempt, including the first, moves the clock away from the entry
+    /// reading before its own failure is caught. This is what actually
+    /// discriminates "the entry instant" from "the first attempt's own
+    /// failure instant": a fake that leaves attempt 1 at the constructor's
+    /// clock value (as an earlier draft of this fixture did) makes the two
+    /// indistinguishable, because both reads then observe the same t0.
+    /// </summary>
+    private sealed class AdvancingClockFailingProcess(FakeClock clock, IReadOnlyList<DateTimeOffset> advanceOnEachAttempt)
     {
         public int Invocations { get; private set; }
 
         public Task InvokeAsync(CancellationToken cancellationToken)
         {
             Invocations++;
-            var index = Invocations - 2; // invocation 1 leaves the clock at t0.
-            if (index >= 0 && index < advanceOnAttemptTwoOnward.Count)
-            {
-                clock.UtcNow = advanceOnAttemptTwoOnward[index];
-            }
-
+            clock.UtcNow = advanceOnEachAttempt[Invocations - 1];
             throw new InvalidOperationException($"simulated failure #{Invocations}");
         }
     }
