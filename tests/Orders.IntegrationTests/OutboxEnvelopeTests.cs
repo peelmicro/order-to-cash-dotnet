@@ -119,7 +119,7 @@ public sealed class OutboxEnvelopeTests(MsSqlContainerFixture fixture)
         Assert.Equal(placedEvent.CorrelationId.Value, row.CorrelationId);
         Assert.Equal(placedEvent.CausationId.Value, row.CausationId);
         Assert.Equal(placedEvent.OccurredAt.UtcDateTime, row.OccurredAt);
-        Assert.False(string.IsNullOrEmpty(row.Payload));
+        Assert.False(string.IsNullOrEmpty(row.Payload), $"the outbox row for {placedEvent.EventType} stored an empty payload column (value: '{row.Payload}').");
 
         // The relay's own row -> wire mapping reconstructs the envelope from
         // the stored row alone — no clock, no Guid.NewGuid(), no default.

@@ -122,7 +122,9 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
             await using (var db = mssql.CreateDbContext(connectionString))
             {
                 var row = await db.SagaCommands.AsNoTracking().SingleAsync(c => c.OrderId == orderId && c.Command == "stock.release");
-                Assert.True(row.Status is "pending" or "parked");
+                Assert.True(
+                    row.Status is "pending" or "parked",
+                    $"the stock.release row is '{row.Status}' before any responder exists. With no stand-in subscribed it can only be awaiting the sweeper, so any other status means it was issued (or resolved) by something this test did not expect.");
             }
 
             await using var stockRelease = await StandInSagaResponders.StartStockReleaseAsync(
@@ -133,7 +135,9 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
             // The next sweep resumes it — the stock.release command, never
             // signalled in-process, still gets issued and marked sent.
             var sentCount = await SagaIntegrationTestSupport.WaitForSagaCommandCountAsync(connectionString, mssql, orderId, "stock.release", "sent", _wait);
-            Assert.True(sentCount > 0);
+            Assert.True(
+                sentCount > 0,
+                $"the stock.release row never reached 'sent' within {_wait.TotalSeconds:F0}s after a responder appeared. It was committed PENDING with no in-process signal, so only SagaCommandSweeper can issue it — SO3's crash-window recovery path is not working.");
         }
         finally
         {

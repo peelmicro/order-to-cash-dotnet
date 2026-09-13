@@ -50,21 +50,49 @@ public sealed class FulfillmentStockEndToEndTests(KafkaContainerFixture kafka, M
         await host.StartAsync();
 
         await using var probeConnection = new NatsConnection(new NatsOpts { Url = nats.Url });
-        await WaitUntilReachableAsync(probeConnection);
+        await WaitUntilReachableAsync(
+            probeConnection,
+            StockSubjects.StockCheck,
+            RpcJson.Serialize(new StockCheckRequestPayload("GW-IT-PROBE", [new StockCheckRequestLine("GW-IT-PROBE", 1)])));
 
         return (host, connectionString);
     }
 
-    private static async Task WaitUntilReachableAsync(NatsConnection connection)
-    {
-        var probe = RpcJson.Serialize(new StockCheckRequestPayload("GW-IT-PROBE", [new StockCheckRequestLine("GW-IT-PROBE", 1)]));
+    /// <summary>The number of round trips <see cref="WaitUntilReachableAsync"/> makes before giving up.</summary>
+    internal const int ReadinessAttempts = 100;
 
-        for (var attempt = 0; attempt < 100; attempt++)
+    /// <summary>The PACING interval <see cref="WaitUntilReachableAsync"/> waits after every failed attempt — backlog id 69's second subject, exposed so <c>GatewayReadinessPacingRaceTests</c> states its bound in terms of this constant.</summary>
+    internal static readonly TimeSpan ReadinessPacingInterval = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// Backlog id 63 — the server's IMMEDIATE "definitely nobody subscribed"
+    /// sentinel (<see cref="NatsNoRespondersException"/>) does not wait out the
+    /// request's own timeout, so a loop paced only by that timeout can burn
+    /// through all <see cref="ReadinessAttempts"/> attempts in about a
+    /// millisecond. Paced explicitly below. Found enumerating id 63's six named
+    /// sites — an 8th instance of the same unpaced shape, outside that
+    /// enumeration (this file boots a real Fulfillment host from
+    /// Gateway.IntegrationTests, a separate copy of
+    /// <c>FulfillmentHostFixture</c>'s own probe).
+    ///
+    /// Backlog id 69 — the pacing above was added without a guard, and
+    /// deleting it left <c>Gateway.IntegrationTests</c> 48/48 green. The
+    /// <paramref name="subject"/>/<paramref name="probe"/> parameters exist so
+    /// <c>GatewayReadinessPacingRaceTests</c> can drive THIS loop against a
+    /// synthetic subscriber delayed by a controlled interval; the one
+    /// production caller above passes the real <c>StockSubjects.StockCheck</c>
+    /// and a real stock-check request body.
+    /// </summary>
+    internal static async Task WaitUntilReachableAsync(NatsConnection connection, string subject, byte[] probe)
+    {
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
+
+        for (var attempt = 0; attempt < ReadinessAttempts; attempt++)
         {
             try
             {
                 var reply = await connection.RequestAsync<byte[], byte[]>(
-                    StockSubjects.StockCheck, probe, replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) });
+                    subject, probe, replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) });
                 if (reply.Data is not null)
                 {
                     return;
@@ -75,21 +103,16 @@ public sealed class FulfillmentStockEndToEndTests(KafkaContainerFixture kafka, M
             }
             catch (NatsNoRespondersException)
             {
-                // Backlog id 63 — the server's IMMEDIATE "definitely nobody
-                // subscribed" sentinel does not wait out the request's own
-                // timeout, so a loop paced only by that timeout can burn
-                // through all 100 attempts in about a millisecond. Paced
-                // explicitly below. Found enumerating id 63's six named
-                // sites — an 8th instance of the same unpaced shape, outside
-                // that enumeration (this file boots a real Fulfillment host
-                // from Gateway.IntegrationTests, a separate copy of
-                // FulfillmentHostFixture's own probe).
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50)).ConfigureAwait(false);
+            await Task.Delay(ReadinessPacingInterval).ConfigureAwait(false);
         }
 
-        throw new TimeoutException("The Fulfillment responder never became reachable.");
+        throw new TimeoutException(
+            $"'{subject}' never became reachable: the readiness loop exhausted all {ReadinessAttempts} attempts after only " +
+            $"{startedAt.Elapsed.TotalMilliseconds:F0} ms, against a PACED budget of at least " +
+            $"{ReadinessAttempts * ReadinessPacingInterval.TotalMilliseconds:F0} ms. An elapsed time far below that budget means the loop is NOT PACING between " +
+            $"attempts (backlog id 63/id 69): NatsNoRespondersException returns immediately, so an unpaced loop spends its whole attempt budget in about a millisecond.");
     }
 
     [Fact]

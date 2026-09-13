@@ -217,7 +217,9 @@ public sealed class CatalogReferenceListAcceptanceTests(NatsContainerFixture nat
             Assert.NotNull(trueReplyMsg.Data);
             var trueReply = RpcJson.Deserialize<CatalogReferenceListReplyPayload>(trueReplyMsg.Data!);
             var disabledRow = Assert.Single(trueReply.Products!, p => p.Code == "PROD-DISABLED");
-            Assert.False(disabledRow.Enabled);
+            Assert.False(
+                disabledRow.Enabled,
+                "the catalog reply reports PROD-DISABLED as enabled=true. The responder is hard-coding the wire flag instead of carrying the row's own enabled column.");
 
             // Direction 2: IncludeDisabled omitted (null, the schema's
             // documented default) must NOT surface it. Dies if the

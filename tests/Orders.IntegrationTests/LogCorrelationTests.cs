@@ -95,7 +95,7 @@ public sealed class LogCorrelationTests(KafkaContainerFixture kafka, NatsContain
         Assert.True(mine.Count > 1, $"Expected more than one log record for this poison fact's correlationId; found {mine.Count}.");
 
         var traceIds = mine.Select(r => ScopeValue(r, "TraceId")).ToList();
-        Assert.All(traceIds, t => Assert.False(string.IsNullOrEmpty(t)));
+        Assert.All(traceIds, t => Assert.False(string.IsNullOrEmpty(t), $"one of the {traceIds.Count} log records sharing this correlationId carries an empty TraceId scope entry; the values observed were [{string.Join(", ", traceIds)}]. (backlog id 82 — the bare Assert.False named nothing)"));
         Assert.Single(traceIds.Distinct(StringComparer.Ordinal));
 
         foreach (var record in mine)
@@ -199,11 +199,20 @@ public sealed class LogCorrelationTests(KafkaContainerFixture kafka, NatsContain
 
         // No Scopes entry carries a TraceId/SpanId key at all — omitted,
         // never rendered as "" or "undefined".
-        Assert.True(probe.RootElement.TryGetProperty("Scopes", out var scopes));
+        Assert.True(
+            probe.RootElement.TryGetProperty("Scopes", out var scopes),
+            $"the no-span probe log line has no Scopes array at all, so the claim that it omits TraceId/SpanId cannot be tested. Line: {probe.RootElement}.");
         foreach (var scope in scopes.EnumerateArray())
         {
-            Assert.False(scope.TryGetProperty("TraceId", out _));
-            Assert.False(scope.TryGetProperty("SpanId", out _));
+            var hasTraceId = scope.TryGetProperty("TraceId", out var traceIdField);
+            Assert.False(
+                hasTraceId,
+                $"a scope on the no-span probe line still carries a TraceId entry ('{traceIdField}'). With no span active the field must be OMITTED, never rendered empty. Scope: {scope}.");
+
+            var hasSpanId = scope.TryGetProperty("SpanId", out var spanIdField);
+            Assert.False(
+                hasSpanId,
+                $"a scope on the no-span probe line still carries a SpanId entry ('{spanIdField}'). With no span active the field must be OMITTED, never rendered empty. Scope: {scope}.");
         }
     }
 

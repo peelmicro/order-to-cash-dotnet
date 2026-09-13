@@ -407,7 +407,9 @@ public sealed class SagaCommandStoreTests(MsSqlContainerFixture mssql)
 
         var accepted = await store.HasAcceptedOperatorCancelAsync(orderId, CancellationToken.None);
 
-        Assert.False(accepted);
+        Assert.False(
+            accepted,
+            "HasAcceptedOperatorCancelAsync returned true for an order whose only stock.release row carries a REAL credit.rejected.v1 fact envelope — R27's own compensation path, never the operator's cancel. It is matching on the command token alone instead of on the synthetic orders.cancel.requested envelope's content.");
     }
 
     /// <summary>The other half — a <c>stock.release</c> row carrying the SYNTHETIC <c>orders.cancel.requested</c> envelope (<see cref="CancelOrderCommandHandler"/>'s own direct enqueue) DOES count.</summary>
@@ -433,7 +435,9 @@ public sealed class SagaCommandStoreTests(MsSqlContainerFixture mssql)
 
         var accepted = await store.HasAcceptedOperatorCancelAsync(orderId, CancellationToken.None);
 
-        Assert.True(accepted);
+        Assert.True(
+            accepted,
+            "HasAcceptedOperatorCancelAsync returned false for an order whose stock.release row carries the SYNTHETIC orders.cancel.requested envelope CancelOrderCommandHandler enqueues. That row IS an accepted operator cancel and must count.");
     }
 
     /// <summary>

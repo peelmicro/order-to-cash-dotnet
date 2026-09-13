@@ -59,7 +59,9 @@ public sealed class ProblemJsonCorrelationTests
             await Task.Delay(300);
         }
 
-        Assert.False(string.IsNullOrEmpty(correlationId));
+        Assert.False(
+            string.IsNullOrEmpty(correlationId),
+            $"the Problem+JSON body for the failing request carried an empty correlationId (value: '{correlationId}'), so nothing can be correlated against the log lines below.");
 
         var records = capture.ParseJsonLines();
         var mine = records.Where(r => ScopeValue(r, "correlationId") == correlationId).ToList();

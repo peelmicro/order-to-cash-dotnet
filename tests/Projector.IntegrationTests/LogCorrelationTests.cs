@@ -80,7 +80,7 @@ public sealed class LogCorrelationTests(MongoContainerFixture mongoFixture, Kafk
                 Assert.True(mine.Count > 1, $"Expected more than one log record for this poison fact's correlationId; found {mine.Count}.");
 
                 var traceIds = mine.Select(r => ScopeValue(r, "TraceId")).ToList();
-                Assert.All(traceIds, t => Assert.False(string.IsNullOrEmpty(t)));
+                Assert.All(traceIds, t => Assert.False(string.IsNullOrEmpty(t), $"one of the {traceIds.Count} log records sharing this correlationId carries an empty TraceId scope entry; the values observed were [{string.Join(", ", traceIds)}]. (backlog id 82 — the bare Assert.False named nothing)"));
                 Assert.Single(traceIds.Distinct(StringComparer.Ordinal));
             }
             finally

@@ -181,14 +181,18 @@ public sealed class SeedIntegrationTests(SeedContainersFixture fixture)
         Assert.Null(completed.CancellationReason);
         Assert.NotNull(completed.Currency);
         Assert.NotNull(completed.Totals);
-        Assert.True(completed.Totals!.TotalAmount > 0);
+        Assert.True(
+            completed.Totals!.TotalAmount > 0,
+            $"the completed order ORD-000001's seeded timeline document has totals.totalAmount = {completed.Totals!.TotalAmount}; a complete header must carry a real positive total.");
         Assert.NotEmpty(completed.Items);
         Assert.NotNull(completed.References);
         Assert.NotNull(completed.References!.DespatchReference);
         Assert.NotNull(completed.References.InvoiceReference);
         Assert.NotNull(completed.References.PaymentReference);
         Assert.Equal(9, completed.Events.Count);
-        Assert.True(completed.HeaderComplete);
+        Assert.True(
+            completed.HeaderComplete,
+            "the seeded timeline document for the completed order ORD-000001 has headerComplete=false. Every header field above was present, so the writer is not stamping the flag the read model uses to tell a complete document from a placeholder.");
         Assert.NotEmpty(completed.UpdatedAt);
         Assert.Equal(98, completed.StatusRank);
         Assert.Equal(2, completed.TimelineOrderVersion);

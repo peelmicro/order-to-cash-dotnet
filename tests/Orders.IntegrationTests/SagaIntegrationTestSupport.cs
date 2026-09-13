@@ -420,20 +420,17 @@ internal static class SagaIntegrationTestSupport
             // race that lookup and come back "Broker: Not coordinator" —
             // transient, and gone on retry once the handle has cached the
             // group's coordinator. Not a property of the offset itself, so
-            // retried here rather than surfaced as a flaky assertion.
-            List<TopicPartitionOffset> committed = [];
-            for (var attempt = 1; attempt <= 5; attempt++)
-            {
-                try
-                {
-                    committed = consumer.Committed(partitions, requestTimeout);
-                    break;
-                }
-                catch (KafkaException) when (attempt < 5)
-                {
-                    Thread.Sleep(300);
-                }
-            }
+            // retried rather than surfaced as a flaky assertion.
+            //
+            // Backlog id 69 bullet 5 — that retry used to be five attempts
+            // paced 300 ms apart, catching EVERY KafkaException: ~1.2 s of
+            // budget against an error the broker returns immediately, and a
+            // genuine failure retried four times before surfacing. Both are
+            // now KafkaCommittedOffsetRetry's problem, which paces against a
+            // wall-clock deadline and retries only the coordinator codes.
+            var committed = KafkaCommittedOffsetRetry.Read(
+                () => consumer.Committed(partitions, requestTimeout),
+                $"the committed offset for group '{groupId}' on '{topic}'");
 
             var total = committed.Sum(tpo => tpo.Offset.IsSpecial ? 0L : tpo.Offset.Value);
             var description = string.Join(", ", committed.Select(tpo => $"p{tpo.Partition.Value}={(tpo.Offset.IsSpecial ? "unset" : tpo.Offset.Value.ToString())}"));

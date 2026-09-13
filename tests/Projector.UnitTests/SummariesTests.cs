@@ -148,7 +148,10 @@ public sealed class SummariesTests
         Assert.Equal("Order ORD-000001 cancelled (buyer_requested)", result.Summary);
         Assert.Equal("buyer_requested", result.Detail!["cancellationReason"]);
         Assert.Equal(payload.CompensationSteps, result.Detail["compensationSteps"]);
-        Assert.False(result.Detail.ContainsKey("note")); // SA-2: no key at all when the fact carries none.
+        // SA-2: no key at all when the fact carries none — ABSENT, never present-and-null.
+        Assert.False(
+            result.Detail.ContainsKey("note"),
+            $"Summaries.OrderCancelled wrote a 'note' detail key (value: {result.Detail.GetValueOrDefault("note") ?? "<null>"}) for a fact that carries no note. SA-2 requires the key to be absent, not present-and-null.");
     }
 
     /// <summary>

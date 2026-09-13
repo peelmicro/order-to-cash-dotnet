@@ -118,9 +118,18 @@ public sealed class NotificationDegradesOnPermanentFailureTests(KafkaContainerFi
                 // SAME real active trace id, each matching the 32-hex
                 // shape (#7's own degrading-notification-sender-log-trace-id.spec.ts:56-57
                 // assertion, never merely non-empty).
-                Assert.False(string.IsNullOrEmpty(degraded.Value.TraceId));
+                //
+                // Backlog id 82 — an Assert.False(string.IsNullOrEmpty(...))
+                // used to precede each Assert.Matches here. This is the
+                // sighting that entry was filed from: it printed
+                // "Expected: False / Actual: True", identifiable only by its
+                // stack line, and it was the failing assertion of both the
+                // implementer's arm 3 and the reviewer's M7. The Assert.Matches
+                // a line later subsumes it for BOTH null and empty (xUnit's
+                // Matches treats a null actual as "pattern not found") and
+                // prints the offending value, so the presence-only pair is
+                // removed rather than kept beside it.
                 Assert.Matches("^[0-9a-f]{32}$", degraded.Value.TraceId!);
-                Assert.False(string.IsNullOrEmpty(consoleLine.Value.TraceId));
                 Assert.Matches("^[0-9a-f]{32}$", consoleLine.Value.TraceId!);
                 Assert.Equal(degraded.Value.TraceId, consoleLine.Value.TraceId);
 

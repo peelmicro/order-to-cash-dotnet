@@ -127,7 +127,9 @@ public sealed class DespatchCreationServiceTests
 
         var reply = await service.CreateAsync(new CreateDespatchCommand(orderReference.Value, UniqueId.New(), UniqueId.New()), CancellationToken.None);
 
-        Assert.False(reply.Created);
+        Assert.False(
+            reply.Created,
+            $"the in-flight race branch replied created=true for despatch {reply.DespatchReference}, which a concurrent committer had ALREADY created. Only the winner may report created=true.");
         Assert.Equal("DES-000002", reply.DespatchReference);
         Assert.Equal(1, unitOfWork.ExecuteCount);
         Assert.Equal(0, allocator.CallCount);

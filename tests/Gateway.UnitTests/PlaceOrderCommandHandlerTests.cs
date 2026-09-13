@@ -48,8 +48,12 @@ public sealed class PlaceOrderCommandHandlerTests
         var result = await handler.HandleAsync(Command(), CancellationToken.None);
 
         Assert.Equal(replyOrderId, result.OrderId);
-        Assert.True(window.IsRecentlyIssued(replyOrderId));
-        Assert.False(window.IsRecentlyIssued(Guid.NewGuid()));
+        Assert.True(
+            window.IsRecentlyIssued(replyOrderId),
+            $"the issued-order window does not hold the REPLY's own orderId {replyOrderId}. The handler recorded some other id, so GET /orders/{replyOrderId} would answer a false 404 right after placement.");
+        Assert.False(
+            window.IsRecentlyIssued(Guid.NewGuid()),
+            "the issued-order window reports an id that was never issued as recently issued — it is not discriminating by id at all.");
     }
 
     [Fact]

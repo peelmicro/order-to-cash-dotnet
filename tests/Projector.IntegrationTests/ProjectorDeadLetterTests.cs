@@ -77,8 +77,12 @@ public sealed class ProjectorDeadLetterTests(MongoContainerFixture mongoFixture,
             // review's own P7 probe — corrupting x-first-failed-at in
             // THIS service's KafkaDeadLetterPublisher copy left both
             // Projector suites green before this assertion existed.
-            Assert.True(DateTimeOffset.TryParse(headers["x-first-failed-at"], out _));
-            Assert.True(DateTimeOffset.TryParse(headers["x-failed-at"], out _));
+            Assert.True(
+                DateTimeOffset.TryParse(headers["x-first-failed-at"], out _),
+                $"the .dlq message's x-first-failed-at header is '{headers["x-first-failed-at"]}', which is not a parseable timestamp.");
+            Assert.True(
+                DateTimeOffset.TryParse(headers["x-failed-at"], out _),
+                $"the .dlq message's x-failed-at header is '{headers["x-failed-at"]}', which is not a parseable timestamp.");
             Assert.True(headers.ContainsKey("traceparent"), "The .dlq message carries no traceparent header at all.");
 
             // The next, distinct fact on the SAME partition (same key =
@@ -325,19 +329,16 @@ internal static class ProjectorOffsetSupport
         using var consumer = new ConsumerBuilder<Ignore, byte[]>(config).Build();
         var partitions = Enumerable.Range(0, partitionCount).Select(p => new TopicPartition(topic, new Partition(p))).ToList();
 
-        List<TopicPartitionOffset> committed = [];
-        for (var attempt = 1; attempt <= 5; attempt++)
-        {
-            try
-            {
-                committed = await Task.Run(() => consumer.Committed(partitions, requestTimeout));
-                break;
-            }
-            catch (KafkaException) when (attempt < 5)
-            {
-                await Task.Delay(300);
-            }
-        }
+        // Backlog id 69 bullet 5 — this retry used to be five attempts paced
+        // 300 ms apart, catching EVERY KafkaException: ~1.2 s of budget
+        // against "Broker: Not coordinator", which the broker returns
+        // immediately rather than timing out, and a genuine failure retried
+        // four times before surfacing as the last attempt's exception. Both
+        // are now KafkaCommittedOffsetRetry's problem — a WALL-CLOCK deadline,
+        // and only the three coordinator codes retried.
+        var committed = await Task.Run(() => KafkaCommittedOffsetRetry.Read(
+            () => consumer.Committed(partitions, requestTimeout),
+            $"the committed offset for group '{groupId}' on '{topic}'"));
 
         return committed.Sum(tpo => tpo.Offset.IsSpecial ? 0L : tpo.Offset.Value);
     }

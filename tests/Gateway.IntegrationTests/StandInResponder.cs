@@ -119,17 +119,51 @@ public sealed class StandInResponder : IAsyncDisposable
         _cts.Dispose();
     }
 
-    private async Task WaitUntilSubscribedAsync(CancellationToken cancellationToken)
+    private Task WaitUntilSubscribedAsync(CancellationToken cancellationToken) =>
+        WaitUntilReachableAsync(_connection, _subject, [ProbeByte], cancellationToken);
+
+    /// <summary>The number of round trips the readiness loop below will make before giving up.</summary>
+    internal const int ReadinessAttempts = 100;
+
+    /// <summary>
+    /// The PACING interval the readiness loop below waits after every failed
+    /// attempt — backlog id 69's subject. Exposed so
+    /// <c>GatewayReadinessPacingRaceTests</c> can state the bound it proves
+    /// in terms of this constant rather than a transcribed magic number.
+    /// </summary>
+    internal static readonly TimeSpan ReadinessPacingInterval = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// The readiness retry loop, extracted from <see cref="WaitUntilSubscribedAsync"/>
+    /// (backlog id 69) for the SAME reason <c>SagaIntegrationTestSupport.WaitUntilReachableAsync</c>
+    /// and <c>BillingHostFixture.WaitUntilReachableAsync</c> were extracted before
+    /// it: nothing in this assembly could reach the loop while it was private, so
+    /// deleting its <see cref="Task.Delay(TimeSpan, CancellationToken)"/> left the
+    /// whole suite green (measured: <c>Gateway.IntegrationTests</c> 48/48). It is
+    /// now armed, deterministically, by <c>GatewayReadinessPacingRaceTests</c>
+    /// against a subscriber delayed by a controlled interval.
+    ///
+    /// Backlog id 63 — this class's own summary CLAIMED this loop was paced
+    /// while the loop body had no delay at all: <see cref="NatsNoRespondersException"/>
+    /// is the server's IMMEDIATE "definitely nobody subscribed" sentinel and does
+    /// not wait out the request's own timeout, so all
+    /// <see cref="ReadinessAttempts"/> attempts could burn through in about a
+    /// millisecond. A budget counted in ATTEMPTS is only a budget in wall-clock
+    /// if every attempt costs wall-clock.
+    /// </summary>
+    internal static async Task WaitUntilReachableAsync(INatsConnection connection, string subject, byte[] probe, CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 100; attempt++)
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
+
+        for (var attempt = 0; attempt < ReadinessAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
-                var reply = await _connection.RequestAsync<byte[], byte[]>(
-                    _subject,
-                    [ProbeByte],
+                var reply = await connection.RequestAsync<byte[], byte[]>(
+                    subject,
+                    probe,
                     replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
                     cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -143,21 +177,16 @@ public sealed class StandInResponder : IAsyncDisposable
             }
             catch (NatsNoRespondersException)
             {
-                // Backlog id 63 — this class's own summary above CLAIMED
-                // this loop was already paced, but nothing here actually
-                // delayed between attempts: NatsNoRespondersException
-                // returns near-instantly rather than waiting out the
-                // per-attempt timeout, so all 100 attempts could burn
-                // through in about a millisecond. Found enumerating id 63's
-                // six named sites — a 7th instance, outside that
-                // enumeration, whose doc comment already (incorrectly)
-                // described the fix this now actually performs.
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken).ConfigureAwait(false);
+            await Task.Delay(ReadinessPacingInterval, cancellationToken).ConfigureAwait(false);
         }
 
-        throw new TimeoutException($"Stand-in responder for '{_subject}' never became reachable.");
+        throw new TimeoutException(
+            $"Stand-in responder for '{subject}' never became reachable: the readiness loop exhausted all {ReadinessAttempts} attempts after only " +
+            $"{startedAt.Elapsed.TotalMilliseconds:F0} ms, against a PACED budget of at least " +
+            $"{ReadinessAttempts * ReadinessPacingInterval.TotalMilliseconds:F0} ms. An elapsed time far below that budget means the loop is NOT PACING between " +
+            $"attempts (backlog id 63/id 69): NatsNoRespondersException returns immediately, so an unpaced loop spends its whole attempt budget in about a millisecond.");
     }
 
     private async Task RunAsync(Func<byte[], byte[]?> rawAnswer, CancellationToken cancellationToken)

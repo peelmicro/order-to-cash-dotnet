@@ -14,7 +14,9 @@ public sealed class KafkaFactPublisherConfigTests
     {
         var config = KafkaFactPublisher.BuildProducerConfig(new KafkaOptions { BootstrapServers = "localhost:9092", ClientId = "otc-orders" });
 
-        Assert.True(config.EnableIdempotence);
+        Assert.True(
+            config.EnableIdempotence ?? false,
+            $"the fact producer is built with EnableIdempotence = {config.EnableIdempotence?.ToString() ?? "<unset>"}. Without it an internal librdkafka retry can reorder or duplicate a partition's records (OI7).");
         Assert.Equal(Confluent.Kafka.Acks.All, config.Acks);
         Assert.Equal(int.MaxValue, config.MessageSendMaxRetries);
 

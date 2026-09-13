@@ -36,7 +36,9 @@ public sealed class TimelineProjectionTests(MongoContainerFixture mongoFixture, 
         Assert.Equal("order.placed.v1", events[0]["eventType"].AsString); // by occurredAt, not arrival.
         Assert.Equal("order.confirmed.v1", events[1]["eventType"].AsString);
         Assert.Equal(placed.EventId.ToString("D"), events[0]["eventId"].AsString);
-        Assert.False(string.IsNullOrEmpty(events[0]["summary"].AsString));
+        Assert.False(
+            string.IsNullOrEmpty(events[0]["summary"].AsString),
+            $"the first timeline event ({events[0]["eventType"].AsString}) projected an empty summary (value: '{events[0]["summary"].AsString}').");
     }
 
     /// <summary><c>R51</c>: byte-identical before/after a redelivery, and the writer must report Duplicate (N10).</summary>

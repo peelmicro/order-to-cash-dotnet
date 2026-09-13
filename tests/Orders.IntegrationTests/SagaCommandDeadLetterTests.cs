@@ -89,7 +89,9 @@ public sealed class SagaCommandDeadLetterTests(KafkaContainerFixture kafka, Nats
                 var payload = JsonSerializer.Deserialize<JsonElement>(factRow.Payload);
                 Assert.Equal("stock.reserve", payload.GetProperty("command").GetString());
                 Assert.Equal(parkedRow.Attempts, payload.GetProperty("attempts").GetInt32());
-                Assert.False(string.IsNullOrEmpty(payload.GetProperty("lastError").GetString()));
+                Assert.False(
+                    string.IsNullOrEmpty(payload.GetProperty("lastError").GetString()),
+                    $"order.saga_failed.v1 carries an empty lastError (value: '{payload.GetProperty("lastError").GetString()}') — the parked row's own failure text must reach the fact.");
                 Assert.Equal(placed.OrderReference.Value, payload.GetProperty("orderReference").GetString());
             }
 

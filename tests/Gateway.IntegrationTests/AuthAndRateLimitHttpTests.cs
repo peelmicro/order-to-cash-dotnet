@@ -26,7 +26,9 @@ public sealed class AuthAndRateLimitHttpTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
         Assert.Equal("Bearer", body!["tokenType"].ToString());
-        Assert.False(string.IsNullOrEmpty(body["accessToken"].ToString()));
+        Assert.False(
+            string.IsNullOrEmpty(body["accessToken"].ToString()),
+            $"POST /auth/login answered 200 with an empty accessToken (value: '{body["accessToken"]}').");
     }
 
     [Fact]

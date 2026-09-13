@@ -62,7 +62,14 @@ public sealed class LogCorrelationTests(MsSqlContainerFixture mssql, NatsContain
 
         foreach (var record in mine)
         {
-            Assert.False(string.IsNullOrEmpty(ScopeValue(record, "TraceId")));
+            // Backlog id 82 — the bare Assert.False printed only
+            // "Expected: False / Actual: True", naming neither the record nor
+            // the missing field, so the arm that kills this assertion was
+            // evidence only to a reader who opened the stack line.
+            var traceId = ScopeValue(record, "TraceId");
+            Assert.False(
+                string.IsNullOrEmpty(traceId),
+                $"a log record carrying correlationId {correlationId} has no TraceId scope entry (observed value: '{traceId}').");
         }
     }
 

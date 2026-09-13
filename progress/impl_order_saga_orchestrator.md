@@ -127,6 +127,8 @@ Expected: True
 Actual:   False
 ```
 
+> **[backlog id 82, 2026-09-13 — these two rows no longer hold, and the message was never the problem.]** The assertions these rows fail on (`SagaConsumptionTests.cs:183`/`:195`, `gate.Attempts >= 1`/`>= 2`) HAVE carried a claim-naming message since some later round, so the two nameless blocks quoted above are stale record text rather than nameless assertions. Re-running F6 row 1 to refresh them produced a much worse finding: **the mutation now SURVIVES.** `src/Orders/Infrastructure/Messaging/Consumers/KafkaFactStreamSubscriber.cs:134` `EnableAutoOffsetStore = false` → `true`, forced `--no-incremental` rebuild, `SagaConsumptionTests.SO9_AHandlerThatThrows_LeavesTheCommittedOffsetUnchangedAndTheFactIsRedelivered` ran **Passed 1/1** (11 s), and 1/1 again after the restore. The mechanism is named by the test's own comment, which has gone stale: it relies on *"KafkaFactStreamSubscriber's `finally` calls consumer.Close() on the dying consumer the instant the FIRST handler's exception propagated out of ConsumeAsync"*. Since `observability_reliability` added OR1, `SagaFactsConsumer` wraps every dispatch in `FactRetryDispatcher`, which retries IN-PROCESS and dead-letters — so the handler's exception no longer escapes `ConsumeAsync`, the consumer never dies, `Close()` is never reached, and the prematurely stored offset is never committed before the test reads it. `gate.Attempts >= 2` is then satisfied by OR1's in-process retry rather than by any Kafka redelivery. Measured, not suspected. This is out of backlog id 82's scope (that entry is about arming MESSAGES) and is routed to the coordinator as a new backlog candidate in `progress/impl_batch_d2_pacing_arming_message_and_dispatch_guards.md` §Disclosures.
+
 ### Group G — unit
 
 **G7 row 1** (`SagaFactCommandHandlers.cs`, `HandleOrderPlacedFactCommandHandler`'s condition replaced with `if (true)`) — all three suppression cases in `SagaFactCommandHandlerTests.cs` failed:
@@ -165,6 +167,10 @@ Actual:   1
 Assert.True() Failure
 Expected: True
 Actual:   False
+```
+**[message updated by backlog id 82, re-run 2026-09-13]** the nameless message above is SUPERSEDED. Re-armed with the equivalent mutation the review round recorded for the same assertion (`SagaCommandSweeper.cs`: `dispatcher.DispatchClaimedAsync(row, …)` reverted to the claim-then-issue `dispatcher.DispatchAsync(row.OrderId, row.Command, …)`), forced `--no-incremental` rebuild. New verbatim failure:
+```
+the stock.release row never reached 'sent' within 20s after a responder appeared. It was committed PENDING with no in-process signal, so only SagaCommandSweeper can issue it — SO3's crash-window recovery path is not working.
 ```
 Root cause of the failure, traced: the channel-signalled command gets picked up by the live `SagaCommandDispatchWorker`, which calls `ISagaCommandDispatcher.DispatchAsync` — that re-claims via `TryClaimAsync`, finds the row's lease (just set by the sweeper's own `ClaimDueAsync`) still active, and silently no-ops. The substitution is not merely "against the spirit of §5.5" — it actively breaks the crash-window recovery path it would appear to preserve.
 

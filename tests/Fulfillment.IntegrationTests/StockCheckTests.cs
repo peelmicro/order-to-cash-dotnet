@@ -28,10 +28,10 @@ public sealed class StockCheckTests(MsSqlContainerFixture mssql, NatsContainerFi
         var reply = await FulfillmentHostFixture.RequestBareAsync(connection, StockSubjects.StockCheck, request);
 
         var payload = RpcJson.Deserialize<StockCheckReplyPayload>(reply.Data!);
-        Assert.True(payload.Available);
+        Assert.True(payload.Available, $"the stock.check reply reports available=false for a request the fixture seeded with enough stock. Reply: {System.Text.Json.JsonSerializer.Serialize(payload)}.");
         var line = Assert.Single(payload.Lines);
         Assert.Equal(7, line.Available); // 10 - 3
-        Assert.True(line.Sufficient);
+        Assert.True(line.Sufficient, $"the stock.check reply line for 'P1' reports sufficient=false with available={line.Available} against a requested quantity of 4.");
 
         var row = await FulfillmentHostFixture.FindStockAsync(mssql, connectionString, "ACME", "P1");
         Assert.Equal(10, row!.Units);

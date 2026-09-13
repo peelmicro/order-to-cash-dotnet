@@ -137,7 +137,7 @@ public sealed class NatsStockAvailabilityCheckerTests(NatsContainerFixture nats)
 
         Assert.Equal(2, fulfillment.ObservedHeaders.Count);
         var traceParents = fulfillment.ObservedHeaders.Select(h => h["traceparent"].ToString()).ToList();
-        Assert.All(traceParents, tp => Assert.False(string.IsNullOrEmpty(tp)));
+        Assert.All(traceParents, tp => Assert.False(string.IsNullOrEmpty(tp), $"one of the {traceParents.Count} concurrent outbound calls carried an empty traceparent header; the values observed were [{string.Join(", ", traceParents)}]. (backlog id 82 — the bare Assert.False named nothing)"));
         Assert.NotEqual(traceParents[0], traceParents[1]);
     }
 }

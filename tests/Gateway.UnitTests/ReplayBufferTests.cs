@@ -40,7 +40,9 @@ public sealed class ReplayBufferTests
 
         var result = buffer.ReplayAfter(null);
 
-        Assert.False(result.Resumed);
+        Assert.False(
+            result.Resumed,
+            $"a client that sent no Last-Event-ID at all was reported resumed=true with {result.Missed.Count} missed item(s) — there is nothing to resume from.");
         Assert.Empty(result.Missed);
     }
 
@@ -56,9 +58,13 @@ public sealed class ReplayBufferTests
         var evicted = buffer.ReplayAfter("c1");
         var stillHeld = buffer.ReplayAfter("c2");
 
-        Assert.False(evicted.Resumed);
+        Assert.False(
+            evicted.Resumed,
+            $"cursor 'c1' has been evicted from a 2-slot buffer, yet ReplayAfter reported resumed=true with {evicted.Missed.Count} missed item(s). A cursor the buffer no longer holds must resolve resumed:false, never a partial replay presented as a resumption.");
         Assert.Empty(evicted.Missed);
-        Assert.True(stillHeld.Resumed);
+        Assert.True(
+            stillHeld.Resumed,
+            "cursor 'c2' is still inside the 2-slot buffer, yet ReplayAfter reported resumed=false — a cursor the buffer DOES hold must resume.");
         Assert.Equal(["c"], stillHeld.Missed);
     }
 
@@ -70,7 +76,9 @@ public sealed class ReplayBufferTests
 
         var result = buffer.ReplayAfter("not-a-real-cursor");
 
-        Assert.False(result.Resumed);
+        Assert.False(
+            result.Resumed,
+            $"an unknown cursor that was never issued was reported resumed=true with {result.Missed.Count} missed item(s). It must be treated exactly like one that aged out.");
         Assert.Empty(result.Missed);
     }
 

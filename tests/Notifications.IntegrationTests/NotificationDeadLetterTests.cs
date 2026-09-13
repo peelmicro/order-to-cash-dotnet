@@ -415,19 +415,16 @@ internal static class NotificationOffsetSupport
         using var consumer = new ConsumerBuilder<Ignore, byte[]>(config).Build();
         var partitions = Enumerable.Range(0, partitionCount).Select(p => new TopicPartition(topic, new Partition(p))).ToList();
 
-        List<TopicPartitionOffset> committed = [];
-        for (var attempt = 1; attempt <= 5; attempt++)
-        {
-            try
-            {
-                committed = await Task.Run(() => consumer.Committed(partitions, requestTimeout));
-                break;
-            }
-            catch (KafkaException) when (attempt < 5)
-            {
-                await Task.Delay(300);
-            }
-        }
+        // Backlog id 69 bullet 5 — this retry used to be five attempts paced
+        // 300 ms apart, catching EVERY KafkaException: ~1.2 s of budget
+        // against "Broker: Not coordinator", which the broker returns
+        // immediately rather than timing out, and a genuine failure retried
+        // four times before surfacing as the last attempt's exception. Both
+        // are now KafkaCommittedOffsetRetry's problem — a WALL-CLOCK deadline,
+        // and only the three coordinator codes retried.
+        var committed = await Task.Run(() => KafkaCommittedOffsetRetry.Read(
+            () => consumer.Committed(partitions, requestTimeout),
+            $"the committed offset for group '{groupId}' on '{topic}'"));
 
         return committed.Sum(tpo => tpo.Offset.IsSpecial ? 0L : tpo.Offset.Value);
     }

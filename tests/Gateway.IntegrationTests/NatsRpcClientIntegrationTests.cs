@@ -151,7 +151,13 @@ public sealed class NatsRpcClientIntegrationTests(NatsContainerFixture nats)
 
         Assert.NotNull(responder.LastRequestHeaders);
         var traceparent = responder.LastRequestHeaders!["traceparent"].ToString();
-        Assert.False(string.IsNullOrEmpty(traceparent));
+
+        // Backlog id 82 — a bare Assert.False(string.IsNullOrEmpty(traceparent))
+        // used to stand here. It printed "Expected: False / Actual: True" and
+        // named nothing, and the Assert.Equal on the next line already
+        // subsumes it: a missing header reads back as the empty string, which
+        // that comparison reports as a string difference against the real
+        // activity id.
         Assert.Equal(callActivity!.Id, traceparent);
         Assert.True(ActivityContext.TryParse(traceparent, null, out var extracted), $"'{traceparent}' did not parse as a W3C traceparent.");
         Assert.Equal(callActivity.TraceId, extracted.TraceId);
@@ -224,7 +230,7 @@ public sealed class NatsRpcClientIntegrationTests(NatsContainerFixture nats)
 
         Assert.Equal(2, responder.ObservedHeaders.Count);
         var traceParents = responder.ObservedHeaders.Select(h => h["traceparent"].ToString()).ToList();
-        Assert.All(traceParents, tp => Assert.False(string.IsNullOrEmpty(tp)));
+        Assert.All(traceParents, tp => Assert.False(string.IsNullOrEmpty(tp), $"one of the {traceParents.Count} concurrent outbound calls carried an empty traceparent header; the values observed were [{string.Join(", ", traceParents)}]. (backlog id 82 — the bare Assert.False named nothing)"));
         Assert.NotEqual(traceParents[0], traceParents[1]);
     }
 }

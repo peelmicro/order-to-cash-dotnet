@@ -33,7 +33,9 @@ public sealed class DeadlockRetryExecutionStrategyTests
     {
         var sqlException = SqlExceptionFactory.WithNumber(DeadlockVictimErrorNumber, "Transaction (Process ID 1) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.");
 
-        Assert.True(InvokeShouldRetryOn(sqlException));
+        Assert.True(
+            InvokeShouldRetryOn(sqlException),
+            $"ShouldRetryOn refused a RAW SqlException with error number {DeadlockVictimErrorNumber} (the deadlock victim). The outbox relay would surface it instead of retrying.");
     }
 
     [Fact]
@@ -48,7 +50,9 @@ public sealed class DeadlockRetryExecutionStrategyTests
         var sqlException = SqlExceptionFactory.WithNumber(DeadlockVictimErrorNumber, "Transaction (Process ID 1) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.");
         var wrapped = new InvalidOperationException("An exception has been raised that is likely due to a transient failure.", sqlException);
 
-        Assert.True(InvokeShouldRetryOn(wrapped));
+        Assert.True(
+            InvokeShouldRetryOn(wrapped),
+            $"ShouldRetryOn refused a deadlock-victim SqlException (error {DeadlockVictimErrorNumber}) WRAPPED in InvalidOperationException — the exact shape ExecuteUpdateAsync's own internal strategy produces, one level deeper than CallOnWrappedException unwraps.");
     }
 
     [Fact]
@@ -56,7 +60,9 @@ public sealed class DeadlockRetryExecutionStrategyTests
     {
         var sqlException = SqlExceptionFactory.WithNumber(LockRequestTimeoutErrorNumber, "Lock request time out period exceeded.");
 
-        Assert.False(InvokeShouldRetryOn(sqlException));
+        Assert.False(
+            InvokeShouldRetryOn(sqlException),
+            $"ShouldRetryOn retried a RAW SqlException with error number {LockRequestTimeoutErrorNumber} (lock request timeout), which is NOT a deadlock. Retrying it would hide a genuine failure.");
     }
 
     [Fact]
@@ -65,13 +71,17 @@ public sealed class DeadlockRetryExecutionStrategyTests
         var sqlException = SqlExceptionFactory.WithNumber(LockRequestTimeoutErrorNumber, "Lock request time out period exceeded.");
         var wrapped = new InvalidOperationException("An exception has been raised that is likely due to a transient failure.", sqlException);
 
-        Assert.False(InvokeShouldRetryOn(wrapped));
+        Assert.False(
+            InvokeShouldRetryOn(wrapped),
+            $"ShouldRetryOn retried a WRAPPED SqlException with error number {LockRequestTimeoutErrorNumber} (lock request timeout), which is NOT a deadlock.");
     }
 
     [Fact]
     public void ShouldRetryOn_AnUnrelatedException_ReturnsFalse()
     {
-        Assert.False(InvokeShouldRetryOn(new TimeoutException("unrelated")));
+        Assert.False(
+            InvokeShouldRetryOn(new TimeoutException("unrelated")),
+            "ShouldRetryOn retried a plain TimeoutException carrying no SqlException at all — the predicate is not inspecting the error number.");
     }
 
     private static bool InvokeShouldRetryOn(Exception exception)

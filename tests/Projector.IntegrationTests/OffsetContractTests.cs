@@ -50,19 +50,16 @@ public sealed class OffsetContractTests : IAsyncLifetime
             using var consumer = new ConsumerBuilder<Ignore, byte[]>(config).Build();
             var partitions = Enumerable.Range(0, PartitionCount).Select(p => new TopicPartition(topic, new Partition(p))).ToList();
 
-            List<TopicPartitionOffset> committed = [];
-            for (var attempt = 1; attempt <= 5; attempt++)
-            {
-                try
-                {
-                    committed = consumer.Committed(partitions, requestTimeout);
-                    break;
-                }
-                catch (KafkaException) when (attempt < 5)
-                {
-                    Thread.Sleep(300);
-                }
-            }
+            // Backlog id 69 bullet 5 — this is the exact site that went red in
+            // the SA-3 verification run ("Broker: Not coordinator", 1 failed of
+            // 1833). Its retry used to be five attempts paced 300 ms apart,
+            // catching EVERY KafkaException: ~1.2 s of budget against an error
+            // the broker returns immediately rather than timing out. Now a
+            // WALL-CLOCK deadline, with only the three coordinator codes
+            // retried, in KafkaCommittedOffsetRetry.
+            var committed = KafkaCommittedOffsetRetry.Read(
+                () => consumer.Committed(partitions, requestTimeout),
+                $"the committed offset for group '{GroupId}' on '{topic}'");
 
             var total = committed.Sum(tpo => tpo.Offset.IsSpecial ? 0L : tpo.Offset.Value);
             var description = string.Join(", ", committed.Select(tpo => $"p{tpo.Partition.Value}={(tpo.Offset.IsSpecial ? "unset" : tpo.Offset.Value.ToString())}"));
