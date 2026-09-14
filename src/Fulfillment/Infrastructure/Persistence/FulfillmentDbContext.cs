@@ -10,7 +10,7 @@ namespace OrderToCash.Fulfillment.Infrastructure.Persistence;
 /// their lines, the `DES-######` allocation counter, and the reliability
 /// tables shared with Orders and Billing (§4.3). Lives entirely under
 /// <c>Infrastructure/</c>; nothing here is reachable from <c>Domain/</c> —
-/// <see cref="OrderToCash.Architecture.Tests.DomainPurityTests"/> fails the
+/// <c>OrderToCash.Architecture.Tests.DomainPurityTests</c> fails the
 /// build if it ever is.
 /// </summary>
 public sealed class FulfillmentDbContext(DbContextOptions<FulfillmentDbContext> options) : DbContext(options)

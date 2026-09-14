@@ -2,7 +2,7 @@ using OrderToCash.Orders.Domain;
 
 namespace OrderToCash.Orders.Application.Ports;
 
-/// <summary>The two reasons a fact was deliberately ignored (design.md §5.4) — the <c>saga_ignored_facts.marker</c> column's closed set. Id 62's first pass added a third, <c>Superseded</c>; SA-4 (the human-gated shared-spec amendment ruled 2026-09-11) retired the broad "supersede forward progress" guard that produced it in favour of narrower, per-fact mechanisms (<see cref="SagaFactHandler"/>'s own remarks) — the marker was removed with its only producer.</summary>
+/// <summary>The two reasons a fact was deliberately ignored (design.md §5.4) — the <c>saga_ignored_facts.marker</c> column's closed set. Id 62's first pass added a third, <c>Superseded</c>; SA-4 (the human-gated shared-spec amendment ruled 2026-09-11) retired the broad "supersede forward progress" guard that produced it in favour of narrower, per-fact mechanisms (<see cref="OrderToCash.Orders.Application.Sagas.SagaFactHandler"/>'s own remarks) — the marker was removed with its only producer.</summary>
 public enum SagaIgnoredFactMarker
 {
     /// <summary>R25 — the order exists, but its status did not match the step's precondition.</summary>

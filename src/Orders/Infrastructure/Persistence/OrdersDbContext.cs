@@ -10,8 +10,7 @@ namespace OrderToCash.Orders.Infrastructure.Persistence;
 /// rows (§4.2), the reliability tables shared with Fulfillment and Billing
 /// (§4.3), and the saga orchestrator's durable state — unique to this
 /// database (§4.4). Lives entirely under <c>Infrastructure/</c>; nothing
-/// here is reachable from <c>Domain/</c> — <see
-/// cref="OrderToCash.Architecture.Tests.DomainPurityTests"/> fails the build
+/// here is reachable from <c>Domain/</c> — <c>OrderToCash.Architecture.Tests.DomainPurityTests</c> fails the build
 /// if it ever is.
 /// </summary>
 public sealed class OrdersDbContext(DbContextOptions<OrdersDbContext> options) : DbContext(options)

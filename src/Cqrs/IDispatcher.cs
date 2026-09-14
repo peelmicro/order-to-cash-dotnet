@@ -49,7 +49,7 @@ public interface IDispatcher
     /// See progress/impl_cqrs_dispatcher.md, defect D3, for the cost this
     /// trades for: resolving <c>IEventHandler&lt;&gt;</c> closed over a
     /// reflected <see cref="Type"/> and invoking <c>HandleAsync</c> via
-    /// <see cref="System.Reflection.MethodInfo.Invoke(object?,object?[]?)"/>
+    /// <see cref="System.Reflection.MethodBase.Invoke(object, object[])"/>
     /// rather than a direct, generically-typed call.
     /// </remarks>
     Task PublishAsync(object @event, CancellationToken cancellationToken);

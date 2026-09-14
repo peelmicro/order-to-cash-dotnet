@@ -40,7 +40,7 @@ namespace OrderToCash.Gateway.Infrastructure.Messaging;
 /// the projector actually published, never a structural equivalent
 /// produced by a second serialiser round trip, and orderId extraction no
 /// longer depends on the payload happening to carry an `orderId` field of
-/// its own. <see cref="JsonDocument.Parse(ReadOnlySpan{byte})"/> is used
+/// its own. <c>JsonDocument.Parse(ReadOnlySpan&lt;byte&gt;)</c> is used
 /// ONLY to reject a payload that is not even syntactically valid JSON
 /// before it is ever handed to an SSE client as a `data:` line — never to
 /// read a value out of it.

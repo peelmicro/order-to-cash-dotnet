@@ -58,7 +58,7 @@ public abstract record CreditDecision
     public sealed record Refuse(AdapterRejectionReason Reason) : CreditDecision;
 }
 
-/// <summary>Feature 20's seam, fixed now (design.md §6). Bound today by <c>AlwaysApproveCreditDecision</c>; feature 20 replaces the DI registration only.</summary>
+/// <summary>Feature 20's seam, fixed at design.md §6. It was bound to <c>AlwaysApproveCreditDecision</c> only until feature 20 landed; <c>BillingServiceCollectionExtensions</c> binds <c>SimulatorCreditDecision</c> today, and <c>AlwaysApproveCreditDecision</c> remains in the tree for tests that need a deterministic approval.</summary>
 public interface ICreditDecisionPort
 {
     /// <summary>

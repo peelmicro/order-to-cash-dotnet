@@ -19,5 +19,6 @@ public interface ISagaFirstParkDeadLetterHandler
     /// <param name="claimed">The row's shape at claim time — carries the triggering envelope bytes/topic the <c>.dlq</c> republish needs, with no second read.</param>
     /// <param name="attempts">The row's TOTAL accumulated attempts after this park cycle (the caller's already-parked <c>attempts</c> plus this cycle's), carried into <c>order.saga_failed.v1</c>'s payload verbatim.</param>
     /// <param name="lastError">The final in-line attempt's error, carried into the fact and the <c>.dlq</c> headers.</param>
+    /// <param name="cancellationToken">Cooperative cancellation, forwarded to the dead-letter claim, the fact append and the <c>.dlq</c> republish.</param>
     Task HandleAsync(SagaCommandRecord claimed, int attempts, string lastError, CancellationToken cancellationToken);
 }

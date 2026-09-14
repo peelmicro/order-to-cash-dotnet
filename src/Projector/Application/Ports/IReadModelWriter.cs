@@ -13,7 +13,7 @@ public enum ProjectionOutcome
 /// The ONLY write surface the application layer sees — it never sees a
 /// pipeline, a <c>BsonDocument</c> or any MongoDB.Driver type (<c>PR28</c>).
 /// One method: apply one fact's delta, idempotently, and — only when it was
-/// genuinely applied — invoke <paramref name="afterApplied"/> exactly once
+/// genuinely applied — invoke the caller's own <c>afterApplied</c> callback exactly once
 /// with the post-apply document description, before returning.
 /// </summary>
 public interface IReadModelWriter

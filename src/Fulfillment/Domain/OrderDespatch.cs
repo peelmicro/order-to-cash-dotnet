@@ -38,7 +38,7 @@ public sealed class DespatchOrderOutcome
 /// (`R36`, F6/F7/F8's creation half) — the sibling
 /// <see cref="OrderStockReservation"/> never got in feature 17, deliberately
 /// left for this feature (specs/fulfillment_stock/design.md §16). No I/O, no
-/// clock, no ids beyond those <paramref name="newId"/> supplies — pure, like
+/// clock, no ids beyond those the caller's own <c>newId</c> supplies — pure, like
 /// every domain method in this repository.
 /// </summary>
 public static class OrderDespatch

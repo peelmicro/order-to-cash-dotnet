@@ -10,7 +10,7 @@ namespace OrderToCash.Orders.Infrastructure.Persistence.Configurations;
 /// ordered; `(published_at, occurred_at)` serves the outbox-lag metric. Both
 /// are reproduced; a missing one is a silent performance defect no test
 /// would otherwise catch. `Seq` is `bigint IDENTITY(1,1)`, never assigned by
-/// the application — <see cref="ValueGeneratedOnAdd"/>.
+/// the application — <c>ValueGeneratedOnAdd()</c>.
 /// </summary>
 public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<OutboxMessage>
 {

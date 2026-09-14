@@ -11,7 +11,7 @@ public enum SagaFactOutcome
     /// <summary>Recorded and acknowledged without effect — unknown order (SO8) or unmet precondition (R25).</summary>
     Ignored,
 
-    /// <summary>The step applied — the aggregate was (possibly) changed and the transaction committed. <see cref="Enqueued"/> names the command owed, if any.</summary>
+    /// <summary>The step applied — the aggregate was (possibly) changed and the transaction committed. <see cref="SagaFactResult.Enqueued"/> names the command owed, if any.</summary>
     Processed,
 }
 

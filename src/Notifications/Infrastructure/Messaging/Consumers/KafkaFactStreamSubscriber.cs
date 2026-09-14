@@ -6,7 +6,7 @@ namespace OrderToCash.Notifications.Infrastructure.Messaging.Consumers;
 
 /// <summary>
 /// The ONE type in this service touching <c>Confluent.Kafka</c>'s consumer
-/// API (<see cref="OrderToCash.Architecture.Tests.FactConsumerConfinementTests"/>
+/// API (<c>OrderToCash.Architecture.Tests.FactConsumerConfinementTests</c>
 /// enforces this at namespace granularity, service-agnostic). Implements
 /// <see cref="IFactStreamSubscriber"/>'s offset-commit-after-handler
 /// contract — copied from Orders' own <c>KafkaFactStreamSubscriber</c>

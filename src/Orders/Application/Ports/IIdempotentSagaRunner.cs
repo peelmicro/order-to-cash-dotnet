@@ -1,6 +1,6 @@
 namespace OrderToCash.Orders.Application.Ports;
 
-/// <summary>Mirrors <c>OrderToCash.Orders.Infrastructure.Messaging.ConsumptionOutcome</c> without requiring <see cref="SagaFactHandler"/> to reference that Infrastructure enum directly.</summary>
+/// <summary>Mirrors <c>OrderToCash.Orders.Infrastructure.Messaging.ConsumptionOutcome</c> without requiring <see cref="OrderToCash.Orders.Application.Sagas.SagaFactHandler"/> to reference that Infrastructure enum directly.</summary>
 public enum IdempotentSagaRunOutcome
 {
     Processed,

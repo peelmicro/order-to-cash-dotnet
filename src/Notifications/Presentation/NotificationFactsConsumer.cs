@@ -47,7 +47,7 @@ public sealed class NotificationFactsConsumer(
     /// constructs its handler directly and never traverses either list
     /// (feature 23 review round 1, D1). <c>Dictionary.Keys</c> IS the
     /// notified-fact set now: there is no second list to restate or drift
-    /// from, and <see cref="NotificationFactsConsumerTests"/> (in
+    /// from, and <c>NotificationFactsConsumerTests</c> (in
     /// <c>Notifications.UnitTests</c>) drives every one of the seven
     /// through this exact table via <see cref="ExecuteAsync"/> itself, not
     /// through a shortcut around it.

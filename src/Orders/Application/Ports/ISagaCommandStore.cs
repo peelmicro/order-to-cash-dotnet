@@ -23,7 +23,7 @@ public enum EnqueueOutcome
 /// <c>operator_note_survives_the_compensation_branches</c> (id 71) it
 /// carries the synthetic <c>orders.cancel.requested</c> envelope, and a
 /// parked row of its is republished on first park exactly like any other
-/// row — see <see cref="FindOperatorCancelNoteAsync"/>'s own remarks for
+/// row — see <see cref="ISagaCommandStore.FindOperatorCancelNoteAsync"/>'s own remarks for
 /// the write. SA-4 (ruled 2026-09-11) leaves exactly ONE such enqueue site,
 /// <c>BeginStockReleaseCompensationAsync</c> — the credit-first branch's
 /// own separate enqueue was retired with it.
@@ -76,7 +76,25 @@ public interface ISagaCommandStore
     /// carry that compile-time guarantee over for any future caller, only
     /// per-site discipline and tests for the two sites that exist today.
     /// </param>
-    /// <param name="triggeringEventTopic">The source topic <paramref name="triggeringEventEnvelope"/> was consumed from — one of <c>SagaFactTopics</c>'s three (<c>Infrastructure/Messaging/Consumers/</c>), never re-derived from <paramref name="command"/> or the order. <see langword="null"/> alongside a <see langword="null"/> envelope.</param>
+    /// <param name="orderId">The order the command is owed for — the first half of the unique <c>(order_id, command)</c> index this insert may collide on.</param>
+    /// <param name="orderReference">The order's human-readable <c>ORD-######</c> reference, denormalised onto the row so a dispatch needs no second read of the order.</param>
+    /// <param name="command">Which command is owed (<c>stock.reserve</c>, <c>credit.hold</c>, <c>stock.release</c>, <c>credit.release</c>) — the second half of the unique index.</param>
+    /// <param name="payload">The already-serialised RPC request body, stored verbatim and replayed byte-for-byte on every dispatch attempt.</param>
+    /// <param name="triggeringEventId">The <c>eventId</c> of the fact that owed this command, or — for an RPC-triggered compensation row — the synthetic request id stamped into the envelope below.</param>
+    /// <param name="triggeringEventTopic">
+    /// The Kafka topic this row's <c>.dlq</c> republish is routed to, stored
+    /// verbatim and never re-derived from <paramref name="command"/> or the
+    /// order. For a FACT-triggered enqueue that is the topic the envelope was
+    /// consumed from — one of <c>SagaFactTopics</c>'s three
+    /// (<c>Infrastructure/Messaging/Consumers/</c>). For the RPC-triggered
+    /// operator-cancel compensation row it is NOT a topic anything was
+    /// consumed from: <c>CancelOrderCommandHandler</c> stores the orders facts
+    /// topic (<c>OperatorCancelRequestedEnvelope.Topic</c>) so the synthetic
+    /// envelope has a dead-letter destination, and no such message was ever
+    /// consumed from it. <see langword="null"/> alongside a
+    /// <see langword="null"/> envelope.
+    /// </param>
+    /// <param name="cancellationToken">Cooperative cancellation, forwarded to the underlying <c>INSERT</c>.</param>
     Task<EnqueueOutcome> EnqueueAsync(
         Guid orderId,
         string orderReference,

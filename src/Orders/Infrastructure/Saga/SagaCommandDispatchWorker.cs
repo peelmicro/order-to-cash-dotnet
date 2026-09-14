@@ -24,10 +24,39 @@ namespace OrderToCash.Orders.Infrastructure.Saga;
 /// guarantee.
 /// </summary>
 /// <remarks>
+/// <para>
 /// No per-order affinity/serialisation: <see cref="OrdersSagaDispatchOptions"/>'s
 /// own doc comment enumerates why no invariant in this saga needs it, and
 /// progress/impl_saga_command_fast_path_is_head_of_line_blocked.md records
 /// the enumeration in full.
+/// </para>
+/// <para>
+/// <b>The <c>Math.Max(1, ...)</c> floor below is load-bearing and guarded</b>
+/// (backlog id 90). Without it, a <c>DegreeOfParallelism</c> of 0 makes
+/// <c>Enumerable.Range(0, 0)</c> empty, so <c>Task.WhenAll</c> has nothing to
+/// wait for and settles within milliseconds: this
+/// <see cref="BackgroundService"/> finishes SUCCESSFULLY, the Generic Host
+/// keeps running, <c>/health/ready</c> still answers <c>200 "up"</c> (no
+/// health check references this worker), and the fast path dispatches nothing
+/// for any order, forever — every saga command silently demoted to the 30 s
+/// sweeper. A NEGATIVE value behaves differently and is worth knowing apart:
+/// <see cref="Enumerable.Range"/>'s <c>ArgumentOutOfRangeException</c> is
+/// captured INTO the returned task rather than thrown out of
+/// <c>ExecuteAsync</c> (<c>Task.WhenAll(IEnumerable&lt;Task&gt;)</c>
+/// enumerates asynchronously in .NET 10), so the task FAULTS instead of
+/// completing — loud under a real host's default
+/// <c>BackgroundServiceExceptionBehavior.StopHost</c>, where 0 is not. The
+/// clamp was measured unguarded: deleting it left all four of this worker's
+/// tests passing (id 80's review, probe P6). It is now armed by
+/// <c>SagaCommandDispatchWorkerTests.DegreeOfParallelismBelowOne_IsClampedToOneRunningConsumerLoop</c>
+/// and by
+/// <c>SagaCommandDispatchWorkerTests.DegreeOfParallelismZero_MustNotLeaveExecuteAsyncCompletedWhileTheHostStaysUpAndHealthy</c>.
+/// The floor is the SECOND line of defence, not the first:
+/// <c>OrdersSagaServiceCollectionExtensions.AddOrdersSaga</c> throws at
+/// composition time for a configured value below 1 (CLAUDE.md's "loud at
+/// boot"), and this floor covers the paths that never go through that
+/// composition root.
+/// </para>
 /// </remarks>
 public sealed class SagaCommandDispatchWorker(
     ChannelSagaCommandSignal signal,

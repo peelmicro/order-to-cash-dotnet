@@ -287,7 +287,7 @@ public sealed class EfCoreSagaCommandStore(OrdersDbContext db, IClock clock, IOp
     /// Feature <c>operator_note_survives_the_compensation_branches</c> (id
     /// 71) — checks <c>credit.release</c> before <c>stock.release</c>
     /// (arbitrary but fixed precedence for the "both rows carry a synthetic
-    /// envelope" defensive case — <see cref="SagaCommandStoreTests"/>'s own
+    /// envelope" defensive case — <c>SagaCommandStoreTests</c>'s own
     /// precedence test pins it); selection between the two is by envelope
     /// CONTENT (<see cref="ExtractOperatorCancelNote"/>), never by which
     /// command name or insertion position happens to carry the synthetic

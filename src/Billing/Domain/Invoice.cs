@@ -21,7 +21,7 @@ public sealed record IssueInvoiceInput(
     Money Discount,
     UniqueId CorrelationId);
 
-/// <summary>The input to <see cref="Invoice.MarkPaid"/> — feature 22's seam. Delivered and unit-tested here; uncalled until `billing.payment.register` exists.</summary>
+/// <summary>The input to <see cref="Invoice.MarkPaid"/>. Delivered by feature 21 with no caller; feature 22 (<c>billing.payment.register</c>, phase 10) supplied one — <c>Billing.Application.PaymentRegisterService</c> is the sole live caller, reached over real infrastructure by <c>Billing.IntegrationTests.PaymentRegisterTests</c>.</summary>
 public sealed record MarkPaidInput(
     string PaymentReference,
     Money Amount,

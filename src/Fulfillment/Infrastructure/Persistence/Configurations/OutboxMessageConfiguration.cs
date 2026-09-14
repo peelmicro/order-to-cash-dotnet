@@ -11,7 +11,7 @@ namespace OrderToCash.Fulfillment.Infrastructure.Persistence.Configurations;
 /// `(published_at, occurred_at)` serves the outbox-lag metric. Both are
 /// reproduced; a missing one is a silent performance defect no test would
 /// otherwise catch. `Seq` is `bigint IDENTITY(1,1)`, never assigned by the
-/// application — <see cref="ValueGeneratedOnAdd"/>. Configuration copied
+/// application — <c>ValueGeneratedOnAdd()</c>. Configuration copied
 /// verbatim from `OrderToCash.Orders.Infrastructure.Persistence.Configurations.OutboxMessageConfiguration`
 /// (feature db_orders), not re-derived — this feature's task instructions,
 /// so the reliability tables stay byte-identical and a future cross-context

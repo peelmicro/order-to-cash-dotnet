@@ -15,7 +15,7 @@ public interface IUnitOfWork
     /// Runs <paramref name="work"/> inside ONE write-model transaction.
     /// Commits if it completes, rolls back if it throws, and never swallows
     /// the exception. The delegate MUST be safe to execute more than once —
-    /// <see cref="EfCoreUnitOfWork"/> routes through
+    /// <c>EfCoreUnitOfWork</c> routes through
     /// <c>Database.CreateExecutionStrategy()</c> even with retries off today.
     /// </summary>
     Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken);

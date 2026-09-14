@@ -34,7 +34,7 @@ namespace OrderToCash.Projector.Infrastructure.Messaging;
 /// exhaustion — so the caller's own Kafka subscriber loop reaches
 /// <c>StoreOffset</c> and the partition is not blocked (OR1, R16, design.md
 /// §3.2). <see cref="OperationCanceledException"/> on
-/// <paramref name="cancellationToken"/>-driven shutdown is rethrown
+/// the caller's own <c>cancellationToken</c>-driven shutdown is rethrown
 /// UNCONDITIONALLY — a host shutdown is not a poison message (ledger L13).
 /// </summary>
 public sealed class FactRetryDispatcher(

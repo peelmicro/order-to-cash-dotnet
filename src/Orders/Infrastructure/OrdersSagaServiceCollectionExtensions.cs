@@ -29,6 +29,43 @@ public static class OrdersSagaServiceCollectionExtensions
         var options = new OrdersSagaOptions();
         configure(options);
 
+        // Backlog id 90, bullet 3 — FAIL FAST, never clamp silently, for a
+        // value that arrived through configuration. CLAUDE.md's standing rule
+        // is that DI and configuration failures must be LOUD AT BOOT, and this
+        // particular value has the worst possible quiet failure. At exactly 0,
+        // Enumerable.Range(0, 0) leaves
+        // SagaCommandDispatchWorker.ExecuteAsync's Task.WhenAll with nothing to
+        // wait for, the BackgroundService finishes SUCCESSFULLY, the Generic
+        // Host stays up, /health/ready still answers 200 "up" (no health check
+        // references this worker), and the fast path dispatches nothing for any
+        // order, forever — every saga command silently demoted to the 30 s
+        // sweeper. A clamp to 1 would hide the operator's mistake behind
+        // degraded-but-working behaviour; a throw here stops the host before it
+        // can ever report healthy.
+        //
+        // The Math.Max(1, ...) clamp in the worker itself is NOT redundant and
+        // was deliberately kept: it is the floor for any path that constructs
+        // the worker WITHOUT going through this composition root (tests, and
+        // any future in-code wiring), which this validation cannot see. Belt
+        // here, braces there, and both are armed — see
+        // progress/impl_batch_d5_doc_comment_targets_and_dispatch_clamp.md.
+        //
+        // The predicate is "< 1" rather than "== 0" on purpose: 0 is the value
+        // with the silent-healthy failure (a negative makes ExecuteAsync's task
+        // FAULT instead, which a real host's default
+        // BackgroundServiceExceptionBehavior.StopHost does notice), but a
+        // negative is just as wrong and must be rejected by NAME here rather
+        // than absorbed by the worker's clamp (Math.Max(1, -3) == 1) and never
+        // mentioned again. Measured, both cases, while arming this entry.
+        if (options.Dispatch.DegreeOfParallelism < 1)
+        {
+            throw new InvalidOperationException(
+                $"OrdersSagaOptions.Dispatch.DegreeOfParallelism must be at least 1; it was configured as {options.Dispatch.DegreeOfParallelism}. " +
+                "A value below 1 would give SagaCommandDispatchWorker no consumer loops at all: at 0 its ExecuteAsync finishes successfully, " +
+                "the host keeps running and reports healthy, and every order's saga command silently falls back to the 30 s sweeper. " +
+                "Backlog id 90.");
+        }
+
         services.AddSingleton<IOptions<OrdersSagaOptions>>(Options.Create(options));
 
         // IFactStreamSubscriber: SINGLETON, not scoped — SagaFactsConsumer is

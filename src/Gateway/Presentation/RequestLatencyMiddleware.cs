@@ -7,7 +7,7 @@ namespace OrderToCash.Gateway.Presentation;
 /// <summary>
 /// OR5/design.md §7 — <c>otc_request_latency_ms</c>, tagged by endpoint.
 /// Registered AFTER <c>UseRouting()</c> (design.md §6's ordering) so
-/// <see cref="HttpContext.GetEndpoint"/> is populated, and BEFORE rate
+/// <c>HttpContext.GetEndpoint()</c> is populated, and BEFORE rate
 /// limiting/auth, so it wraps everything from there to the response —
 /// including the error path: <see cref="Endpoint"/> already precedes it in
 /// the pipeline, so a rethrow this middleware lets pass through still

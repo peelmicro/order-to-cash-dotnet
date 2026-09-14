@@ -19,7 +19,27 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
     <IsPackable>false</IsPackable>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!--
+      Backlog id 78. This was `false`, and while it was, EVERY "the build
+      verifies the doc comments" claim in this repository was a guard that
+      could not fire: with no documentation file to generate, Roslyn never
+      binds a <see cref=""/> at all, so CS1574/CS1584/CS1734/CS0419/CS1570
+      are never emitted and a broken cref survives a full, non-incremental
+      `dotnet build` under TreatWarningsAsErrors. Turning it on made 107 real
+      sites visible in one pass across all 28 projects.
+
+      CS1591 ("missing XML comment for publicly visible type or member") is
+      the ONE code suppressed: documenting every public member is not a
+      convention here, and leaving it on would drown the codes that matter.
+      Every other documentation diagnostic is a build ERROR via
+      TreatWarningsAsErrors above — that is the whole point of the entry, so
+      do not add codes to NoWarn to make a build pass, and in particular do
+      not weaken TreatWarningsAsErrors. Cost measured at the time: see
+      progress/impl_batch_d5_doc_comment_targets_and_dispatch_clamp.md.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <!--
       Read by the VSTest tasks for every project regardless of how

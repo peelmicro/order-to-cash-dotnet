@@ -21,7 +21,7 @@ namespace OrderToCash.Contracts.Envelopes;
 /// `tests/Contracts.UnitTests/GoldenEnvelopes/` are asserted against this
 /// exact order, and #7's own wire bytes are the oracle for it.
 /// </remarks>
-/// <typeparam name="TPayload">The fact-specific payload type, e.g. <see cref="OrderToCash.Contracts.Facts.OrderPlacedPayload"/>.</typeparam>
+/// <typeparam name="TPayload">The fact-specific payload type, e.g. <see cref="OrderToCash.Contracts.Facts.Payloads.OrderPlacedPayload"/>.</typeparam>
 public sealed record Envelope<TPayload>(
     Guid EventId,
     string EventType,

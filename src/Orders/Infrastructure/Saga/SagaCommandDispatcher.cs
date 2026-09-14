@@ -40,7 +40,7 @@ public interface ISagaCommandDispatcher
 /// Invoked from exactly two places — <see cref="SagaCommandDispatchWorker"/>
 /// (the fast path, off the consume loop, SO10) and
 /// <see cref="SagaCommandSweeper"/> (the guarantee) — never through
-/// <see cref="Ports.ISagaCommandSignal"/> or the in-process dispatcher
+/// <see cref="OrderToCash.Orders.Application.Ports.ISagaCommandSignal"/> or the in-process dispatcher
 /// itself.
 ///
 /// <b>The §3.2 budget derivation, restated here because this is where it is

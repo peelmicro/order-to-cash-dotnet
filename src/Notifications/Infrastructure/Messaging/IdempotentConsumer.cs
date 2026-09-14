@@ -28,10 +28,10 @@ public enum ConsumptionOutcome
 }
 
 /// <summary>
-/// Runs <paramref name="work"/> AT MOST ONCE for (<c>eventId</c>,
+/// Runs <c>RunOnceAsync</c>'s <c>work</c> delegate AT MOST ONCE for (<c>eventId</c>,
 /// <c>consumer</c>) — design.md §6.1, R17, R18. The dedup record is
 /// inserted FIRST, inside <see cref="IUnitOfWork.ExecuteAsync{T}"/>'s
-/// transaction, and only if that insert succeeds does <paramref name="work"/>
+/// transaction, and only if that insert succeeds does <c>work</c>
 /// run — a duplicate is detected by the unique-index violation
 /// <see cref="ProcessedEventLedger"/> surfaces, never by a
 /// <c>SELECT</c>-then-<c>INSERT</c> check, which would let two concurrent

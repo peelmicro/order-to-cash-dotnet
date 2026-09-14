@@ -71,6 +71,32 @@ public sealed class OrdersSagaSweeperOptions
 public sealed class OrdersSagaDispatchOptions
 {
     /// <summary>How many <c>saga_commands</c> rows this worker may have in flight at once, across every order — bounded so a channel-drop storm cannot open unbounded concurrent NATS calls. Each concurrent dispatch still claims its OWN row via <c>ISagaCommandStore.TryClaimAsync</c>'s atomic conditional UPDATE (SO11, design.md §6.3), so no additional locking is needed here.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Deliberately NOT bound from the environment</b> (backlog id 90,
+    /// bullet 4; advisory A5 of id 80's review).
+    /// <c>OrdersProgramConfiguration.ConfigureSaga</c> reads
+    /// <c>KAFKA_BOOTSTRAP_SERVERS</c>, <c>FACT_RETRY_MAX_ATTEMPTS</c>,
+    /// <c>FACT_RETRY_BACKOFF_MS</c> and the DLQ broker, and touches
+    /// <c>Dispatch</c> nowhere — production runs at this default, 8, with no
+    /// operator control. That is a choice, not an oversight: the number is a
+    /// concurrency bound on outbound NATS RPC, whose safe range depends on
+    /// the responder side rather than on the deployment, and the durable
+    /// <c>saga_commands</c> row plus <c>SagaCommandSweeper</c> — never this
+    /// worker — is the guarantee, so there is nothing an operator would tune
+    /// it for under incident conditions.
+    /// </para>
+    /// <para>
+    /// <b>If it is ever wired to an environment variable</b>, two existing
+    /// conventions become mandatory rather than optional: id 56/67's env-read
+    /// guard convention, INCLUDING the sibling-substitution arming (this key
+    /// would join a family with <c>FACT_RETRY_*</c> and the <c>*_HEALTH_PORT</c>
+    /// set); and the composition-time validation in
+    /// <c>OrdersSagaServiceCollectionExtensions.AddOrdersSaga</c>, which
+    /// already rejects a value below 1 at boot precisely so that day needs no
+    /// second thought.
+    /// </para>
+    /// </remarks>
     public int DegreeOfParallelism { get; set; } = 8;
 }
 

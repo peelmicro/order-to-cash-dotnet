@@ -5,7 +5,7 @@ namespace OrderToCash.Billing.Domain.Errors;
 /// <summary>
 /// Raised by <see cref="BuyerCredit.Release"/> if it were ever asked to
 /// release more than an order's outstanding exposure — <b>B5</b> forbids
-/// <c>exposure(order)</c> from ever going below zero. <see cref="Release"/>
+/// <c>exposure(order)</c> from ever going below zero. <see cref="BuyerCredit.Release"/>
 /// itself never constructs this state (it always releases exactly the
 /// outstanding exposure), so this error is the domain's own defence rather
 /// than a reachable caller mistake.

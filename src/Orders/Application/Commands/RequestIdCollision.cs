@@ -12,7 +12,7 @@ namespace OrderToCash.Orders.Application.Commands;
 /// </summary>
 /// <remarks>
 /// <c>Microsoft.Data.SqlClient</c> exposes no structured index name on a
-/// duplicate-key error — the name appears only inside <see cref="SqlException.Message"/>
+/// duplicate-key error — the name appears only inside <c>SqlException.Message</c>
 /// (captured verbatim from a real <c>mssql</c> container in
 /// <c>progress/impl_observability_reliability.md</c>: <em>"Cannot insert
 /// duplicate key row in object 'dbo.orders' with unique index

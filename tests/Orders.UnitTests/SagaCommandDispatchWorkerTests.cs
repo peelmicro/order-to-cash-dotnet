@@ -1,10 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Application.Sagas;
 using OrderToCash.Orders.Infrastructure;
+using OrderToCash.Orders.Infrastructure.Health;
 using OrderToCash.Orders.Infrastructure.Saga;
 using Xunit;
 
@@ -196,6 +198,220 @@ public sealed class SagaCommandDispatchWorkerTests
             $"observed only {dispatcher.MaxObservedConcurrency} concurrent dispatch(es) — this run never demonstrated genuine parallelism, so the <= bound above would trivially pass even against the pre-fix sequential worker.");
 
         await worker.StopAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Backlog id 90, bullet 1 — the <c>Math.Max(1, ...)</c> floor in
+    /// <c>SagaCommandDispatchWorker.ExecuteAsync</c>. Measured UNGUARDED: id
+    /// 80's review, probe P6, deleted the clamp and all four of this class's
+    /// tests still passed. The observation is a COUNT, not a presence check —
+    /// <see cref="ConcurrencyTrackingFakeDispatcher"/> records the maximum
+    /// number of dispatches ever in flight at once, so the assertion reports
+    /// the degree of parallelism actually achieved and the failure message can
+    /// name it. Three commands are signalled against a configured degree of
+    /// 0/-3: with the floor, exactly one loop exists and the observed degree
+    /// is 1; without it, <c>Enumerable.Range(0, 0)</c> yields no loops at all
+    /// and the observed degree is 0.
+    /// </summary>
+    /// <remarks>
+    /// The upper half matters as much as the lower: asserting
+    /// <c>&gt;= 1</c> alone would also pass if the floor were mutated into a
+    /// constant <c>1</c>, which would silently cap production's default of 8
+    /// at one loop and reintroduce id 80's head-of-line stall.
+    /// <c>== 1</c> here, plus
+    /// <see cref="DegreeOfParallelism_BoundsConcurrentDispatchesAcrossOrders"/>
+    /// at 2 and
+    /// <see cref="HeadOfLineBlocking_OrderBsCommandIsNotBlockedByOrderAsUnresponsiveDispatch"/>
+    /// at the production default, pins both sides.
+    /// </remarks>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-3)]
+    public async Task DegreeOfParallelismBelowOne_IsClampedToOneRunningConsumerLoop(int configured)
+    {
+        var signal = new ChannelSagaCommandSignal(NullLogger<ChannelSagaCommandSignal>.Instance);
+        var dispatcher = new ConcurrencyTrackingFakeDispatcher();
+        await using var provider = BuildProvider(signal, dispatcher, degreeOfParallelism: configured);
+        var worker = provider.GetRequiredService<SagaCommandDispatchWorker>();
+
+        await worker.StartAsync(CancellationToken.None);
+
+        const int signalled = 3;
+        foreach (var orderId in Enumerable.Range(0, signalled).Select(_ => Guid.NewGuid()))
+        {
+            signal.Signal(new SagaCommandRef(orderId, SagaCommandKind.StockReserve));
+        }
+
+        // The same fixed pacing delay DegreeOfParallelism_Bounds... uses, and
+        // for the same reason: DispatchAsync increments the concurrency
+        // counter before doing anything else, so this is comfortably long
+        // enough for every loop that exists to have started. It is a settle,
+        // never a race — the assertion below is about a MAXIMUM, which only
+        // grows with time, so a slow machine cannot make this pass spuriously.
+        var settle = TimeSpan.FromMilliseconds(500);
+        await Task.Delay(settle);
+
+        var observed = dispatcher.MaxObservedConcurrency;
+
+        dispatcher.ReleaseAll();
+        await worker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(
+            observed == 1,
+            $"OrdersSagaOptions.Dispatch.DegreeOfParallelism was configured as {configured} and must be clamped to exactly ONE running consumer loop " +
+            $"by SagaCommandDispatchWorker.ExecuteAsync's Math.Max(1, ...) floor. Observed degree of parallelism: {observed} " +
+            $"(maximum dispatches in flight at once, after {signalled} saga commands were signalled and a {settle.TotalMilliseconds:0} ms settle). " +
+            (observed == 0
+                ? "0 means Enumerable.Range(0, " + configured + ") produced NO consumer loops: the fast path dispatches nothing, for any order, forever — backlog id 90."
+                : "More than 1 means the floor has become a ceiling or the configured value is being used unclamped."));
+    }
+
+    /// <summary>
+    /// Backlog id 90, bullet 2 — the SILENT-FAILURE shape itself, which is
+    /// what makes the clamp worth an entry rather than a nicety. This test
+    /// does not ask "was anything dispatched"; it asks whether
+    /// <c>ExecuteAsync</c>'s task is still RUNNING, because that is the exact
+    /// property the host observes. A <see cref="BackgroundService"/> whose
+    /// <c>ExecuteAsync</c> completes normally does not stop the host and does
+    /// not make it unhealthy — demonstrated, not assumed, by
+    /// <see cref="ACompletedBackgroundService_LeavesTheGenericHostRunningAndTheReadinessSurfaceUp"/>
+    /// below — so with no clamp and a degree of 0 the operator sees a healthy
+    /// host with a dead fast path, and every saga command waits for the 30 s
+    /// sweeper instead.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this waits instead of reading <c>IsCompleted</c> straight after
+    /// <c>StartAsync</c>.</b> It did, in this test's first draft, and that
+    /// version PASSED under the very mutation it exists to catch — measured,
+    /// not suspected. In .NET 10
+    /// <see cref="Task.WhenAll(IEnumerable{Task})"/> over an empty sequence
+    /// does not complete synchronously: an immediate read of
+    /// <c>ExecuteTask.Status</c> returns <c>WaitingForActivation</c> whatever
+    /// the degree is, and only ~a few ms later does it settle
+    /// (<c>RanToCompletion</c> at 0, <c>Faulted</c> at a negative, since
+    /// <see cref="Enumerable.Range"/>'s <c>ArgumentOutOfRangeException</c> is
+    /// captured into the task rather than thrown out of <c>ExecuteAsync</c>).
+    /// An immediate read is therefore a guard that cannot fail. The wait
+    /// below is a change of KIND, not of probability: with the floor the task
+    /// never completes at all, and without it, it settles in milliseconds.
+    /// </para>
+    /// <para>
+    /// <see cref="Task.WhenAny(Task, Task)"/> rather than a plain
+    /// <c>await</c> on the task, deliberately: it observes
+    /// a FAULTED <c>ExecuteTask</c> as "finished" instead of rethrowing, so a
+    /// worker that dies in any way — not only the silent one — fails this
+    /// test by name.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task DegreeOfParallelismZero_MustNotLeaveExecuteAsyncCompletedWhileTheHostStaysUpAndHealthy()
+    {
+        var signal = new ChannelSagaCommandSignal(NullLogger<ChannelSagaCommandSignal>.Instance);
+        var dispatcher = new ConcurrencyTrackingFakeDispatcher();
+        await using var provider = BuildProvider(signal, dispatcher, degreeOfParallelism: 0);
+        var worker = provider.GetRequiredService<SagaCommandDispatchWorker>();
+
+        await worker.StartAsync(CancellationToken.None);
+
+        var executeTask = worker.ExecuteTask;
+
+        try
+        {
+            Assert.True(
+                executeTask is not null,
+                "SagaCommandDispatchWorker.ExecuteTask was null after StartAsync — the worker never began executing at all, so backlog id 90's guard cannot say anything about it.");
+
+            var settle = TimeSpan.FromSeconds(1);
+            var finished = await Task.WhenAny(executeTask!, Task.Delay(settle)) == executeTask;
+
+            Assert.False(
+                finished,
+                $"SagaCommandDispatchWorker.ExecuteAsync FINISHED within {settle.TotalSeconds:0} s with OrdersSagaOptions.Dispatch.DegreeOfParallelism = 0 " +
+                $"(task status {executeTask!.Status}). Enumerable.Range(0, 0) produced no consumer loops, so Task.WhenAll had nothing to wait for and " +
+                "this BackgroundService finished — which does not stop the Generic Host and does not make it unhealthy (no health check references " +
+                "this worker; see ACompletedBackgroundService_LeavesTheGenericHostRunningAndTheReadinessSurfaceUp). The host therefore reports HEALTHY " +
+                "while the saga fast path dispatches nothing for any order, forever, and every command falls back to the 30 s sweeper. " +
+                "Backlog id 90, bullet 2 — the Math.Max(1, ...) floor in ExecuteAsync is what prevents this.");
+        }
+        finally
+        {
+            dispatcher.ReleaseAll();
+            await worker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    /// <summary>
+    /// Backlog id 90, bullet 2's PREMISE, demonstrated rather than assumed:
+    /// a <see cref="BackgroundService"/> whose <c>ExecuteAsync</c> completes
+    /// normally leaves the Generic Host running, and Orders' own readiness
+    /// surface still answers <c>up</c>. Static reading settles only half of
+    /// this — <c>OrdersHost</c> registers three <c>IHealthCheck</c>s (MS-SQL,
+    /// Kafka, NATS) and none of them references the dispatch worker — so the
+    /// framework half is exercised here against a REAL
+    /// <see cref="IHost"/>, with the shape from the defect itself
+    /// (<c>Task.WhenAll</c> over <c>Enumerable.Range(0, 0)</c>) rather than a
+    /// bare <c>Task.CompletedTask</c>, and the readiness half against the
+    /// production <see cref="HealthCheckAggregator"/>.
+    /// </summary>
+    [Fact]
+    public async Task ACompletedBackgroundService_LeavesTheGenericHostRunningAndTheReadinessSurfaceUp()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Logging.ClearProviders();
+        builder.Services.AddHostedService<ImmediatelyCompletingBackgroundService>();
+
+        using var host = builder.Build();
+        var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+
+        await host.StartAsync();
+
+        try
+        {
+            var worker = host.Services.GetServices<IHostedService>().OfType<ImmediatelyCompletingBackgroundService>().Single();
+            var executeTask = worker.ExecuteTask;
+
+            // Bounded wait, not an immediate read: Task.WhenAll over an empty
+            // sequence settles asynchronously in .NET 10 (see
+            // DegreeOfParallelismZero_MustNotLeave...'s own remarks — an
+            // immediate read observes WaitingForActivation and would make this
+            // premise-demonstration unfalsifiable too).
+            var settled = await Task.WhenAny(executeTask!, Task.Delay(TimeSpan.FromSeconds(5))) == executeTask;
+
+            Assert.True(
+                settled && executeTask is { IsCompletedSuccessfully: true },
+                $"the fixture did not reproduce the shape under test — ExecuteTask status was {executeTask?.Status.ToString() ?? "(null)"}, expected RanToCompletion.");
+
+            Assert.False(
+                lifetime.ApplicationStopping.IsCancellationRequested,
+                "the Generic Host began stopping when a BackgroundService's ExecuteAsync completed — if this ever becomes true, backlog id 90's " +
+                "silent-failure premise no longer holds and DegreeOfParallelismZero_MustNotLeaveExecuteAsyncCompletedWhileTheHostStaysUpAndHealthy " +
+                "should be re-argued rather than merely kept.");
+
+            var (statusCode, body) = await HealthCheckAggregator.ReadyAsync([new AlwaysUpHealthCheck()], CancellationToken.None);
+
+            Assert.Equal(200, statusCode);
+            Assert.Equal("up", body.Status);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    private sealed class ImmediatelyCompletingBackgroundService : BackgroundService
+    {
+        /// <summary>The defect's own shape, verbatim: no loops, so <see cref="Task.WhenAll(IEnumerable{Task})"/> is already completed when it is returned.</summary>
+        protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+            Task.WhenAll(Enumerable.Range(0, 0).Select(_ => Task.Delay(Timeout.Infinite, stoppingToken)));
+    }
+
+    private sealed class AlwaysUpHealthCheck : IHealthCheck
+    {
+        public string Name => "mssql";
+
+        public Task<HealthCheckResult> CheckAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(HealthCheckResult.Up());
     }
 
     private static ServiceProvider BuildProvider(ChannelSagaCommandSignal signal, ISagaCommandDispatcher dispatcher, int? degreeOfParallelism = null)

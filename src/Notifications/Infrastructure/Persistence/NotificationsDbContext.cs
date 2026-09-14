@@ -11,8 +11,7 @@ namespace OrderToCash.Notifications.Infrastructure.Persistence;
 /// `processed_events`, and no outbox: this service produces no facts, only
 /// consumes them, so a transactional-outbox pattern would have nothing to
 /// guarantee. Lives entirely under <c>Infrastructure/</c>; nothing here is
-/// reachable from <c>Domain/</c> — <see
-/// cref="OrderToCash.Architecture.Tests.DomainPurityTests"/> fails the build
+/// reachable from <c>Domain/</c> — <c>OrderToCash.Architecture.Tests.DomainPurityTests</c> fails the build
 /// if it ever is.
 /// </summary>
 public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbContext> options) : DbContext(options)

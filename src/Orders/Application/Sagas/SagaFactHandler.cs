@@ -265,7 +265,7 @@ public sealed class SagaFactHandler(
     /// the command it owes, if any. Instance (not <see langword="static"/>,
     /// unlike before feature <c>operator_note_survives_the_compensation_branches</c>,
     /// id 71) because the <see cref="SagaStep.Cancel"/> branch now reads
-    /// <see cref="commandStore"/> for the operator's note — see
+    /// its own <c>commandStore</c> for the operator's note — see
     /// <see cref="ISagaCommandStore.FindOperatorCancelNoteAsync"/>. Every
     /// SAGA-DECIDED caller of this same branch (<c>stock.rejected.v1</c>'s
     /// direct cancel, and <c>stock.released.v1</c>'s <c>StockReserved</c>

@@ -4,7 +4,7 @@ using MailKit.Net.Smtp;
 namespace OrderToCash.Notifications.Infrastructure.Notification;
 
 /// <summary>
-/// Whether a <see cref="INotificationSender.SendAsync"/> failure is worth
+/// Whether an <see cref="OrderToCash.Notifications.Application.Ports.INotificationSender.SendAsync"/> failure is worth
 /// retrying (<see cref="Transient"/>, the existing <c>FactRetryDispatcher</c>
 /// retry-then-dead-letter path handles it exactly as before) or is not
 /// (<see cref="Permanent"/>, <see cref="DegradingNotificationSender"/>

@@ -13,12 +13,14 @@ namespace OrderToCash.Orders.Application.Ports;
 /// </summary>
 public interface IOrderRepository
 {
+    /// <param name="order">The newly created aggregate — tracked by the ambient <c>DbContext</c>, its <c>DomainEvents</c> drained by <see cref="SaveChangesAsync"/>, never by this method.</param>
     /// <param name="requestId">
     /// Feature <c>observability_reliability</c>, <c>RI1</c> — the client's
     /// `orders.create` idempotency key, persisted against the new row under
     /// <c>OrderConfiguration</c>'s filtered unique index. <c>null</c> when
     /// the caller omitted it (<c>RI4</c>) — never defaulted, never inferred.
     /// </param>
+    /// <param name="cancellationToken">Cooperative cancellation, forwarded to the underlying EF Core call.</param>
     Task AddAsync(Order order, Guid? requestId, CancellationToken cancellationToken);
 
     Task<Order?> GetByIdAsync(UniqueId id, CancellationToken cancellationToken);

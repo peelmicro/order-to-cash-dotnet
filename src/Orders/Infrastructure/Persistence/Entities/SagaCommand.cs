@@ -52,7 +52,16 @@ public sealed class SagaCommand
     /// </summary>
     public string? TriggeringEventEnvelope { get; set; }
 
-    /// <summary>The source topic <see cref="TriggeringEventEnvelope"/> was consumed from — never re-derived from <see cref="Command"/>.</summary>
+    /// <summary>
+    /// The Kafka topic this row's <c>.dlq</c> republish is routed to, stored
+    /// verbatim and never re-derived from <see cref="Command"/>. For a
+    /// FACT-triggered row that is the topic
+    /// <see cref="TriggeringEventEnvelope"/> was consumed from; for the
+    /// RPC-triggered operator-cancel compensation row it is NOT — nothing was
+    /// consumed from anywhere, and <c>CancelOrderCommandHandler</c> stores the
+    /// orders facts topic purely so the synthetic
+    /// <c>orders.cancel.requested</c> envelope has a dead-letter destination.
+    /// </summary>
     public string? TriggeringEventTopic { get; set; }
 
     /// <summary><c>OR3</c>'s at-most-once marker (design.md §4.3) — set exactly once, by <see cref="Saga.EfCoreSagaCommandStore.TryClaimDeadLetterAsync"/>'s single conditional <c>UPDATE</c>.</summary>

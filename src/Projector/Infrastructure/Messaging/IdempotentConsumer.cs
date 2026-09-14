@@ -24,7 +24,7 @@ public enum ConsumptionOutcome
 
 /// <summary>
 /// Runs the caller-supplied projection pipeline AT MOST ONCE for
-/// (<paramref name="scopeId"/>'s document, <c>eventId</c>, <c>consumer</c>)
+/// (<c>scopeId</c>'s document, <c>eventId</c>, <c>consumer</c>)
 /// — <c>R17</c>, <c>R18</c>, design.md §6.1/§6.2. The dedup key is the PAIR
 /// <c>&lt;consumer&gt;:&lt;eventId&gt;</c>, never the bare id already
 /// sitting in <c>events[]</c> (conformance case 5). The filter <c>{ _id:

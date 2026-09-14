@@ -10,8 +10,7 @@ namespace OrderToCash.Billing.Infrastructure.Persistence;
 /// lines, payments, the `INV-######` allocation counter, and the
 /// reliability tables shared with Orders, Fulfillment and Notifications
 /// (§4.3). Lives entirely under <c>Infrastructure/</c>; nothing here is
-/// reachable from <c>Domain/</c> — <see
-/// cref="OrderToCash.Architecture.Tests.DomainPurityTests"/> fails the build
+/// reachable from <c>Domain/</c> — <c>OrderToCash.Architecture.Tests.DomainPurityTests</c> fails the build
 /// if it ever is.
 /// </summary>
 public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options) : DbContext(options)

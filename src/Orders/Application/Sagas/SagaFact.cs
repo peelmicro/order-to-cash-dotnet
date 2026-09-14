@@ -22,6 +22,13 @@ namespace OrderToCash.Orders.Application.Sagas;
 /// and the step table's own pattern matches ever see the concrete payload
 /// type.
 /// </remarks>
+/// <param name="EventId">The fact's own <c>eventId</c>, copied verbatim from the envelope — the dedup key every saga step is run under (R18).</param>
+/// <param name="EventType">The envelope's <c>eventType</c> (<c>&lt;aggregate&gt;.&lt;fact&gt;.v&lt;n&gt;</c>), the step table's routing key.</param>
+/// <param name="AggregateId">The envelope's <c>aggregateId</c> — the producing aggregate's id, NOT necessarily the order's.</param>
+/// <param name="CorrelationId">The envelope's <c>correlationId</c> — always the ORDER id across this saga (saga.md's invariant).</param>
+/// <param name="CausationId">The envelope's <c>causationId</c> — the event or request that caused this one.</param>
+/// <param name="OccurredAt">The envelope's <c>occurredAt</c>, UTC, never re-stamped by the consumer.</param>
+/// <param name="Payload">The <c>Contracts.Facts.FactCatalog</c> CLR type declared for <paramref name="EventType"/>, declared <see cref="object"/> here so this Application-layer file references no Contracts type.</param>
 /// <param name="TriggeringEventEnvelope">
 /// Feature <c>observability_reliability</c>, <c>OR3</c>/<c>R29</c>'s
 /// dead-letter clause (design.md §4.2) — the RAW bytes of this fact's own

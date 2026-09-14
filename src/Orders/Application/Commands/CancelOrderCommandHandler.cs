@@ -35,7 +35,7 @@ namespace OrderToCash.Orders.Application.Commands;
 /// the ONE guard for both outcomes, reused VERBATIM (bullet 2's own acceptance
 /// text: "no new domain modeling"): the immediate branch calls it and it
 /// succeeds; the terminal branch calls it and it throws
-/// <see cref="Errors.OrderNotCancellableError"/>, which this handler does
+/// <see cref="OrderToCash.Orders.Domain.Errors.OrderNotCancellableError"/>, which this handler does
 /// NOT catch — it propagates to the responder's error mapping, exactly like
 /// every other domain refusal in this codebase.</item>
 /// </list>

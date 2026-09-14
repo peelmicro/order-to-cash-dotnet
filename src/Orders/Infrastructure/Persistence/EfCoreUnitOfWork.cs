@@ -7,7 +7,7 @@ using OrderToCash.Orders.Infrastructure.Observability;
 namespace OrderToCash.Orders.Infrastructure.Persistence;
 
 /// <summary>
-/// design.md §4.1, exactly. One <see cref="IDbContextTransaction"/> over the
+/// design.md §4.1, exactly. One <see cref="Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction"/> over the
 /// scoped <see cref="OrdersDbContext"/> — every collaborator resolved from
 /// the same DI scope enlists automatically (design.md §2.1), which is what
 /// makes <c>R17</c>'s "dedup record, aggregate change and outbox rows in one

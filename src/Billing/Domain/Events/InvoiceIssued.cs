@@ -4,7 +4,7 @@ namespace OrderToCash.Billing.Domain.Events;
 
 /// <summary>
 /// Raised by <see cref="Invoice.Issue"/> — `BI13`/`R45` (specs/shared/asyncapi.yaml
-/// <c>InvoiceIssuedPayload</c>, fact 10). <see cref="AggregateId"/> is the
+/// <c>InvoiceIssuedPayload</c>, fact 10). <see cref="FactEvent.AggregateId"/> is the
 /// invoice's own id, <see cref="FactEvent.CorrelationId"/> is the order id,
 /// <see cref="FactEvent.CausationId"/> is the request id — `domain-model.md`
 /// §7.2 names <c>Invoice</c> as this fact's producing aggregate.

@@ -16,7 +16,7 @@ public interface IUnitOfWork
     /// Runs <paramref name="work"/> inside ONE write-model transaction.
     /// Commits if it completes, rolls back if it throws, and never swallows
     /// the exception. The delegate MUST be safe to execute more than once —
-    /// <see cref="EfCoreUnitOfWork"/> routes through
+    /// <c>EfCoreUnitOfWork</c> routes through
     /// <c>Database.CreateExecutionStrategy()</c> even with retries off today,
     /// so enabling retries later is a configuration change, not a rewrite of
     /// every transactional path (design.md §4.1 point 1). See §4.5 for how
