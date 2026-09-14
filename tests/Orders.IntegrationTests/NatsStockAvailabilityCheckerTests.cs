@@ -24,6 +24,14 @@ namespace OrderToCash.Orders.IntegrationTests;
 public sealed class NatsStockAvailabilityCheckerTests(NatsContainerFixture nats)
 {
     /// <summary>
+    /// <see cref="NatsOptions.StockCheckTimeoutMs"/>'s own default — this
+    /// checker is built with <c>Options.Create(new NatsOptions())</c>
+    /// below, never a custom timeout, so this is the budget a lost reply
+    /// would actually wait out.
+    /// </summary>
+    private const int StockCheckBudgetMs = 5_000;
+
+    /// <summary>
     /// The exact bug fixed: before the discriminator, an RpcError-shaped
     /// reply deserialised into <c>StockCheckReplyPayload</c> with a null
     /// <c>Lines</c>, and the very next line's LINQ <c>.Select</c> threw a
@@ -96,6 +104,25 @@ public sealed class NatsStockAvailabilityCheckerTests(NatsContainerFixture nats)
     /// <c>RequestAsync</c> blocks each call until BOTH have arrived, so a
     /// plain hoist with NO delay in the mutation is proven to collide on
     /// EVERY run, over the real broker.
+    ///
+    /// Backlog id 95 — the identical cold-connection shape id 81 diagnosed
+    /// and fixed at <c>tests/Gateway.IntegrationTests/NatsRpcClientIntegrationTests.cs</c>
+    /// also lives here: a brand-new <see cref="NatsConnection"/> issuing a
+    /// concurrent pair as its FIRST traffic loses one of the two replies in
+    /// about 1 % of rounds (id 81's measurement: 8 losses in 648 cold
+    /// rounds against 0 in 700 rounds where the connection was established
+    /// first — the losing call's own simultaneous twin completed in 2-8 ms
+    /// while the responder had received BOTH requests, which no amount of
+    /// machine contention can produce). That diagnosis is not re-run here
+    /// because it is the SAME mechanism at a different call site, already
+    /// proved by a change of kind rather than of probability; re-measuring
+    /// it again would add nothing id 81 did not already establish. The fix
+    /// is the same one line, ported rather than reinvented: establish the
+    /// connection with <see cref="NatsConnection.ConnectAsync"/> BEFORE the
+    /// concurrent pair is issued — the overlap this case needs is supplied
+    /// entirely by <see cref="RequestOverlapBarrierConnection"/>, so an
+    /// unestablished connection adds nothing to what it proves and adds a
+    /// 1 %-per-run lost reply.
     /// </summary>
     [Fact]
     public async Task OR4_TwoConcurrentCalls_EachCarriesItsOwnActiveTraceId()
@@ -109,6 +136,20 @@ public sealed class NatsStockAvailabilityCheckerTests(NatsContainerFixture nats)
 
         await using var fulfillment = await StandInFulfillmentStockCheckResponder.StartAvailableAsync(nats.Url, CancellationToken.None);
         await using var realConnection = new NatsConnection(new NatsOpts { Url = nats.Url });
+
+        // Backlog id 95, porting id 81's fix — establish the connection
+        // BEFORE the concurrent pair is issued. NatsConnection connects
+        // lazily, so without this line the two barrier-released calls race
+        // the connection's own establishment and one of them loses its
+        // reply about 1 % of runs.
+        await realConnection.ConnectAsync();
+        Assert.True(
+            realConnection.ConnectionState == NatsConnectionState.Open,
+            $"backlog id 95: this case must issue its two concurrent calls over an ALREADY ESTABLISHED connection, never as the connection's first traffic — "
+            + $"the cold shape loses one of the two replies in ~1 % of runs (id 81's measurement: 8 losses in 648 cold rounds against 0 in 700 established ones) "
+            + $"and the loser then waits out the whole {StockCheckBudgetMs} ms budget. "
+            + $"The connection state at the moment the pair was about to be issued was '{realConnection.ConnectionState}', not '{NatsConnectionState.Open}'.");
+
         var connection = new RequestOverlapBarrierConnection(realConnection);
         var checker = new NatsStockAvailabilityChecker(connection, Options.Create(new NatsOptions()));
 
