@@ -19,20 +19,36 @@
     <PackageVersion Include="coverlet.msbuild" Version="6.0.2" />
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
     <!-- feature composition_root_delegation_and_wiring_are_unguarded (id 68,
-         fix round 4, corrected fix round 5 — D19): tests/Architecture.Tests
-         only. Replaces the hand-rolled comment/string-literal text scanner
-         (defeated across three review rounds by a comment, then #if false /
-         a raw string, then "# if false" and a quote nested inside an
-         interpolation hole) with the C# compiler's own lexer/parser — a raw
-         string or an interpolation hole's contents become literal tokens,
-         never reachable as an ArgumentSyntax node, so that half of the
-         defeat class cannot exist rather than needing another spelling
-         added to a denylist. Conditional-compilation regions are NOT
-         automatically safe this way: round 4's re-review found the parser
-         (fed no preprocessor symbols) and the build (which defines DEBUG)
-         can disagree about which #if branch is live, so
+         fix round 4; corrected fix round 5 — D19; corrected again by id 86):
+         tests/Architecture.Tests only. Replaces the hand-rolled
+         comment/string-literal text scanner (defeated across three review
+         rounds by a comment, then #if false / a raw string, then
+         "# if false" and a quote nested inside an interpolation hole) with
+         the C# compiler's own lexer/parser, so the guard reads real
+         ArgumentSyntax/InvocationExpressionSyntax nodes instead of matching
+         text.
+         What the parser DOES retire, structurally: a comment is trivia, and
+         a raw or verbatim string is a single literal token whose character
+         content is never parsed — no spelling inside either becomes
+         argument syntax.
+         What it does NOT retire, measured: an INTERPOLATION HOLE. Its
+         contents are a genuine expression tree, so a decoy host call
+         written inside one produces real ArgumentSyntax nodes and was read
+         by this guard as live wiring (id 68 round-5 re-review; filed and
+         fixed as id 86). Reading a real parser narrowed the defeat class;
+         it did not close it, and the earlier wording here — that an
+         interpolation hole's contents "become literal tokens, never
+         reachable as an ArgumentSyntax node" — was false. What closes that
+         family is the id 86 anchor in CompositionRootDelegationWiringTests:
+         exactly ONE host invocation per composition root, arguments read
+         from THAT node.
+         Conditional-compilation regions are likewise not automatically
+         safe: round 4's re-review found the parser (fed no preprocessor
+         symbols) and the build (which defines DEBUG) can disagree about
+         which #if branch is live, so
          CompositionRootDelegationWiringTests.ParseFile rejects any
-         directive outright rather than relying on the parser alone. -->
+         preprocessor directive outright — #region and #pragma included —
+         rather than relying on the parser alone. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
 
     <!-- feature cqrs_dispatcher (phase 8): the hand-rolled in-process CQRS

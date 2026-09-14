@@ -73,17 +73,40 @@ namespace OrderToCash.Architecture.Tests;
 /// scanner to notice, they are STRUCTURALLY INVISIBLE to a real parser as
 /// anything other than what they are:
 /// <list type="bullet">
-/// <item>a raw string (<c>"""..."""</c>), a verbatim string (<c>@"..."</c>)
-/// and a quote nested inside an interpolation hole are all LITERAL TOKENS
-/// (or, for the interpolation hole, a genuine nested expression tree) —
-/// never argument syntax, whatever character sequence they contain;</item>
+/// <item>a raw string (<c>"""..."""</c>) and a verbatim string
+/// (<c>@"..."</c>) are single LITERAL TOKENS — their character content is
+/// never parsed, so no character sequence inside one becomes argument
+/// syntax;</item>
 /// <item>a <c>//</c> or <c>/* */</c> comment is TRIVIA, attached to a
-/// token but never itself producing one.</item>
+/// token but never itself producing one;</item>
+/// <item>an INTERPOLATION HOLE is the EXCEPTION, and not a bookkeeping
+/// one. <c>$"...{BillingHost.CreateBuilder(args, configureHealth: X)}"</c>
+/// holds a genuine expression tree, and every node in it — invocations and
+/// <see cref="ArgumentSyntax"/> nodes included — is exactly as real to this
+/// parser as one written at statement level. Measured in id 68's round-5
+/// re-review and filed as id 86: a decoy host call placed in a hole
+/// supplied the file's ONLY <c>configureHealth:</c> node, and this guard
+/// read it and passed, with Billing's health probes unwired. What rules
+/// that decoy out is not the construct being unreadable — it IS readable —
+/// but the id 86 anchor below.</item>
 /// </list>
-/// A defeat that relies on either of these two shapes cannot pass this
-/// guard, because neither is code.
 ///
-/// <b>Fix round 5 (this file's own re-review, round 4, D15/D16/D17/D19) —
+/// <b>Fix round 6 — id 86 (<c>composition_root_delegation_guard_anchors_a_call_shape_not_the_live_host_call</c>),
+/// the anchor.</b> Rounds 1–5 asked "is there an argument that LOOKS like
+/// it belongs to the host call?"; the shape of that question is what kept
+/// losing, because a second, discardable <c>BillingHost.CreateBuilder(...)</c>
+/// anywhere in the file answers it while the real call goes unwired.
+/// <see cref="FindTheHostInvocation"/> now asks the other question first:
+/// collect every invocation in the file whose callee renders as
+/// <c>&lt;HostType&gt;.&lt;HostMethod&gt;</c>, require EXACTLY ONE, and
+/// read <see cref="InvocationExpressionSyntax.ArgumentList"/> of THAT node.
+/// A decoy is therefore no longer a competing match to be outvoted — it is
+/// a second host invocation, which fails by name. The population test reads
+/// the SAME node, which also closes the unit mismatch id 86 names: its unit
+/// was the per-file multiset of <c>configure*</c> names, which a decoy
+/// carrying <c>configure</c> POSITIONALLY preserves exactly.
+///
+/// <b>Fix round 5 (this file's own re-review, round 4, D15/D16/D17/D19)</b> —
 /// the original version of this list had a THIRD item here, claiming a
 /// disabled <c>#if false</c> region was in the same category. That item is
 /// deleted, not corrected in place, because the sentence around it — "a
@@ -97,9 +120,15 @@ namespace OrderToCash.Architecture.Tests;
 /// and compiled by <c>dotnet build</c> as the whole program. Passing the
 /// build's own symbols would only relocate the disagreement (<c>#if
 /// RELEASE</c>, <c>#if !DEBUG</c>, a future <c>DefineConstants</c>), so
-/// <see cref="ParseFile"/> now rejects ANY conditional-compilation
-/// directive trivia in these files outright, structurally, rather than
-/// trying to agree with a symbol set that varies by configuration — a
+/// <see cref="ParseFile"/> rejects directive trivia in these files
+/// outright, structurally, rather than trying to agree with a symbol set
+/// that varies by configuration. Id 86, bullet 4: the predicate it applies
+/// is <see cref="SyntaxTrivia.IsDirective"/>, so what it actually rejects
+/// is ANY directive — <c>#pragma</c>, <c>#region</c>/<c>#endregion</c>,
+/// <c>#nullable</c>, <c>#line</c>, <c>#warning</c>/<c>#error</c> included,
+/// not merely the conditional-compilation family that motivated it; the
+/// message said "conditional-compilation" and therefore misnamed the
+/// category of its own false red. A
 /// directive-carrying composition root is not a shape this repository has
 /// today (confirmed by reading all seven <c>Program.cs</c> files and
 /// <c>SeedRunner.cs</c> before relying on this), and this guard now says so
@@ -110,11 +139,12 @@ namespace OrderToCash.Architecture.Tests;
 /// at the time as an inheritance of the "exactly one match" trade below,
 /// but that disclosure was incomplete: satisfying the count from an
 /// unrelated local function's argument, rather than from the host call
-/// itself, left the real call unwired and this test green. The finder is
-/// now anchored to the specific <c>*Host.CreateBuilder</c>/
-/// <c>GatewayHost.Build</c> invocation each <c>Program.cs</c> is expected
-/// to call (<see cref="IsArgumentOfInvocation"/>); an argument bound
-/// anywhere else no longer counts.
+/// itself, left the real call unwired and this test green. D16's own fix
+/// (<c>IsArgumentOfInvocation</c>, a filter asking whether an argument's
+/// enclosing invocation had the host call's SHAPE) is superseded by id 86's
+/// <see cref="FindTheHostInvocation"/> and deleted: a shape test admits a
+/// same-shaped decoy, and what D16 actually wanted was the one live host
+/// call itself.
 ///
 /// <b>D17 — a stated bound, deliberately NOT closed.</b> A syntax tree
 /// carries no symbols. A same-named local type that SHADOWS the real
@@ -198,11 +228,14 @@ public sealed class CompositionRootDelegationWiringTests
     ];
 
     /// <summary>
-    /// D16 (round 4 re-review, fixed here): which <c>*Host.CreateBuilder</c>/
+    /// D16 (round 4 re-review): which <c>*Host.CreateBuilder</c>/
     /// <c>GatewayHost.Build</c> invocation each <c>Program.cs</c>'s
-    /// delegating arguments must be bound TO, so <see cref="ExtractNamedArgument"/>
-    /// can reject a same-named argument passed to any OTHER call (a local
-    /// function, an unrelated helper) instead of counting it. Read directly
+    /// delegating arguments must be bound TO. Id 86 made this the ANCHOR
+    /// rather than a filter: <see cref="FindTheHostInvocation"/> resolves
+    /// each entry to exactly ONE invocation node and the arguments are read
+    /// from it, so an argument passed to any other call — a local function,
+    /// an unrelated helper, a second same-shaped host call — is not a
+    /// candidate to be rejected, it is simply not read. Read directly
     /// from each host type (<c>grep -n "public static.*Build" src/*/[A-Z]*Host.cs</c>);
     /// Gateway's <c>Program.cs</c> calls <c>GatewayHost.Build</c>, not
     /// <c>GatewayHost.CreateBuilder</c> — both exist on <c>GatewayHost</c>,
@@ -223,16 +256,31 @@ public sealed class CompositionRootDelegationWiringTests
     /// Population check — re-derived from DISK at test time, not from the
     /// literal table it also checks, via a real <see cref="SyntaxTree"/>
     /// rather than a regex over stripped text. Glob every
-    /// <c>src/&lt;Service&gt;/Program.cs</c> on disk, and for each one
-    /// collect every <see cref="ArgumentSyntax"/> whose
-    /// <see cref="ArgumentSyntax.NameColon"/> names an identifier starting
-    /// with <c>configure</c>. Three independent things can fail this test
-    /// by name: a service whose <c>Program.cs</c> the literal table does
-    /// not list (or vice versa), a service whose discovered argument NAMES
-    /// differ from the table's (an addition, a removal, a rename, or a
-    /// DUPLICATE — two syntax nodes naming the same argument make the
-    /// discovered list longer than the expected one), and the grand total
-    /// no longer being 19.
+    /// <c>src/&lt;Service&gt;/Program.cs</c> on disk and, for each one,
+    /// read the <c>configure*:</c>-named <see cref="ArgumentSyntax"/> nodes
+    /// of THE one host invocation (<see cref="FindTheHostInvocation"/>),
+    /// never of the file at large.
+    ///
+    /// <b>Id 86: the unit changed here, and that is the fix.</b> This test
+    /// used to collect <c>configure*:</c> arguments from ANYWHERE in the
+    /// file, so its unit was the per-file MULTISET of argument names — and
+    /// the decoy id 86 was filed for preserves that multiset exactly:
+    /// <c>configureHealth:</c> moves off the real call onto a second,
+    /// discardable <c>BillingHost.CreateBuilder(...)</c> while <c>configure</c>
+    /// travels POSITIONALLY on the decoy, leaving the same three names in
+    /// the same file. Reading the host node's own argument list instead
+    /// makes the same mutation fail three ways: the decoy is a second host
+    /// invocation, the real node's names no longer match the table, and the
+    /// grand total drops.
+    ///
+    /// Five independent things now fail this test by name: a service whose
+    /// <c>Program.cs</c> the literal table does not list (or vice versa); a
+    /// file with anything other than exactly one host invocation; a
+    /// service whose discovered argument NAMES differ from the table's (an
+    /// addition, a removal, a rename, or a DUPLICATE); a <c>configure*:</c>
+    /// argument bound anywhere OTHER than the host call (the stray check
+    /// below — the decoy family, caught in the population test as well as
+    /// in the per-service ones); and the grand total no longer being 19.
     /// </summary>
     [Fact]
     public void ThePopulationTableMatchesEveryDelegatingArgumentFoundOnDisk()
@@ -262,11 +310,20 @@ public sealed class CompositionRootDelegationWiringTests
         foreach (var relativePath in discoveredProgramCsFiles)
         {
             var root = ParseFile(relativePath).GetRoot();
-            var discoveredArgumentNames = root
-                .DescendantNodes()
-                .OfType<ArgumentSyntax>()
-                .Where(argument => argument.NameColon is not null
-                    && argument.NameColon.Name.Identifier.ValueText.StartsWith("configure", StringComparison.Ordinal))
+
+            // Id 86: the arguments are read from THE host invocation's own
+            // argument list, never from the file at large. src/Seed/Program.cs
+            // has no host invocation at all and is expected to carry zero
+            // delegating arguments — the stray check below is what proves that
+            // rather than an empty list trivially matching an empty table.
+            var hostArguments = _hostInvocationsByProgramCsPath.TryGetValue(relativePath, out var host)
+                ? FindTheHostInvocation(root, relativePath, host.HostType, host.HostMethod)
+                    .ArgumentList.Arguments
+                    .Where(IsConfigureNamedArgument)
+                    .ToArray()
+                : [];
+
+            var discoveredArgumentNames = hostArguments
                 .Select(argument => argument.NameColon!.Name.Identifier.ValueText)
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
@@ -280,14 +337,35 @@ public sealed class CompositionRootDelegationWiringTests
 
             Assert.True(
                 expectedArgumentNames.SequenceEqual(discoveredArgumentNames, StringComparer.Ordinal),
-                $"{relativePath}: the table expects [{string.Join(", ", expectedArgumentNames)}], "
-                + $"the source on disk has [{string.Join(", ", discoveredArgumentNames)}] — "
-                + "a delegating argument was added, removed, renamed or duplicated without updating this test's table.");
+                $"{relativePath}: the table expects [{string.Join(", ", expectedArgumentNames)}] on the "
+                + $"host call, the host call on disk passes [{string.Join(", ", discoveredArgumentNames)}] — "
+                + "a delegating argument was added, removed, renamed, duplicated or MOVED OFF the host call "
+                + "without updating this test's table.");
+
+            var strayArguments = root
+                .DescendantNodes()
+                .OfType<ArgumentSyntax>()
+                .Where(IsConfigureNamedArgument)
+                .Where(argument => !hostArguments.Contains(argument))
+                .Select(DescribeArgument)
+                .ToArray();
+
+            Assert.True(
+                strayArguments.Length == 0,
+                $"{relativePath}: {strayArguments.Length} 'configure*:' named argument(s) are bound to something "
+                + $"OTHER than this file's one host call — [{string.Join(", ", strayArguments)}]. A composition "
+                + "root passes its configuration delegates to its host and to nothing else; an argument bound "
+                + "elsewhere (a decoy invocation, a local function, an expression inside an interpolation hole) "
+                + "is the id 86 defeat shape, not legitimate wiring.");
 
             grandTotal += discoveredArgumentNames.Length;
         }
 
-        Assert.Equal(19, grandTotal);
+        Assert.True(
+            grandTotal == 19,
+            $"The delegating arguments discovered on the seven composition roots' host calls total {grandTotal}, "
+            + "expected 19 (Billing 3 + Fulfillment 3 + Gateway 2 + Notifications 3 + Projector 3 + Orders 5 + "
+            + "Seed 0) — the population moved without this test's table moving with it.");
     }
 
     [Fact]
@@ -388,10 +466,11 @@ public sealed class CompositionRootDelegationWiringTests
         var entry = _delegatingArguments.Single(e => e.ProgramCsRelativePath == relativePath);
         var (hostType, hostMethod) = _hostInvocationsByProgramCsPath[relativePath];
         var root = ParseFile(relativePath).GetRoot();
+        var hostInvocation = FindTheHostInvocation(root, relativePath, hostType, hostMethod);
 
         foreach (var (argument, expectedTarget) in entry.Arguments)
         {
-            var actual = ExtractNamedArgument(root, argument, relativePath, hostType, hostMethod);
+            var actual = ExtractNamedArgument(hostInvocation, argument, relativePath, hostType, hostMethod);
             Assert.True(
                 TargetMatches(actual, expectedTarget),
                 $"{relativePath}'s '{argument}:' argument is '{actual}', expected '{expectedTarget}' — the delegating site was repointed or replaced with a no-op.");
@@ -433,19 +512,49 @@ public sealed class CompositionRootDelegationWiringTests
     /// service, read as provenance rather than as a name: repointing the
     /// initializer to a sibling's <c>SeedWriter.ConnectionString()</c>
     /// while leaving the variable's own name untouched fails this by name.
+    ///
+    /// <b>Id 86, bullet 6 — the third line of the same defect.</b> Checking
+    /// the DECLARATION'S INITIALIZER is still not checking the value that
+    /// REACHES <c>OpenDb</c>: leave the declaration correct and add
+    /// <c>ordersConnectionString = BillingSeedWriter.ConnectionString();</c>
+    /// one line below it, and the initializer assertion above passes on a
+    /// value that is overwritten before use. Measured at id 68's round-5
+    /// re-review: <c>Architecture.Tests</c> 9/9 AND <c>Seed.UnitTests</c>
+    /// 44/44 green, with Orders fixtures written into the Billing database —
+    /// id 56's D1 consequence for the THIRD time, at the third successive
+    /// line (the env key, then the initializer, now the last write). Each
+    /// previous fix closed the line it was shown and not the PROPERTY.
+    ///
+    /// The property is: <i>the value that reaches
+    /// <c>&lt;Service&gt;SeedWriter.OpenDb</c> is that same service's
+    /// <c>ConnectionString()</c></i>. This closes it by following
+    /// assignments — the local must be declared exactly once, initialized
+    /// from its own writer, and NEVER written again by any assignment
+    /// (including compound and <c>??=</c> forms, and a tuple
+    /// deconstruction that lists it) or passed <c>ref</c>/<c>out</c> to
+    /// anything. With no second write in the file, the declaration's
+    /// initializer IS the value <see cref="AssertOpenDbPairing"/> sees
+    /// handed over, and the two halves compose into the property rather
+    /// than into two adjacent lines.
     /// </summary>
     private static void AssertConnectionStringProvenance(SyntaxNode root, string writerService, string variableName)
     {
         var expectedTypeName = writerService + "SeedWriter";
 
-        var declarator = root
+        var declarators = root
             .DescendantNodes()
             .OfType<VariableDeclaratorSyntax>()
-            .SingleOrDefault(candidate => candidate.Identifier.ValueText == variableName);
+            .Where(candidate => candidate.Identifier.ValueText == variableName)
+            .ToArray();
 
-        Assert.True(declarator is not null, $"Could not find a '{variableName}' local variable declaration in SeedRunner.cs.");
+        Assert.True(
+            declarators.Length == 1,
+            $"Expected exactly ONE '{variableName}' local variable declaration in SeedRunner.cs, found "
+            + $"{declarators.Length} at line(s) [{string.Join(", ", declarators.Select(LineOf))}] — with two "
+            + "declarations of one name this guard cannot say which value reaches OpenDb.");
 
-        var initializer = declarator!.Initializer?.Value;
+        var declarator = declarators[0];
+        var initializer = declarator.Initializer?.Value;
 
         var isExpectedProvenance = initializer is InvocationExpressionSyntax invocation
             && invocation.ArgumentList.Arguments.Count == 0
@@ -458,70 +567,156 @@ public sealed class CompositionRootDelegationWiringTests
             isExpectedProvenance,
             $"'{variableName}' is initialized from '{initializer}', expected '{expectedTypeName}.ConnectionString()' — "
             + "a sibling writer's connection string was assigned under this writer's own variable name.");
+
+        var laterWrites = root
+            .DescendantNodes()
+            .OfType<AssignmentExpressionSyntax>()
+            .Where(assignment => AssignsToVariable(assignment.Left, variableName))
+            .Select(assignment => $"line {LineOf(assignment)}: '{assignment}'")
+            .Concat(root
+                .DescendantNodes()
+                .OfType<ArgumentSyntax>()
+                .Where(argument => !argument.RefKindKeyword.IsKind(SyntaxKind.None)
+                    && argument.Expression is IdentifierNameSyntax name
+                    && name.Identifier.ValueText == variableName)
+                .Select(argument => $"line {LineOf(argument)}: '{argument}'"))
+            .ToArray();
+
+        Assert.True(
+            laterWrites.Length == 0,
+            $"'{variableName}' is written again after its declaration — [{string.Join("; ", laterWrites)}]. Its "
+            + $"declaration says '{expectedTypeName}.ConnectionString()', but the value that reaches "
+            + $"{expectedTypeName}.OpenDb(...) is whatever was written LAST, so a sibling writer's connection "
+            + "string can be assigned over a correctly-declared local (id 86, bullet 6). A seed connection-string "
+            + "local is assigned exactly once, at its declaration.");
     }
 
     /// <summary>
-    /// Reads every <c>configureX:</c>-named <see cref="ArgumentSyntax"/> in
-    /// the tree whose enclosing invocation is the EXPECTED host call
-    /// (<paramref name="hostType"/>.<paramref name="hostMethod"/> —
-    /// <see cref="IsArgumentOfInvocation"/>, D16 fix) and requires EXACTLY
-    /// one such match. Zero means the argument is genuinely missing from
-    /// the host call — whether because it was dropped, or because it was
-    /// passed to a different call entirely; more than one means either a
-    /// duplicate or a second legitimate host call in one file (round 2's
-    /// disclosed, milder false red, preserved deliberately) — both fail
-    /// loudly by name rather than one silently outvoting the other. A
-    /// comment, a raw string, or a quote nested inside an interpolation
-    /// hole can never produce an <see cref="ArgumentSyntax"/> node here,
-    /// because none of them is code.
+    /// True when an assignment's left-hand side writes
+    /// <paramref name="variableName"/> — directly (<c>x = …</c>,
+    /// <c>x ??= …</c>, <c>x += …</c>) or as one element of a tuple
+    /// deconstruction (<c>(x, y) = …</c>), which is why this walks the
+    /// left-hand subtree rather than pattern-matching its root node.
     /// </summary>
-    /// <remarks>
-    /// D16 (round 4 re-review, fixed here): before the
-    /// <paramref name="hostType"/>/<paramref name="hostMethod"/> anchor
-    /// existed, this method counted a <c>configureX:</c> argument found
-    /// ANYWHERE in the file — disclosed at the time as an inheritance of
-    /// the "exactly one match" trade, but the disclosure never tested
-    /// whether that trade could become a false GREEN rather than a false
-    /// red. Measured: dropping <c>configureHealth:</c> from the real
-    /// <c>BillingHost.CreateBuilder</c> call and passing it to an unrelated
-    /// local function instead still satisfied "exactly one match", with
-    /// Billing's health probes unwired and every fact green.
-    /// </remarks>
-    private static string ExtractNamedArgument(SyntaxNode root, string argumentName, string relativePath, string hostType, string hostMethod)
+    private static bool AssignsToVariable(ExpressionSyntax left, string variableName)
+        => left.DescendantNodesAndSelf()
+            .OfType<IdentifierNameSyntax>()
+            .Any(identifier => identifier.Identifier.ValueText == variableName);
+
+    /// <summary>
+    /// <b>Id 86's anchor — the whole of this fix round.</b> Collects every
+    /// <see cref="InvocationExpressionSyntax"/> in the file whose callee
+    /// RENDERS as <paramref name="hostType"/>.<paramref name="hostMethod"/>
+    /// (by <see cref="TargetMatches"/>, the same rendered-suffix-on-a-member-
+    /// boundary rule this file already applies to a delegating argument's
+    /// TARGET), requires EXACTLY ONE, and returns that node. Every caller
+    /// then reads arguments from that node's own
+    /// <see cref="InvocationExpressionSyntax.ArgumentList"/>.
+    ///
+    /// Why the order matters, which is the entire content of id 86: asking
+    /// "is there an argument whose enclosing invocation has the host's
+    /// SHAPE?" is answered by a decoy; asking "which invocation IS the host
+    /// call?" cannot be, because a decoy is a second answer and two answers
+    /// fail here by name. Measured before this change (id 68 round-5
+    /// re-review): dropping <c>configureHealth:</c> from the real
+    /// <c>BillingHost.CreateBuilder(...)</c> and adding a second,
+    /// discardable one carrying it — with <c>configure</c> passed
+    /// POSITIONALLY so the per-file name multiset was unchanged — compiled
+    /// with 0 warnings and left <c>Architecture.Tests</c> 35/35 and this
+    /// class 9/9 green, with Billing's health probes unwired.
+    ///
+    /// <b>Rendered-suffix matching (id 86, bullet 2).</b> The predecessor
+    /// (<c>IsArgumentOfInvocation</c>, D16) required the callee to be a
+    /// <see cref="MemberAccessExpressionSyntax"/> whose <c>Expression</c> was
+    /// a bare <see cref="IdentifierNameSyntax"/>, so a fully-qualified
+    /// <c>OrderToCash.Billing.BillingHost.CreateBuilder(...)</c> — correct
+    /// wiring — matched nothing and was reported as a MISSING argument: a
+    /// false red under a message that misdiagnosed it. Suffix matching on a
+    /// member boundary accepts <c>global::</c>, a namespace qualification
+    /// and an extern-alias qualification, while still rejecting
+    /// <c>NotBillingHost.CreateBuilder</c> (no '.' before the suffix).
+    ///
+    /// <b>Bounds, stated as bounds.</b> A <c>using</c> alias that RENAMES
+    /// the type (<c>using H = OrderToCash.Billing.BillingHost;</c> then
+    /// <c>H.CreateBuilder(...)</c>) and a generic <c>CreateBuilder&lt;T&gt;</c>
+    /// both render as something this rule does not accept, and would fail
+    /// here — a false RED, the safe direction, and the same symbol-binding
+    /// boundary D17 already states: no syntax-only instrument can resolve an
+    /// alias to the type it names.
+    /// </summary>
+    private static InvocationExpressionSyntax FindTheHostInvocation(SyntaxNode root, string relativePath, string hostType, string hostMethod)
     {
+        var expectedCallee = hostType + "." + hostMethod;
+
         var matches = root
             .DescendantNodes()
-            .OfType<ArgumentSyntax>()
-            .Where(argument => argument.NameColon?.Name.Identifier.ValueText == argumentName)
-            .Where(argument => IsArgumentOfInvocation(argument, hostType, hostMethod))
+            .OfType<InvocationExpressionSyntax>()
+            .Where(invocation => TargetMatches(NormalizeExpressionText(invocation.Expression), expectedCallee))
             .ToArray();
 
         Assert.True(
             matches.Length > 0,
-            $"Could not find a '{argumentName}:' named argument passed to {hostType}.{hostMethod}(...) in {relativePath}.");
+            $"Could not find a '{expectedCallee}(...)' invocation in {relativePath} — the composition root no "
+            + "longer hands control to its host builder at all, or the call was renamed.");
+
         Assert.True(
             matches.Length == 1,
-            $"Found {matches.Length} occurrences of a '{argumentName}:' named argument passed to {hostType}.{hostMethod}(...) in {relativePath} — expected exactly one live call site.");
+            $"Found {matches.Length} '{expectedCallee}(...)' invocations in {relativePath} at line(s) "
+            + $"[{string.Join(", ", matches.Select(LineOf))}] — expected exactly ONE live host call. A second "
+            + "invocation of the same host method is the id 86 decoy shape: it can carry the delegating "
+            + "arguments the real call no longer passes while every name still appears in the file. If a "
+            + "composition root ever legitimately needs two host calls, this guard must be re-designed, not "
+            + "relaxed.");
+
+        return matches[0];
+    }
+
+    /// <summary>
+    /// Reads the <paramref name="argumentName"/><c>:</c>-named argument from
+    /// <paramref name="hostInvocation"/>'s OWN argument list — the node
+    /// <see cref="FindTheHostInvocation"/> proved to be the file's one host
+    /// call — and requires exactly one. Zero means the argument was dropped
+    /// from the host call, whether or not an identically-named one exists
+    /// somewhere else in the file; the population test's stray check reports
+    /// the "somewhere else" half.
+    /// </summary>
+    /// <remarks>
+    /// D16 (round 4) anchored this by asking whether an argument's enclosing
+    /// invocation had the host call's shape, which a same-shaped decoy
+    /// satisfies (id 86). It now reads a node rather than searching for one,
+    /// so there is no candidate set for a decoy to join.
+    /// </remarks>
+    private static string ExtractNamedArgument(InvocationExpressionSyntax hostInvocation, string argumentName, string relativePath, string hostType, string hostMethod)
+    {
+        var matches = hostInvocation.ArgumentList.Arguments
+            .Where(argument => argument.NameColon?.Name.Identifier.ValueText == argumentName)
+            .ToArray();
+
+        Assert.True(
+            matches.Length > 0,
+            $"Could not find a '{argumentName}:' named argument on the {hostType}.{hostMethod}(...) call at "
+            + $"{relativePath}:{LineOf(hostInvocation)} — the argument was dropped from the host call, or moved "
+            + "to another call.");
+        Assert.True(
+            matches.Length == 1,
+            $"Found {matches.Length} occurrences of a '{argumentName}:' named argument on the single "
+            + $"{hostType}.{hostMethod}(...) call in {relativePath} — expected exactly one.");
 
         return NormalizeExpressionText(matches[0].Expression);
     }
 
     /// <summary>
-    /// True when <paramref name="argument"/> is a direct argument of an
-    /// invocation shaped <c>hostType.hostMethod(...)</c> — i.e. its
-    /// enclosing <see cref="BaseArgumentListSyntax"/>'s parent IS that
-    /// invocation, not some ancestor further out. D16's fix: this is the
-    /// anchor <see cref="ExtractNamedArgument"/> was missing.
+    /// A <c>configure*:</c>-named argument — the unit this file guards.
     /// </summary>
-    private static bool IsArgumentOfInvocation(ArgumentSyntax argument, string hostType, string hostMethod)
-        => argument.Parent is BaseArgumentListSyntax { Parent: InvocationExpressionSyntax invocation }
-            && invocation.Expression is MemberAccessExpressionSyntax
-            {
-                Expression: IdentifierNameSyntax { Identifier.ValueText: var typeName },
-                Name.Identifier.ValueText: var methodName,
-            }
-            && typeName == hostType
-            && methodName == hostMethod;
+    private static bool IsConfigureNamedArgument(ArgumentSyntax argument)
+        => argument.NameColon is not null
+            && argument.NameColon.Name.Identifier.ValueText.StartsWith("configure", StringComparison.Ordinal);
+
+    private static string DescribeArgument(ArgumentSyntax argument)
+        => $"'{argument.NameColon!.Name.Identifier.ValueText}:' at line {LineOf(argument)}";
+
+    private static int LineOf(SyntaxNode node)
+        => node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
 
     /// <summary>
     /// Renders an argument's expression to a whitespace-collapsed string
@@ -542,8 +737,12 @@ public sealed class CompositionRootDelegationWiringTests
     /// (<c>OrderToCash.Billing.BillingProgramConfiguration.Configure</c>)
     /// is accepted as correct wiring rather than rejected by a regex
     /// capture class that happened not to admit it (round 2's disclosed
-    /// D3 false red). This is a side effect of reading a real expression
-    /// tree, not a change requested by any review round.
+    /// D3 false red). For the argument TARGET that was a side effect of
+    /// reading a real expression tree; id 86's bullet 2 then made it the
+    /// rule for the HOST CALLEE too (<see cref="FindTheHostInvocation"/>),
+    /// where the identical false red was live and measured — a
+    /// fully-qualified host call matched nothing and was reported as a
+    /// missing argument. One rule, both halves of the call.
     /// </summary>
     private static bool TargetMatches(string actual, string expected)
     {
@@ -559,7 +758,7 @@ public sealed class CompositionRootDelegationWiringTests
     /// <summary>
     /// Single choke point every call site in this class reads a
     /// <c>Program.cs</c>/<c>SeedRunner.cs</c> through: parses it with the
-    /// C# compiler's own lexer/parser (<see cref="CSharpSyntaxTree.ParseText"/>,
+    /// C# compiler's own lexer/parser (<c>CSharpSyntaxTree.ParseText</c>,
     /// <see cref="LanguageVersion.Latest"/> — this repository's own
     /// <c>Directory.Build.props</c> pins <c>LangVersion</c> 14.0, and
     /// <c>Latest</c> tracks it forward rather than needing its own update
@@ -582,9 +781,22 @@ public sealed class CompositionRootDelegationWiringTests
     /// the disagreement (<c>#if RELEASE</c>, <c>#if !DEBUG</c>, a future
     /// <c>DefineConstants</c>), so the fix is structural rather than
     /// symbol-matching: these composition-root files may not carry
-    /// conditional-compilation directives at all, checked directly against
-    /// the syntax tree's own trivia rather than inferred from build
-    /// configuration.
+    /// directives at all, checked directly against the syntax tree's own
+    /// trivia rather than inferred from build configuration.
+    ///
+    /// Id 86, bullet 4 — the message, not the behaviour, was wrong. The
+    /// predicate is <see cref="SyntaxTrivia.IsDirective"/>, which is true of
+    /// EVERY preprocessor directive: <c>#region</c>/<c>#endregion</c>,
+    /// <c>#pragma</c>, <c>#nullable</c>, <c>#line</c>,
+    /// <c>#warning</c>/<c>#error</c> and <c>#define</c>/<c>#undef</c>, not
+    /// only the <c>#if</c> family D15 was about. The old message called any
+    /// of them "conditional-compilation directive(s)", so adding a
+    /// <c>#region</c> to a composition root produced a true red under a
+    /// misnamed category — a failure message that misdescribes what the
+    /// guard rejects sends the reader looking for a conditional that is not
+    /// there. The rejection is deliberately this wide (a composition root is
+    /// twenty lines and needs no directive of any kind); what it is named is
+    /// now what it is.
     /// </remarks>
     private static SyntaxTree ParseFile(string relativePath)
     {
@@ -607,10 +819,15 @@ public sealed class CompositionRootDelegationWiringTests
 
         Assert.True(
             directives.Length == 0,
-            $"{relativePath} contains conditional-compilation directive(s) [{string.Join(", ", directives)}] — "
-            + "this parser is not fed the build's preprocessor symbols (D15: it would only relocate the "
-            + "disagreement to a symbol nobody passed), so a composition root under this guard may not carry "
-            + "conditional compilation of any kind. Remove the directive(s).");
+            $"{relativePath} contains {directives.Length} preprocessor directive(s) [{string.Join(", ", directives)}] — "
+            + "a composition root under this guard may carry NO directive of ANY kind: not only the "
+            + "conditional-compilation family (#if/#elif/#else/#endif), but #region/#endregion, #pragma, "
+            + "#nullable, #line, #warning/#error and #define/#undef too, all of which this check rejects. The "
+            + "#if family is why the rule exists (D15: this parser is fed no preprocessor symbols while the "
+            + "build defines DEBUG, and passing them would only relocate the disagreement to a symbol nobody "
+            + "passed); the rest are rejected with it because a twenty-line composition root needs none of them "
+            + "and admitting any would put this guard back in the business of deciding which text is live. "
+            + "Remove the directive(s).");
 
         return tree;
     }
