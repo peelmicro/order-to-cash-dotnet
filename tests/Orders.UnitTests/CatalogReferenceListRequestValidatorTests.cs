@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Orders.Presentation.Rpc;
 using Xunit;
 

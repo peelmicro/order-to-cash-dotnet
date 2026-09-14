@@ -1,3 +1,5 @@
+using OrderToCash.Contracts.Rpc;
+
 namespace OrderToCash.Orders.Presentation.Rpc;
 
 /// <summary>

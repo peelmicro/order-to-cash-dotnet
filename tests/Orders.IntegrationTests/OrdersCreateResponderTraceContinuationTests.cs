@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using NATS.Client.Core;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Cqrs;
 using OrderToCash.Orders.Application.Commands;
 using OrderToCash.Orders.Infrastructure;

@@ -20,19 +20,16 @@ namespace OrderToCash.Gateway.Application.Rpc;
 // classified every record here, one line each, is in
 // progress/impl_batch_d1_gateway_payload_dedup_and_key_set_guards.md.
 //
-// What remains is exactly two groups, and both are deliberate:
+// Backlog id 93 (orders_and_catalog_rpc_payloads_are_still_duplicated_
+// between_orders_and_the_gateway) closed id 84's own deliberate exception:
+// the orders.create / orders.cancel / catalog.reference.list records this
+// file used to declare are gone too, now that
+// src/Contracts/Rpc/OrdersRpcPayloads.cs and CatalogRpcPayloads.cs exist —
+// see those files' own headers.
 //
-// 1. orders.create / orders.cancel / catalog.reference.list. Contracts/Rpc
-//    declares NO counterpart for any of these — the responder-side records
-//    live in src/Orders/Presentation/Rpc/, under the older repository rule
-//    that "RPC payloads live in the service that speaks them"
-//    (Orders design.md §4.3/§6.3), which feature 76 superseded only for the
-//    six subjects it actually moved. Unifying these would mean moving
-//    Orders' own Presentation records into Contracts, which is a different
-//    change against a different feature's design and is NOT part of id 84
-//    (its first acceptance bullet matches against src/Contracts/Rpc only).
+// What remains is exactly one group, and it is deliberate:
 //
-// 2. GatewayInvoiceViewPayload / GatewayInvoiceListReplyPayload. These are
+// GatewayInvoiceViewPayload / GatewayInvoiceListReplyPayload. These are
 //    the one genuine FIELD DIFFERENCE the id 84 enumeration found, so per
 //    its second acceptance bullet they are NOT unified: they are recorded
 //    here with their reason and left alone. Contracts' InvoiceViewPayload
@@ -56,65 +53,7 @@ namespace OrderToCash.Gateway.Application.Rpc;
 // so a PascalCase C# property name here reaches the wire as the exact
 // camelCase key the real responder's own record produces.
 
-// -- orders.create ------------------------------------------------------
-
-public sealed record OrdersCreateRequestLine(string ProductCode, int Quantity, long? UnitPrice, long? LineDiscount);
-
-public sealed record OrdersCreateRequestPayload(
-    Guid? RequestId,
-    string RetailerCode,
-    string CompanyCode,
-    string Currency,
-    IReadOnlyList<OrdersCreateRequestLine> Lines,
-    long? OrderDiscount,
-    string? Notes);
-
-public sealed record OrdersCreateReplyPayload(
-    Guid OrderId,
-    string OrderReference,
-    string Status,
-    string Currency,
-    long InitialAmount,
-    long InitialDiscount,
-    long TotalAmount,
-    DateTimeOffset OrderDate);
-
-// -- orders.cancel --------------------------------------------------------
-
-public sealed record OrdersCancelRequestPayload(Guid? OrderId, string? OrderReference, string? Reason, string? Note);
-
-public sealed record OrdersCancelReplyPayload(
-    Guid OrderId,
-    string OrderReference,
-    string Status,
-    IReadOnlyList<string> CompensationPlanned,
-    string? CancellationReason);
-
-// -- catalog.reference.list ------------------------------------------------
-
-public static class CatalogReferenceKinds
-{
-    public const string Products = "products";
-    public const string Retailers = "retailers";
-    public const string Companies = "companies";
-    public const string Currencies = "currencies";
-}
-
-public sealed record CatalogReferenceListRequestPayload(IReadOnlyList<string>? Kinds, bool? IncludeDisabled);
-
-public sealed record ProductPayload(string Code, string? Ean, string Name, string? Description, long Price, string Currency, bool Enabled);
-
-public sealed record PartyPayload(string Code, string Name, string Country, string? Vat, string Gln, string Currency, bool Enabled);
-
-public sealed record CurrencyViewPayload(string Code, string? IsoNumber, string? Symbol, int DecimalPoints);
-
-public sealed record CatalogReferenceListReplyPayload(
-    IReadOnlyList<ProductPayload>? Products,
-    IReadOnlyList<PartyPayload>? Retailers,
-    IReadOnlyList<PartyPayload>? Companies,
-    IReadOnlyList<CurrencyViewPayload>? Currencies);
-
-// -- billing.invoice.list, the DELIBERATELY separate pair (group 2 above) ----
+// -- billing.invoice.list, the DELIBERATELY separate pair ----
 
 /// <summary>
 /// <c>asyncapi.yaml</c>'s <c>InvoiceView</c> PLUS the optional <c>lines</c>

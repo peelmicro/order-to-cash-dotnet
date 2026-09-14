@@ -1,4 +1,24 @@
-namespace OrderToCash.Orders.Presentation.Rpc;
+namespace OrderToCash.Contracts.Rpc;
+
+// The catalog.reference.list request/reply payload records (and their
+// closed kinds enum), transcribed from specs/shared/asyncapi.yaml. Backlog
+// id 93 (orders_and_catalog_rpc_payloads_are_still_duplicated_between_
+// orders_and_the_gateway) moved these here from
+// src/Orders/Presentation/Rpc/CatalogReferenceListPayloads.cs AND unified
+// them with the Gateway's own caller-side copy
+// (src/Gateway/Application/Rpc/GatewayRpcPayloads.cs's
+// catalog.reference.list section, which declared structurally IDENTICAL
+// types for the same subject) — see OrdersRpcPayloads.cs's own header for
+// the full reasoning and the ported-idiom ledger row. CatalogReferenceKinds
+// is a strict merge, not a straight identical-copy: Orders' own copy also
+// declared <see cref="CatalogReferenceKinds.All"/> (used by
+// <c>CatalogReferenceListRequestValidator</c> and
+// <c>OrdersCreateResponder</c> to resolve an omitted <c>kinds</c> to "all
+// four"), which the Gateway's copy never declared because the Gateway
+// always requests one kind at a time
+// (<c>ListCatalogQuery</c>/<c>CatalogEndpoints</c>). Carrying <c>All</c>
+// here is harmless to the Gateway — an unused static member — and is the
+// superset both sides can now share.
 
 /// <summary>
 /// The closed set of collections <c>catalog.reference.list</c> can return —
@@ -14,7 +34,7 @@ public static class CatalogReferenceKinds
     public const string Companies = "companies";
     public const string Currencies = "currencies";
 
-    /// <summary>What an omitted or empty <c>kinds</c> means — "Omit for all of them" (<c>asyncapi.yaml</c> <c>CatalogReferenceListRequestPayload.kinds</c>'s own description).</summary>
+    /// <summary>What an omitted or empty <c>kinds</c> means — "Omit for all of them" (<c>asyncapi.yaml</c> <c>CatalogReferenceListRequestPayload.kinds</c>'s own description). Read only by Orders' responder/validator — the Gateway never omits <c>kinds</c>, it always names exactly one.</summary>
     public static readonly IReadOnlyList<string> All = [Products, Retailers, Companies, Currencies];
 }
 
@@ -33,10 +53,9 @@ public sealed record CurrencyViewPayload(string Code, string? IsoNumber, string?
 /// <summary>
 /// <c>asyncapi.yaml</c> <c>CatalogReferenceListReplyPayload</c> — "Only the
 /// requested collections are present" (the schema's own description), so
-/// every field here is nullable and <see cref="Infrastructure.Messaging.Rpc.RpcJson"/>'s
-/// shared <c>JsonWire.Options</c> (nulls omitted) is what turns an
-/// un-requested collection into an ABSENT key on the wire, never a
-/// present-but-null one.
+/// every field here is nullable and the shared <c>JsonWire.Options</c>
+/// (nulls omitted) is what turns an un-requested collection into an ABSENT
+/// key on the wire, never a present-but-null one.
 /// </summary>
 public sealed record CatalogReferenceListReplyPayload(
     IReadOnlyList<ProductPayload>? Products,

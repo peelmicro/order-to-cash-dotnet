@@ -1,3 +1,4 @@
+using OrderToCash.Contracts.Rpc;
 using OrderToCash.Gateway.Application.Commands;
 using OrderToCash.Gateway.Application.Rpc;
 using OrderToCash.Gateway.Domain.Orders;
