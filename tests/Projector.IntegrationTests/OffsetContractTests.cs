@@ -66,7 +66,37 @@ public sealed class OffsetContractTests : IAsyncLifetime
             return (total, description);
         });
 
-    /// <summary><c>PR38</c>: a throwing handler leaves the committed offset UNCHANGED, read from the broker — never inferred from the fact that a redelivery happened.</summary>
+    /// <summary>
+    /// Backlog id 94's Projector sibling — <c>PR38</c>'s guard used to be a
+    /// SINGLE immediate read taken right after <c>gate.Attempts</c> reached
+    /// 2, exactly the shape <c>SagaConsumptionTests.SO9</c> carried before
+    /// id 94's fix. Projector's own <c>FactRetryDispatcher.cs</c> is
+    /// byte-identical to Orders' (only the namespace differs — the OR2
+    /// parity guard, <c>FactRetryDispatcherParityTests</c>, enforces this),
+    /// so it swallows the handler's exception INSIDE its own in-process
+    /// retry loop the same way: the "redelivery" this test drives is an
+    /// in-process retry, never a fresh Kafka delivery, and
+    /// <c>KafkaFactStreamSubscriber.ConsumeAsync</c>'s own catch/
+    /// <c>consumer.Close()</c> path is never reached on this route. With
+    /// <c>EnableAutoCommit</c> staying true regardless, the only thing that
+    /// turns a prematurely STORED offset (F6: <c>EnableAutoOffsetStore</c>
+    /// flipped true, or <c>StoreOffset</c> moved before the handler's
+    /// <c>await</c>) into a committed one is the periodic background
+    /// committer on its own <c>auto.commit.interval.ms</c> cadence
+    /// (librdkafka default 5000 ms) — a single read taken immediately
+    /// cannot see that yet, so the old shape passed under both F6
+    /// mutations. Reproduced before this fix (verbatim in
+    /// progress/impl_phase15_batch2_payload_unification_and_offset_guards.md):
+    /// PR38 PASSED with <c>EnableAutoOffsetStore = true</c>. This version
+    /// polls through a window that comfortably exceeds one full tick of
+    /// that interval WHILE the retry remains deterministically blocked on
+    /// the gate, and fails the instant any read disagrees with the
+    /// baseline, naming the offset it saw — the same repair
+    /// <c>SagaConsumptionTests.SO9_AHandlerThatThrows_LeavesTheCommittedOffsetUnchangedUntilItSucceeds</c>
+    /// carries. The name already said "UNCHANGED... read from the broker,
+    /// never inferred from redelivery" rather than claiming Kafka
+    /// redelivery specifically, so — unlike SO9 — it needed no rename.
+    /// </summary>
     [Fact]
     public async Task PR38_AThrowingHandlerLeavesTheCommittedOffsetUnchanged_ReadFromTheBroker()
     {
@@ -109,16 +139,43 @@ public sealed class OffsetContractTests : IAsyncLifetime
 
             Assert.True(gate.Attempts >= 1, "the decorated writer was never reached — the fact never arrived at all.");
 
-            var redeliveryDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
-            while (DateTime.UtcNow < redeliveryDeadline && gate.Attempts < 2)
+            var retryDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+            while (DateTime.UtcNow < retryDeadline && gate.Attempts < 2)
             {
                 await Task.Delay(100);
             }
 
-            Assert.True(gate.Attempts >= 2, "the redelivery never reached the decorated writer a second time within the wait budget.");
+            Assert.True(gate.Attempts >= 2, "the in-process retry never reached the decorated writer a second time within the wait budget.");
 
-            var (afterFailedDelivery, afterFailedDescription) = await ReadCommittedOffsetsAsync(_kafka.BootstrapServers, ProjectorFactTopics.OrdersFacts, TimeSpan.FromSeconds(10));
-            Assert.True(baseline == afterFailedDelivery, $"the committed offset moved before the redelivery succeeded — baseline=[{baselineDescription}] afterFailedDelivery=[{afterFailedDescription}].");
+            // Backlog id 94's Projector sibling — the "not before" half,
+            // read from the broker: the retry is blocked (deterministically,
+            // not by a wall-clock guess) and has not been allowed to call
+            // the inner writer, so nothing NEW can legitimately be
+            // committed yet. A single read taken immediately after
+            // gate.Attempts reaches 2 cannot catch a prematurely STORED
+            // offset (F6's two mutations): with EnableAutoCommit staying
+            // true regardless, the ONLY thing that turns a stored-but-not-
+            // yet-committed offset into a committed one is the periodic
+            // background committer on its own auto.commit.interval.ms
+            // cadence (librdkafka default 5000 ms) — so this half polls
+            // through a window that comfortably exceeds one full tick of
+            // that interval WHILE the retry remains deterministically
+            // blocked on the gate, and fails the instant any read disagrees
+            // with the baseline, naming the offset it saw.
+            var noPrematureCommitDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(7);
+            long afterFailedDelivery;
+            string afterFailedDescription;
+            do
+            {
+                (afterFailedDelivery, afterFailedDescription) = await ReadCommittedOffsetsAsync(_kafka.BootstrapServers, ProjectorFactTopics.OrdersFacts, TimeSpan.FromSeconds(10));
+                Assert.True(baseline == afterFailedDelivery, $"the committed offset advanced to [{afterFailedDescription}] (baseline was [{baselineDescription}]) WHILE the retry was still deterministically blocked on the gate — a StoreOffset call reached the broker before the handler completed (F6: EnableAutoOffsetStore = true, or StoreOffset moved before the handler's await).");
+
+                if (DateTime.UtcNow < noPrematureCommitDeadline)
+                {
+                    await Task.Delay(500);
+                }
+            }
+            while (DateTime.UtcNow < noPrematureCommitDeadline);
 
             gate.Release();
 
