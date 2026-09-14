@@ -71,6 +71,18 @@
          establish for Fulfillment and Projector. Test-only: src/Gateway
          never references src/Orders. -->
     <ProjectReference Include="../../src/Orders/Orders.csproj" />
+    <!-- feature saga_e2e_verification (id 28) — SagaEndToEndVerificationTests
+         boots Billing's REAL, unmodified BillingHost (real MS-SQL, real
+         NATS, real Kafka) alongside the Orders/Fulfillment/Projector hosts
+         the three ProjectReferences above already establish, to prove the
+         WHOLE saga (stock -> credit -> despatch -> invoice -> payment ->
+         complete) against real, separate processes in one shared fleet.
+         Test-only: src/Gateway never references src/Billing. Unlike
+         src/Orders' own db-access guard question, this project has no
+         NetArchTest rule forbidding a write-model SQL client dependency
+         (verified: no such test exists under tests/Architecture.Tests),
+         so no worker-process workaround is needed here. -->
+    <ProjectReference Include="../../src/Billing/Billing.csproj" />
   </ItemGroup>
 
 </Project>

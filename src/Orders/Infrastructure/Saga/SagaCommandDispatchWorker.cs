@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OrderToCash.Orders.Infrastructure.Observability;
 
 namespace OrderToCash.Orders.Infrastructure.Saga;
 
@@ -57,6 +59,25 @@ namespace OrderToCash.Orders.Infrastructure.Saga;
 /// boot"), and this floor covers the paths that never go through that
 /// composition root.
 /// </para>
+/// <para>
+/// <b>R56 fix (feature id 28's own disclosed finding, closed here).</b>
+/// Before this fix, <see cref="ConsumeLoopAsync"/> called
+/// <c>dispatcher.DispatchAsync</c> with no <see cref="Activity"/> linked to
+/// the fact that produced
+/// <see cref="OrderToCash.Orders.Application.Ports.ISagaCommandSignal.Signal"/>'s
+/// <c>commandRef</c> — the downstream NATS RPC call therefore started under
+/// whatever (unrelated, or absent) <see cref="Activity.Current"/> this
+/// background loop happened to have, and Orders/Fulfillment/Billing each
+/// observed a DIFFERENT trace id for one order's happy path. Fixed by
+/// restoring <c>commandRef.TraceParent</c> (captured automatically at
+/// <see cref="OrderToCash.Orders.Application.Ports.SagaCommandRef"/>
+/// construction time, under the triggering fact's own
+/// <see cref="Activity"/>) into a linked "dispatch"
+/// span here, the same "stored traceparent → linked child span" shape
+/// <c>OutboxRelay.BuildPublishableFact</c> already uses for the identical
+/// reason (a durable hand-off crossing an async boundary that
+/// <see cref="Activity.Current"/> cannot survive on its own).
+/// </para>
 /// </remarks>
 public sealed class SagaCommandDispatchWorker(
     ChannelSagaCommandSignal signal,
@@ -80,6 +101,20 @@ public sealed class SagaCommandDispatchWorker(
         {
             using var scope = scopeFactory.CreateScope();
             var dispatcher = scope.ServiceProvider.GetRequiredService<ISagaCommandDispatcher>();
+
+            // R56 fix (id 28) — restore the triggering fact's own trace
+            // (commandRef.TraceParent, captured at Signal(...) time; null
+            // with no active span then — never fabricated) as a CHILD
+            // "dispatch" span's parent, so DispatchAsync's downstream NATS
+            // call (NatsSagaCommandsAdapter.InjectNats reads Activity.Current)
+            // inherits the ORIGINAL trace rather than whatever this
+            // background loop's own ambient Activity.Current happens to be.
+            // No stored parent means no span here, matching OutboxRelay's
+            // own "no stored parent, no header" rule.
+            var parentContext = TraceContext.ContextFromTraceParent(commandRef.TraceParent);
+            using var activity = parentContext is { } parent
+                ? OtcActivity.Source.StartActivity($"dispatch {commandRef.Command}", ActivityKind.Internal, parentContext: parent)
+                : null;
 
             try
             {
