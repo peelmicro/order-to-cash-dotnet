@@ -1,0 +1,120 @@
+tests/Gateway.IntegrationTests/AuthAndRateLimitHttpTests.cs:14 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/DocsAndAnonymousRouteHttpTests.cs:15 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/DocsAndAnonymousRouteHttpTests.cs:62 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/FulfillmentStockEndToEndTests.cs:108 — READINESS-PACE — await Task.Delay(ReadinessPacingInterval).ConfigureAwait(false);
+tests/Gateway.IntegrationTests/FulfillmentStockEndToEndTests.cs:141 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/FulfillmentStockEndToEndTests.cs:181 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/FulfillmentStockEndToEndTests.cs:62 — READINESS-PACE — internal const int ReadinessAttempts = 100;
+tests/Gateway.IntegrationTests/FulfillmentStockEndToEndTests.cs:65 — READINESS-PACE — internal static readonly TimeSpan ReadinessPacingInterval = TimeSpan.FromMilliseconds(50);
+tests/Gateway.IntegrationTests/FulfillmentStockEndToEndTests.cs:95 — READINESS-PROBE-RPC — subject, probe, replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) });
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:153 — READINESS-PACE — var pacedBudget = TimeSpan.FromMilliseconds(attempts * pacingInterval.TotalMilliseconds);
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:156 — CONTROLLED-DELAY — failure is null && elapsed >= _subscriberDelay - TimeSpan.FromMilliseconds(50),
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:201 — READINESS-PROBE-RPC — replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:224 — POLL-DEADLINE — var cts = new CancellationTokenSource();
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:231 — POLL-INTERVAL — await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:38 — CONTROLLED-DELAY — private static readonly TimeSpan _subscriberDelay = TimeSpan.FromMilliseconds(300);
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:57 — PACING-RACE-PROBE-RPC — replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromSeconds(2) },
+tests/Gateway.IntegrationTests/GatewayReadinessPacingRaceTests.cs:63 — ASSERTED-BOUND — stopwatch.Elapsed < TimeSpan.FromMilliseconds(500),
+tests/Gateway.IntegrationTests/GatewayTestHost.cs:21 — HOST-BIND-RETRY — private const int MaxBindAttempts = 5;
+tests/Gateway.IntegrationTests/GatewayTestHost.cs:77 — HOST-BIND-RETRY — await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt)).ConfigureAwait(false);
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:100 — POLL-DEADLINE — using var cts = new CancellationTokenSource(bound + TimeSpan.FromSeconds(2));
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:126 — POLL-INTERVAL — await Task.Delay(TimeSpan.FromMilliseconds(250));
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:142 — POLL-DEADLINE — var readyBody = await PollUntilStatusAsync(gateway.Client, "/health/ready", HttpStatusCode.OK, TimeSpan.FromSeconds(30))
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:165 — POLL-DEADLINE — var sampleDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:173 — POLL-INTERVAL — await Task.Delay(TimeSpan.FromMilliseconds(150));
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:192 — POLL-DEADLINE — var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:217 — POLL-INTERVAL — await Task.Delay(TimeSpan.FromMilliseconds(250));
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:236 — POLL-DEADLINE — var recoveredBody = await PollUntilStatusAsync(gateway.Client, "/health/ready", HttpStatusCode.OK, TimeSpan.FromSeconds(
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:265 — POLL-DEADLINE — var readyBody = await PollUntilStatusAsync(gateway.Client, "/health/ready", HttpStatusCode.OK, TimeSpan.FromSeconds(30))
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:272 — POLL-DEADLINE — var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:292 — POLL-INTERVAL — await Task.Delay(TimeSpan.FromMilliseconds(250));
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:305 — POLL-DEADLINE — var recoveredBody = await PollUntilStatusAsync(gateway.Client, "/health/ready", HttpStatusCode.OK, TimeSpan.FromSeconds(
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:43 — ASSERTED-BOUND — private static readonly TimeSpan _pausedReadinessBound = TimeSpan.FromSeconds((2 * 2) + 2);
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:58 — ASSERTED-BOUND — private static readonly TimeSpan _liveWhileReadyInFlightBound = TimeSpan.FromMilliseconds(500);
+tests/Gateway.IntegrationTests/HealthProbesTests.cs:79 — POLL-DEADLINE — using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/InvoicesHttpTests.cs:93 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/LogCorrelationTests.cs:109 — POLL-INTERVAL — await Task.Delay(500);
+tests/Gateway.IntegrationTests/LogCorrelationTests.cs:140 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/LogCorrelationTests.cs:151 — POLL-INTERVAL — await Task.Delay(300);
+tests/Gateway.IntegrationTests/LogCorrelationTests.cs:79 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/MoneyRepresentationHttpTests.cs:106 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/NatsRpcClientIntegrationTests.cs:29 — RPC-BUDGET — private static NatsRpcClient BuildClient(INatsConnection connection, int timeoutMs = 2000) =>
+tests/Gateway.IntegrationTests/NatsRpcClientIntegrationTests.cs:30 — RPC-BUDGET — new(connection, Options.Create(new NatsOptions { DefaultTimeoutMs = timeoutMs }));
+tests/Gateway.IntegrationTests/NatsRpcClientIntegrationTests.cs:56 — RPC-BUDGET — var client = BuildClient(connection, timeoutMs: 500);
+tests/Gateway.IntegrationTests/NatsRpcClientIntegrationTests.cs:71 — RPC-BUDGET — var client = BuildClient(connection, timeoutMs: 300);
+tests/Gateway.IntegrationTests/NatsRpcClientIntegrationTests.cs:86 — RPC-BUDGET — var client = BuildClient(connection, timeoutMs: 300);
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:101 — KAFKA-POLL — o.Kafka.PollTimeoutMs = 200;
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:129 — READINESS-PROBE-RPC — RpcSubjects.OrdersCancel, probe, replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) });
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:142 — POLL-INTERVAL — await Task.Delay(TimeSpan.FromMilliseconds(50)).ConfigureAwait(false);
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:201 — KAFKA-POLL — options.Kafka.PollTimeoutMs = 200;
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:239 — XUNIT-CASE-TIMEOUT — [Fact(Timeout = 120_000)]
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:256 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:268 — POLL-DEADLINE — var doc = await PollForCancelledDocumentAsync(collection, orderId, TimeSpan.FromSeconds(60));
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:298 — XUNIT-CASE-TIMEOUT — [Theory(Timeout = 180_000)]
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:326 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:343 — POLL-DEADLINE — await WaitForSagaCommandSentAsync(connectionString, orderId, "stock.release", TimeSpan.FromSeconds(30));
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:350 — POLL-DEADLINE — await WaitForSagaCommandSentAsync(connectionString, orderId, "credit.release", TimeSpan.FromSeconds(30));
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:357 — POLL-DEADLINE — var doc = await PollForCancelledDocumentAsync(collection, orderId, TimeSpan.FromSeconds(60));
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:421 — POLL-INTERVAL — await Task.Delay(150);
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:436 — KAFKA-FLUSH — producer.Flush(TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/OperatorNoteReachesTimelineEndToEndTests.cs:450 — POLL-INTERVAL — await Task.Delay(200);
+tests/Gateway.IntegrationTests/OrdersHttpTests.cs:72 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/ProblemJsonCorrelationTests.cs:36 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/ProblemJsonCorrelationTests.cs:59 — POLL-INTERVAL — await Task.Delay(300);
+tests/Gateway.IntegrationTests/RequestOverlapBarrierConnection.cs:72 — BARRIER — if (!_barrier.SignalAndWait(TimeSpan.FromSeconds(10), cancellationToken))
+tests/Gateway.IntegrationTests/StandInResponder.cs:126 — READINESS-PACE — internal const int ReadinessAttempts = 100;
+tests/Gateway.IntegrationTests/StandInResponder.cs:134 — READINESS-PACE — internal static readonly TimeSpan ReadinessPacingInterval = TimeSpan.FromMilliseconds(50);
+tests/Gateway.IntegrationTests/StandInResponder.cs:167 — READINESS-PROBE-RPC — replyOpts: new NatsSubOpts { Timeout = TimeSpan.FromMilliseconds(200) },
+tests/Gateway.IntegrationTests/StandInResponder.cs:182 — READINESS-PACE — await Task.Delay(ReadinessPacingInterval, cancellationToken).ConfigureAwait(false);
+tests/Gateway.IntegrationTests/StreamHeartbeatHttpTests.cs:110 — POLL-DEADLINE — TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHeartbeatHttpTests.cs:127 — POLL-DEADLINE — var readyFrames = await secondReader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(
+tests/Gateway.IntegrationTests/StreamHeartbeatHttpTests.cs:153 — SSE-SOCKET-READ — public async Task Heartbeat_KeepsTheConnectionAlive_AcrossAnIdleReadTimeoutThatWouldOtherwiseFireWithoutIt()
+tests/Gateway.IntegrationTests/StreamHeartbeatHttpTests.cs:166 — SSE-SOCKET-READ — stream.ReadTimeout = PingIntervalMs * 4;
+tests/Gateway.IntegrationTests/StreamHeartbeatHttpTests.cs:30 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/StreamHeartbeatHttpTests.cs:58 — POLL-DEADLINE — var frames = await reader.CollectUntilAsync(f => f.Count(x => x.Event == "ping") >= 2, TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHeartbeatHttpTests.cs:93 — POLL-DEADLINE — await firstReader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:111 — POLL-DEADLINE — await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:116 — POLL-DEADLINE — var frames = await reader.CollectUntilAsync(f => f.Any(x => x.Event == "order.updated"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:121 — POLL-INTERVAL — await Task.Delay(TimeSpan.FromMilliseconds(300));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:138 — POLL-DEADLINE — await firstReader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:141 — POLL-DEADLINE — var firstFrames = await firstReader.CollectUntilAsync(f => f.Any(x => x.Event == "order.updated"), TimeSpan.FromSeconds(
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:163 — POLL-DEADLINE — var readyFrames = await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(3));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:176 — POLL-INTERVAL — await Task.Delay(50);
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:182 — POLL-DEADLINE — var frames = await secondReader.CollectUntilAsync(f => f.Any(x => x.Event == "timeline.appended"), TimeSpan.FromSeconds(
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:196 — POLL-DEADLINE — var frames = await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:221 — POLL-DEADLINE — await firstReader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:224 — POLL-DEADLINE — var firstFrames = await firstReader.CollectUntilAsync(f => f.Any(x => x.Event == "order.updated"), TimeSpan.FromSeconds(
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:239 — POLL-DEADLINE — var readyFrames = await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(3));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:252 — POLL-INTERVAL — await Task.Delay(50);
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:255 — POLL-DEADLINE — var frames = await secondReader.CollectUntilAsync(f => f.Any(x => x.Event == "order.updated"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:258 — POLL-INTERVAL — await Task.Delay(TimeSpan.FromMilliseconds(300));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:305 — POLL-DEADLINE — await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:310 — POLL-DEADLINE — var frames = await reader.CollectUntilAsync(f => f.Any(x => x.Event == "order.updated"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:341 — POLL-DEADLINE — await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:34 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:355 — POLL-INTERVAL — await Task.Delay(50);
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:89 — POLL-DEADLINE — var readyFrames = await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamHttpTests.cs:95 — POLL-DEADLINE — var frames = await reader.CollectUntilAsync(f => f.Any(x => x.Event == "order.updated"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamProjectorEndToEndTests.cs:104 — KAFKA-FLUSH — producer.Flush(TimeSpan.FromSeconds(10));
+tests/Gateway.IntegrationTests/StreamProjectorEndToEndTests.cs:107 — XUNIT-CASE-TIMEOUT — [Fact(Timeout = 120_000)]
+tests/Gateway.IntegrationTests/StreamProjectorEndToEndTests.cs:130 — POLL-DEADLINE — await reader.CollectUntilAsync(f => f.Any(x => x.Event == "stream.ready"), TimeSpan.FromSeconds(5));
+tests/Gateway.IntegrationTests/StreamProjectorEndToEndTests.cs:157 — POLL-DEADLINE — TimeSpan.FromSeconds(90));
+tests/Gateway.IntegrationTests/StreamProjectorEndToEndTests.cs:63 — MONGO-FAIL-FAST — options.Mongo.ConnectionUri = "mongodb://127.0.0.1:1/?connectTimeoutMS=1";
+tests/Gateway.IntegrationTests/StreamProjectorEndToEndTests.cs:74 — KAFKA-POLL — options.Kafka.PollTimeoutMs = 200;
+
+TOTAL HITS: 103
+  ASSERTED-BOUND: 3
+  BARRIER: 1
+  CONTROLLED-DELAY: 2
+  HOST-BIND-RETRY: 2
+  KAFKA-FLUSH: 2
+  KAFKA-POLL: 3
+  MONGO-FAIL-FAST: 16
+  PACING-RACE-PROBE-RPC: 1
+  POLL-DEADLINE: 36
+  POLL-INTERVAL: 16
+  READINESS-PACE: 7
+  READINESS-PROBE-RPC: 4
+  RPC-BUDGET: 5
+  SSE-SOCKET-READ: 2
+  XUNIT-CASE-TIMEOUT: 3

@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
@@ -31,47 +29,55 @@ namespace OrderToCash.Notifications.IntegrationTests;
 ///     the 530, never a defence against it, and the exception is a property
 ///     of the SERVER'S configuration, not of this transport's code.
 /// </summary>
+/// <remarks>
+/// Backlog id 85 — all four host ports are Docker's to choose
+/// (<c>WithPortBinding(containerPort, true)</c> then
+/// <c>GetMappedPublicPort</c>), never this fixture's. Note that the two
+/// containers now bind the SAME container-side ports: that is not a clash,
+/// because each gets its own host port from Docker, which is precisely the
+/// property the retired self-assigned shape had to arrange by hand.
+/// </remarks>
 public sealed class MailpitAuthContainerFixture : IAsyncLifetime
 {
     private const int SmtpContainerPort = 1025;
     private const int HttpContainerPort = 8025;
     private const string AuthFileContent = "testuser:testpass\n";
 
-    private readonly int _authRequiredSmtpPort = GetFreeTcpPort();
-    private readonly int _authRequiredHttpPort = GetFreeTcpPort();
-    private readonly int _authAdvertisedOnlySmtpPort = GetFreeTcpPort();
-    private readonly int _authAdvertisedOnlyHttpPort = GetFreeTcpPort();
-
     private IContainer? _authRequired;
     private IContainer? _authAdvertisedOnly;
 
     public string AuthRequiredHost => "localhost";
 
-    public int AuthRequiredPort => _authRequiredSmtpPort;
+    /// <summary>Read back from Docker after the container has started — never chosen in advance (backlog id 85).</summary>
+    public int AuthRequiredPort { get; private set; }
 
     public string AuthAdvertisedOnlyHost => "localhost";
 
-    public int AuthAdvertisedOnlyPort => _authAdvertisedOnlySmtpPort;
+    /// <summary>Read back from Docker after the container has started — never chosen in advance (backlog id 85).</summary>
+    public int AuthAdvertisedOnlyPort { get; private set; }
 
     public async Task InitializeAsync()
     {
         _authRequired = new ContainerBuilder("axllent/mailpit:v1.27.5")
-            .WithPortBinding(_authRequiredSmtpPort, SmtpContainerPort)
-            .WithPortBinding(_authRequiredHttpPort, HttpContainerPort)
+            .WithPortBinding(SmtpContainerPort, true)
+            .WithPortBinding(HttpContainerPort, true)
             .WithResourceMapping(Encoding.UTF8.GetBytes(AuthFileContent), "/authfile")
             .WithCommand("--smtp-auth-file=/authfile", "--smtp-auth-allow-insecure")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("accessible via"))
             .Build();
 
         _authAdvertisedOnly = new ContainerBuilder("axllent/mailpit:v1.27.5")
-            .WithPortBinding(_authAdvertisedOnlySmtpPort, SmtpContainerPort)
-            .WithPortBinding(_authAdvertisedOnlyHttpPort, HttpContainerPort)
+            .WithPortBinding(SmtpContainerPort, true)
+            .WithPortBinding(HttpContainerPort, true)
             .WithCommand("--smtp-auth-accept-any", "--smtp-auth-allow-insecure")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("accessible via"))
             .Build();
 
         await _authRequired.StartAsync();
         await _authAdvertisedOnly.StartAsync();
+
+        AuthRequiredPort = _authRequired.GetMappedPublicPort(SmtpContainerPort);
+        AuthAdvertisedOnlyPort = _authAdvertisedOnly.GetMappedPublicPort(SmtpContainerPort);
     }
 
     public async Task DisposeAsync()
@@ -85,14 +91,5 @@ public sealed class MailpitAuthContainerFixture : IAsyncLifetime
         {
             await _authAdvertisedOnly.DisposeAsync();
         }
-    }
-
-    private static int GetFreeTcpPort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
     }
 }

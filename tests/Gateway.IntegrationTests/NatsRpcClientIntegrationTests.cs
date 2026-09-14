@@ -26,7 +26,21 @@ public sealed class NatsRpcClientIntegrationTests(NatsContainerFixture nats)
 
     private sealed record Pong(string Echo);
 
-    private static NatsRpcClient BuildClient(INatsConnection connection, int timeoutMs = 2000) =>
+    /// <summary>
+    /// The budget every SUCCESS-path case in this class runs under. Backlog
+    /// id 81 measured it rather than adjusting it: the charged round trip
+    /// through the real broker is p99 1.4 ms idle and p99 5.3 ms with the
+    /// machine at 2x CPU oversubscription (32 busy loops on 16 cores), and
+    /// the worst SUCCESSFUL charged call observed across 1 348 concurrent
+    /// pairs was 127 ms — so 2 000 ms is a ~15x margin on the worst
+    /// observation and ~380x on p99, and is NOT the constraint that was
+    /// binding when this test went red. See
+    /// <see cref="OR4_TwoConcurrentCalls_EachCarriesItsOwnActiveTraceId"/>
+    /// for what was.
+    /// </summary>
+    private const int SuccessPathBudgetMs = 2000;
+
+    private static NatsRpcClient BuildClient(INatsConnection connection, int timeoutMs = SuccessPathBudgetMs) =>
         new(connection, Options.Create(new NatsOptions { DefaultTimeoutMs = timeoutMs }));
 
     [Fact]
@@ -189,6 +203,30 @@ public sealed class NatsRpcClientIntegrationTests(NatsContainerFixture nats)
     /// <c>RequestAsync</c> blocks each call until BOTH have arrived, so a
     /// plain hoist with NO delay in the mutation is proven to collide on
     /// EVERY run, over the real broker.
+    ///
+    /// Backlog id 81 — this case went red once inside a full
+    /// <c>quality.sh</c> run with <c>RpcTimeoutError : RPC call to
+    /// "gateway.it.trace-concurrent" timed out after 2000ms</c>, and the
+    /// budget was NOT the cause. Measured, on an IDLE machine, with the
+    /// cause established before anything was changed: issuing the two
+    /// concurrent calls as a brand-new <see cref="NatsConnection"/>'s FIRST
+    /// traffic loses one of the two replies in about 1 % of rounds — 8
+    /// losses in 648 cold rounds — while establishing the connection first
+    /// gave 0 losses in 700 rounds (500 by an explicit
+    /// <c>ConnectAsync()</c>, 200 by one ordinary prior request). In every
+    /// one of the 8 losses the stand-in responder had received BOTH
+    /// requests and the losing call's own TWIN completed in 2-8 ms, which
+    /// no amount of machine contention can produce: a loaded machine
+    /// cannot make one call take 2 000 ms while its simultaneous partner
+    /// takes 4 ms. Raising the budget would only have made the red run
+    /// slower — D3 of the same diagnostic lost a reply under a 120 000 ms
+    /// budget and waited out all two minutes of it.
+    ///
+    /// The fix is therefore the <c>ConnectAsync()</c> below, and the
+    /// assertion after it is its guard: the overlap this case needs is
+    /// supplied by <see cref="RequestOverlapBarrierConnection"/>, so
+    /// issuing the pair over an UNESTABLISHED connection adds nothing to
+    /// what it proves and adds a 1 %-per-run lost reply.
     /// </summary>
     [Fact]
     public async Task OR4_TwoConcurrentCalls_EachCarriesItsOwnActiveTraceId()
@@ -204,6 +242,19 @@ public sealed class NatsRpcClientIntegrationTests(NatsContainerFixture nats)
         await using var responder = await StandInResponder.StartAsync(
             nats.Url, subject, data => RpcJson.Serialize(new Pong($"echo:{RpcJson.Deserialize<Ping>(data).Text}")), CancellationToken.None);
         await using var realConnection = new NatsConnection(new NatsOpts { Url = nats.Url });
+
+        // Backlog id 81 — establish the connection BEFORE the concurrent
+        // pair is issued. NatsConnection connects lazily, so without this
+        // line the two barrier-released calls race the connection's own
+        // establishment and one of them loses its reply about 1 % of runs.
+        await realConnection.ConnectAsync();
+        Assert.True(
+            realConnection.ConnectionState == NatsConnectionState.Open,
+            $"backlog id 81: this case must issue its two concurrent calls over an ALREADY ESTABLISHED connection, never as the connection's first traffic — "
+            + $"the cold shape loses one of the two replies in ~1 % of runs (8 losses in 648 cold rounds against 0 in 700 established ones) and the loser then "
+            + $"waits out the whole {SuccessPathBudgetMs} ms budget, which is the RpcTimeoutError this test reported on 2026-09-12. "
+            + $"The connection state at the moment the pair was about to be issued was '{realConnection.ConnectionState}', not '{NatsConnectionState.Open}'.");
+
         var connection = new RequestOverlapBarrierConnection(realConnection);
         var client = BuildClient(connection);
 

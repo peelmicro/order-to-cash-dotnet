@@ -1,6 +1,4 @@
-using System.Net;
 using System.Net.Http.Json;
-using System.Net.Sockets;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Xunit;
@@ -25,32 +23,40 @@ namespace OrderToCash.Notifications.IntegrationTests;
 /// exact signal <see cref="OrderToCash.Notifications.Infrastructure.Notification.SendFailureClassifier"/>
 /// reads.
 /// </summary>
+/// <remarks>
+/// Backlog id 85 — both host ports are Docker's to choose
+/// (<c>WithPortBinding(containerPort, true)</c> then
+/// <c>GetMappedPublicPort</c>), never this fixture's. Mailpit advertises
+/// nothing about its own host port, so unlike <c>KafkaContainerFixture</c>
+/// this site needs no startup callback: the plain idiom the five
+/// <c>NatsContainerFixture</c> files already use is the whole fix.
+/// </remarks>
 public sealed class MailpitContainerFixture : IAsyncLifetime, IDisposable
 {
     private const int SmtpContainerPort = 1025;
     private const int HttpContainerPort = 8025;
 
-    private readonly int _smtpHostPort = GetFreeTcpPort();
-    private readonly int _httpHostPort = GetFreeTcpPort();
     private IContainer? _container;
     private HttpClient? _http;
 
     public string SmtpHost => "localhost";
 
-    public int SmtpPort => _smtpHostPort;
+    /// <summary>Read back from Docker after the container has started — never chosen in advance (backlog id 85).</summary>
+    public int SmtpPort { get; private set; }
 
     public async Task InitializeAsync()
     {
         _container = new ContainerBuilder("axllent/mailpit:v1.27.5")
-            .WithPortBinding(_smtpHostPort, SmtpContainerPort)
-            .WithPortBinding(_httpHostPort, HttpContainerPort)
+            .WithPortBinding(SmtpContainerPort, true)
+            .WithPortBinding(HttpContainerPort, true)
             .WithCommand("--enable-chaos")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("accessible via"))
             .Build();
 
         await _container.StartAsync();
 
-        _http = new HttpClient { BaseAddress = new Uri($"http://localhost:{_httpHostPort}") };
+        SmtpPort = _container.GetMappedPublicPort(SmtpContainerPort);
+        _http = new HttpClient { BaseAddress = new Uri($"http://localhost:{_container.GetMappedPublicPort(HttpContainerPort)}") };
 
         await ResetChaosAsync();
     }
@@ -92,15 +98,6 @@ public sealed class MailpitContainerFixture : IAsyncLifetime, IDisposable
             Authentication = new { ErrorCode = 535, Probability = 0 },
         });
         response.EnsureSuccessStatusCode();
-    }
-
-    private static int GetFreeTcpPort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
     }
 }
 
