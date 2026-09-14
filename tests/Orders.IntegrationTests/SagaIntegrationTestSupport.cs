@@ -24,13 +24,22 @@ namespace OrderToCash.Orders.IntegrationTests;
 /// </summary>
 internal static class SagaIntegrationTestSupport
 {
-    public static async Task<(IHost Host, string ConnectionString)> StartHostAsync(
+    /// <summary>The one literal production group every saga host joins (<c>KafkaFactStreamSubscriber</c>).</summary>
+    public const string KafkaGroupId = "orders.saga";
+
+    public static async Task<(KafkaGroupTestHost Host, string ConnectionString)> StartHostAsync(
         MsSqlContainerFixture mssql,
         KafkaContainerFixture kafka,
         NatsContainerFixture nats,
         string databaseNameSuffix,
         Action<OrdersSagaOptions>? configureSaga = null)
     {
+        // Backlog id 74 bullet 6 — the ENFORCEMENT half, on the setup path.
+        // A no-op unless a previous teardown recorded a leak on this group;
+        // deliberately here rather than in a `finally`, where a throw would
+        // replace the failing test's own exception.
+        await KafkaGroupClearance.EnsureGroupIsClearBeforeStartAsync(kafka.BootstrapServers, KafkaGroupId);
+
         var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_saga_{databaseNameSuffix}_{Guid.NewGuid():N}");
         await using (var seedDb = mssql.CreateDbContext(connectionString))
         {
@@ -71,7 +80,10 @@ internal static class SagaIntegrationTestSupport
                 configureSaga?.Invoke(options);
             });
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — every host this helper hands out is a
+        // KafkaGroupTestHost, so a bare host.StopAsync() STILL clears the
+        // group. The escape advisory A16 named does not exist for these hosts.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, KafkaGroupId);
         await host.StartAsync();
 
         // BackgroundService.StartAsync returns as soon as ExecuteAsync is
@@ -104,7 +116,7 @@ internal static class SagaIntegrationTestSupport
 
     /// <summary>
     /// Blocks until a real request/reply round trip to <c>orders.cancel</c>
-    /// succeeds — proof, not inference, that <see cref="OrdersCreateResponder"/>'s
+    /// succeeds — proof, not inference, that <c>OrdersCreateResponder</c>'s
     /// subscription (and, since all three of its subjects are started
     /// together from the same <c>ExecuteAsync</c>, its siblings' too) is
     /// genuinely live server-side. The probe order id is a fresh
@@ -177,64 +189,20 @@ internal static class SagaIntegrationTestSupport
         throw new TimeoutException($"'{subject}' never became reachable.");
     }
 
-    /// <summary>
-    /// Stops <paramref name="host"/> AND CONFIRMS its own consumer has
-    /// actually LEFT <paramref name="groupId"/> before returning — never
-    /// merely that <c>StopAsync</c>/<c>Dispose</c> were called and trusted.
-    /// The Notifications-copy of this class (feature <c>observability_reliability</c>,
-    /// review round 4) proved directly, against the real
-    /// <c>KafkaFactStreamSubscriber</c>, that <c>host.StopAsync()</c> can
-    /// return successfully — matching .NET's own default
-    /// <c>HostOptions.ShutdownTimeout</c> (30s) almost to the millisecond —
-    /// WHILE the broker is still unreachable and the subscriber's own
-    /// <c>finally { consumer.Close(); }</c> has not completed, leaving a
-    /// stale member in the group. Every host built by
-    /// <see cref="StartHostAsync"/> joins the SAME literal production group
-    /// (<c>"orders.saga"</c>, <c>KafkaFactStreamSubscriber.cs:130</c>),
-    /// shared sequentially across every <see cref="SagaCollection"/> test —
-    /// so a stale member left by one test's teardown can block the NEXT
-    /// test's own host from ever being assigned a partition, exactly the
-    /// mechanism the Notifications copy's own `zombieprobe` reproduced
-    /// directly (a silent member held a fresh topic's partitions for the
-    /// full 90s a DLQ test budgets). This ported copy closes the SAME gap
-    /// here, at its class, rather than leaving it live in this project only
-    /// because THIS project's suite happened to stay green.
-    /// </summary>
-    public static async Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = "orders.saga", TimeSpan? timeout = null)
-    {
-        await host.StopAsync();
-        host.Dispose();
-
-        var budget = timeout ?? TimeSpan.FromSeconds(150);
-        var startedAt = DateTime.UtcNow;
-        var deadline = startedAt + budget;
-        using var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = kafka.BootstrapServers }).Build();
-
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                var result = await admin.DescribeConsumerGroupsAsync([groupId], new DescribeConsumerGroupsOptions { RequestTimeout = TimeSpan.FromSeconds(10) });
-                var description = result.ConsumerGroupDescriptions.SingleOrDefault(g => g.GroupId == groupId);
-                if (description is null || description.Members.Count == 0)
-                {
-                    return;
-                }
-            }
-            catch (KafkaException)
-            {
-                // DescribeConsumerGroupsAsync itself can transiently fail
-                // under the SAME contention that motivates this wait —
-                // retry within the budget rather than surface a spurious
-                // failure from the PROBE itself.
-            }
-
-            await Task.Delay(300);
-        }
-
-        throw new TimeoutException(
-            $"Consumer group '{groupId}' still reported members {(DateTime.UtcNow - startedAt).TotalSeconds:F0}s after this test's own host was stopped — its teardown left a stale member that would otherwise block the NEXT test's rebalance (observed directly in the Notifications copy's own `zombieprobe` reproduction: a silent member can hold every partition of a topic for well over 90s).");
-    }
+    /// <remarks>
+    /// Backlog id 74 bullet 6 — the body moved to
+    /// <see cref="KafkaGroupClearance"/> and the wait NO LONGER THROWS. The
+    /// 51 existing call sites are all in <c>finally</c> blocks, where a throw
+    /// REPLACES the exception the test itself is reporting; enforcement moved
+    /// to <see cref="KafkaGroupClearance.EnsureGroupIsClearBeforeStartAsync"/>
+    /// on the next host's setup path. Kept as a method so no call site had to
+    /// change, and idempotent against <see cref="KafkaGroupTestHost"/>'s own
+    /// teardown.
+    /// </remarks>
+    public static Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = KafkaGroupId, TimeSpan? timeout = null) =>
+        host is KafkaGroupTestHost wrapper
+            ? wrapper.StopAndClearGroupAsync(timeout)
+            : KafkaGroupClearance.StopAndClearAsync(host, kafka.BootstrapServers, groupId, timeout);
 
     /// <summary>Places an order through the REAL <see cref="PlaceOrderCommandHandler"/>, in-process — the caller must already have a stand-in <c>fulfillment.stock.check</c> responder running.</summary>
     public static async Task<PlaceOrderResult> PlaceOrderAsync(IHost host, IReadOnlyList<PlaceOrderRequestLine>? lines = null, CancellationToken cancellationToken = default)
@@ -377,7 +345,7 @@ internal static class SagaIntegrationTestSupport
     /// read from the broker itself, never inferred from application-level
     /// behaviour such as a redelivery. Uses a THROWAWAY consumer configured
     /// with the SAME <paramref name="groupId"/> and calls
-    /// <see cref="IConsumer{TKey,TValue}.Committed"/> — an OffsetFetch
+    /// <see cref="IConsumer{TKey, TValue}.Committed(IEnumerable{TopicPartition}, TimeSpan)"/> — an OffsetFetch
     /// request only, which does not join the group, does not affect its
     /// partition assignment, and does not disturb the real subscriber
     /// (<c>KafkaFactStreamSubscriber</c>) in any way.

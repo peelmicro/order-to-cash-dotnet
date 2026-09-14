@@ -141,7 +141,7 @@ public sealed class DispatcherTests
 
     /// <summary>
     /// progress/review_cqrs_dispatcher.md, D8: the D3 fix reaches the event
-    /// handler through <see cref="System.Reflection.MethodInfo.Invoke(object?,object?[]?)"/>
+    /// handler through <see cref="System.Reflection.MethodBase.Invoke(object, object[])"/>
     /// rather than a direct, compile-time-checked call, so CA2016 — an
     /// error in this repository — cannot see through it and can no longer
     /// prove the <see cref="CancellationToken"/> is forwarded on this path.

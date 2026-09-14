@@ -10,7 +10,7 @@ namespace OrderToCash.Gateway.IntegrationTests;
 /// ephemeral port, returning a live <see cref="HttpClient"/> — never
 /// <c>TestServer</c>/<c>WebApplicationFactory</c>'s in-memory transport,
 /// because the whole point of an integration suite for THIS feature is a
-/// real socket round trip. <paramref name="overrideServices"/> runs AFTER
+/// real socket round trip. The caller's own <c>overrideServices</c> callback runs AFTER
 /// <see cref="GatewayHost.CreateBuilder"/> but BEFORE <c>Build()</c> — the
 /// same seam <c>FulfillmentDispatcherRegistrationTests</c> uses to remove a
 /// registration, used here to SUBSTITUTE a fake port (e.g. <c>IRpcClient</c>)
@@ -46,7 +46,7 @@ public sealed class GatewayTestHost : IAsyncDisposable
     /// of contention at the very start of the run (never once observed when
     /// this project runs alone, and never a business-logic assertion
     /// failure — always this exact exception, always during
-    /// <c>KestrelServerImpl.BindAsync</c>). <see cref="AssemblyBehavior"/>'s
+    /// <c>KestrelServerImpl.BindAsync</c>). <c>AssemblyBehavior.cs</c>'s
     /// <c>[CollectionBehavior(DisableTestParallelization = true)]</c>
     /// removed the WITHIN-this-assembly instance of the race (many
     /// GatewayTestHost.StartAsync calls binding Kestrel at the same

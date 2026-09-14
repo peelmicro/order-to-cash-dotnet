@@ -33,7 +33,7 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
     /// <summary>
     /// Review round 3 fix — IDENTICAL to <c>NotificationConsumptionTestSupport.WarmUpAsync</c>'s
     /// own hardcoded partition key, and deliberately so: this file's own
-    /// <see cref="WarmUpAsync"/> calls that key (a DIFFERENT literal than
+    /// <c>NotificationConsumptionTestSupport.WarmUpAsync</c> call sites use that key (a DIFFERENT literal than
     /// this class previously used, <c>"notifications-dead-letter-tests"</c>)
     /// to prove ONE partition is ready before every publish below, and a
     /// DIFFERENT key hashes (murmur2, confirmed directly against a real
@@ -82,7 +82,11 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
         var sender = new NotificationConsumptionTestSupport.FakeNotificationSender();
         builder.Services.Replace(Microsoft.Extensions.DependencyInjection.ServiceDescriptor.Singleton<INotificationSender>(sender));
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — a locally built host joins the SAME literal
+        // production group, so it is wrapped exactly like the ones
+        // NotificationConsumptionTestSupport.StartHostAsync hands out: a bare
+        // host.StopAsync() here still clears the group.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, NotificationConsumptionTestSupport.KafkaGroupId);
         await host.StartAsync();
 
         try
@@ -113,13 +117,29 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
             var poisonEnvelope = new Envelope<string>(eventId, "order.placed.v1", Guid.NewGuid(), correlationId, Guid.NewGuid(), DateTimeOffset.UtcNow, "poison-payload-not-an-object");
             var poisonBytes = JsonSerializer.SerializeToUtf8Bytes(poisonEnvelope, JsonWire.Options);
 
+            // Backlog id 74 bullets 2-3 — the DETERMINISM lives in this test,
+            // not in the mutation. A decoy envelope, with a DIFFERENT eventId
+            // and a DIFFERENT correlationId, is placed on the SAME .dlq topic
+            // BEFORE the poison fact is even published, under the SAME Kafka
+            // key the real DLQ copy will carry (KafkaDeadLetterPublisher keys
+            // the .dlq message by publication.EventType, so the decoy lands on
+            // the SAME partition and is therefore strictly EARLIER in the
+            // partition's own order). A positional "first non-EOF message"
+            // read then returns the decoy on EVERY run, never sometimes; the
+            // content-matching read below returns this test's own record on
+            // every run. This is not a hypothetical: this project's own
+            // NotificationDegradesOnPermanentFailureTests publishes to the
+            // very same otc.orders.facts.v1.dlq topic, in the same collection.
+            var decoyEventId = await PublishDecoyToDlqAsync(DlqTopic, "order.placed.v1");
+
             await PublishAsync(SourceTopic, poisonBytes);
 
             var advanced = await NotificationOffsetSupport.WaitForCommittedOffsetToExceedAsync(kafka.BootstrapServers, SourceTopic, GroupId, PartitionCount, baseline, TimeSpan.FromSeconds(90));
             Assert.True(advanced > baseline, $"Committed offset never advanced past baseline {baseline} (last observed {advanced}).");
 
-            var dlqRecord = await ConsumeOneAsync(DlqTopic, TimeSpan.FromSeconds(90));
+            var dlqRecord = await ConsumeMatchingAsync(DlqTopic, correlationId, TimeSpan.FromSeconds(90));
             Assert.NotNull(dlqRecord);
+            AssertIsThisTestsOwnRecord(dlqRecord!, eventId, decoyEventId, DlqTopic);
             Assert.Equal(poisonBytes, dlqRecord!.Message.Value);
 
             var headers = ReadHeaders(dlqRecord.Message.Headers);
@@ -188,20 +208,20 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
         // Deliberately on NotificationFactTopics.FulfillmentFacts — NOT
         // this class's own sibling SourceTopic (OrdersFacts), and NOT
         // LogCorrelationTests.cs's own SourceTopic (BillingFacts) either —
-        // AND matched by CONTENT (correlationId), never by position: the
-        // shared class-level ConsumeOneAsync(topic, timeout) matches by
-        // POSITION ("first non-EOF message"), which advisory A8 (round 2
-        // record) already names as a hazard for any second poison
-        // publisher on the same .dlq topic in the same collection.
-        // Confirmed live, under the full solution run: sharing BillingFacts
-        // with LogCorrelationTests.cs failed with a byte-mismatch on the
-        // WRONG record — the positional read returned LogCorrelationTests'
-        // own poison fact. The fix is the SAME one Orders' own
+        // AND matched by CONTENT (correlationId), never by position.
+        // Advisory A8 (round 2 record) named the positional "first non-EOF
+        // message" read as a hazard for any second poison publisher on the
+        // same .dlq topic in the same collection; confirmed live, under the
+        // full solution run: sharing BillingFacts with LogCorrelationTests.cs
+        // failed with a byte-mismatch on the WRONG record — the positional
+        // read returned LogCorrelationTests' own poison fact. Backlog id 74
+        // retired that overload from this class entirely, so both cases here
+        // now read the SAME way Orders' own
         // SagaDeadLetterTests.ConsumeOneAsync(topic, correlationId, timeout)
-        // already uses — match the envelope's OWN correlationId field,
-        // never "whatever arrived first," which makes the topic choice
-        // itself no longer safety-critical (kept on FulfillmentFacts for
-        // readability, not because it is now required).
+        // does — match the envelope's OWN correlationId field, never
+        // "whatever arrived first," which makes the topic choice itself no
+        // longer safety-critical (kept on FulfillmentFacts for readability,
+        // not because it is now required).
         const string altTopic = NotificationFactTopics.FulfillmentFacts;
         const string altDlqTopic = altTopic + ".dlq";
         await EnsureDlqTopicExistsAsync(altDlqTopic);
@@ -227,7 +247,11 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
         var sender = new NotificationConsumptionTestSupport.FakeNotificationSender();
         builder.Services.Replace(Microsoft.Extensions.DependencyInjection.ServiceDescriptor.Singleton<INotificationSender>(sender));
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — a locally built host joins the SAME literal
+        // production group, so it is wrapped exactly like the ones
+        // NotificationConsumptionTestSupport.StartHostAsync hands out: a bare
+        // host.StopAsync() here still clears the group.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, NotificationConsumptionTestSupport.KafkaGroupId);
         await host.StartAsync();
 
         try
@@ -252,6 +276,11 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
             var poisonEnvelope = new Envelope<string>(eventId, "order.placed.v1", Guid.NewGuid(), correlationId, Guid.NewGuid(), DateTimeOffset.UtcNow, "poison-payload-not-an-object");
             var poisonBytes = JsonSerializer.SerializeToUtf8Bytes(poisonEnvelope, JsonWire.Options);
 
+            // Backlog id 74 bullet 3 — the same decoy-first shape as the
+            // sibling case above, so this content match is ARMED rather than
+            // merely correct: a positional read here returns the decoy.
+            var decoyEventId = await PublishDecoyToDlqAsync(altDlqTopic, "order.placed.v1");
+
             using (var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build())
             {
                 var headers = new Headers { { "traceparent", Encoding.UTF8.GetBytes(inboundTraceParent!) } };
@@ -260,6 +289,7 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
 
             var dlqRecord = await ConsumeMatchingAsync(altDlqTopic, correlationId, TimeSpan.FromSeconds(90));
             Assert.NotNull(dlqRecord);
+            AssertIsThisTestsOwnRecord(dlqRecord!, eventId, decoyEventId, altDlqTopic);
 
             var headersRead = ReadHeaders(dlqRecord!.Message.Headers);
             Assert.True(headersRead.TryGetValue("traceparent", out var dlqTraceParent), "The .dlq message carries no traceparent header at all.");
@@ -310,57 +340,53 @@ public sealed class NotificationDeadLetterTests(KafkaContainerFixture kafka, MsS
     }
 
     /// <summary>
-    /// Reads the SAME <c>.dlq</c> topic with <see cref="IConsumer{TKey,TValue}.Assign"/>
-    /// over its own known partition set, at <see cref="Offset.Beginning"/> —
-    /// deliberately NOT <c>Subscribe()</c>. A consumer-GROUP subscription
-    /// pays the full FindCoordinator/JoinGroup/SyncGroup round trip before
-    /// its first poll can return anything; under the CPU contention of a
-    /// full solution-wide <c>dotnet test</c> run (many concurrent
-    /// Testcontainers-backed suites), that round trip was observed to
-    /// exceed even a 90 s budget while the SAME probe passed reliably
-    /// standalone. A direct partition assignment needs no coordinator at
-    /// all — it is the same class of fix
-    /// <c>SagaIntegrationTestSupport.ReadCommittedOffsetTotalAsync</c>
-    /// already uses (<c>consumer.Committed</c>, not a full group join) for
-    /// exactly this reason.
+    /// Backlog id 74 bullet 3 — publishes a DECOY envelope (a different
+    /// <c>eventId</c> and a different <c>correlationId</c>) onto
+    /// <paramref name="dlqTopic"/> under the SAME Kafka key the real
+    /// dead-letter copy will use, so it occupies the same partition at a
+    /// strictly EARLIER offset. Returns the decoy's own <c>eventId</c> so a
+    /// failure can name which record was read.
     /// </summary>
-    private async Task<ConsumeResult<string, byte[]>?> ConsumeOneAsync(string topic, TimeSpan timeout)
+    /// <remarks>
+    /// <c>KafkaDeadLetterPublisher</c> keys the <c>.dlq</c> message by
+    /// <c>publication.EventType</c>
+    /// (<c>src/Notifications/Infrastructure/Messaging/DeadLetter/KafkaDeadLetterPublisher.cs:58</c>),
+    /// so passing the poison fact's own <c>eventType</c> here is what makes
+    /// the ordering deterministic rather than probabilistic.
+    /// </remarks>
+    private async Task<Guid> PublishDecoyToDlqAsync(string dlqTopic, string eventType)
     {
-        using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
-        {
-            BootstrapServers = kafka.BootstrapServers,
-            GroupId = $"dlq-probe-{Guid.NewGuid():N}",
-            EnableAutoCommit = false,
-        }).Build();
+        var decoyEventId = Guid.NewGuid();
+        var decoy = new Envelope<string>(decoyEventId, eventType, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow, "decoy-from-another-test-on-this-shared-dlq-topic");
 
-        consumer.Assign(Enumerable.Range(0, 6)
-            .Select(p => new TopicPartitionOffset(topic, new Partition(p), Offset.Beginning))
-            .ToList());
+        using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
+        await producer.ProduceAsync(dlqTopic, new Message<string, byte[]> { Key = eventType, Value = JsonSerializer.SerializeToUtf8Bytes(decoy, JsonWire.Options) });
+        producer.Flush(TimeSpan.FromSeconds(10));
 
-        var deadline = DateTime.UtcNow + timeout;
+        return decoyEventId;
+    }
 
-        while (DateTime.UtcNow < deadline)
-        {
-            var result = consumer.Consume(TimeSpan.FromMilliseconds(500));
-            if (result is not null && !result.IsPartitionEOF)
-            {
-                return result;
-            }
-        }
+    /// <summary>Backlog id 74 bullet 3 — names the record actually read, so a positional regression fails with the DECOY's identity rather than an opaque byte-array diff.</summary>
+    private static void AssertIsThisTestsOwnRecord(ConsumeResult<string, byte[]> record, Guid expectedEventId, Guid decoyEventId, string topic)
+    {
+        using var document = JsonDocument.Parse(record.Message.Value);
+        var actualEventId = document.RootElement.TryGetProperty("eventId", out var value) ? value.GetGuid() : Guid.Empty;
 
-        return null;
+        Assert.True(
+            actualEventId == expectedEventId,
+            $"the read from '{topic}' returned the envelope with eventId {actualEventId}, not this test's own poison fact {expectedEventId}. "
+            + $"A decoy with eventId {decoyEventId} was deliberately published to that topic first, so a read that selects by POSITION "
+            + "('the first non-EOF message') returns the decoy instead of the record this test produced.");
     }
 
     /// <summary>
-    /// Review round 2 — the CONTENT-matching counterpart to
-    /// <see cref="ConsumeOneAsync(string, TimeSpan)"/> above, the SAME
-    /// shape Orders' own <c>SagaDeadLetterTests.ConsumeOneAsync(topic,
-    /// correlationId, timeout)</c> already uses: matches the <c>.dlq</c>
-    /// payload's OWN <c>correlationId</c> field (the payload is the
-    /// UNMODIFIED original envelope, ledger L15), never "whatever arrived
-    /// first" — advisory A8 (round 2 record) names the positional overload
-    /// above as a hazard for any second poison publisher on the SAME
-    /// <c>.dlq</c> topic in the same collection.
+    /// Review round 2, and now the ONLY read this class performs (backlog
+    /// id 74 bullets 1-2): matches the <c>.dlq</c> payload's OWN
+    /// <c>correlationId</c> field (the payload is the UNMODIFIED original
+    /// envelope, ledger L15), never "whatever arrived first". The positional
+    /// <c>ConsumeOneAsync(topic, timeout)</c> overload that used to sit here
+    /// is deleted rather than left unused — an unused positional reader is a
+    /// loaded gun for the next test that needs a <c>.dlq</c> read.
     /// </summary>
     private async Task<ConsumeResult<string, byte[]>?> ConsumeMatchingAsync(string topic, Guid correlationId, TimeSpan timeout)
     {

@@ -20,11 +20,13 @@ namespace OrderToCash.Projector.IntegrationTests;
 /// <c>stock.reserved.v1</c> — Projector's own subscription-list shape,
 /// <c>PR1</c>, means every fact type on every topic is handled, unlike
 /// Notifications) rather than <c>ProjectorDeadLetterTests</c>' own
-/// <see cref="ProjectorFactTopics.OrdersFacts"/> — that test's
-/// <c>ConsumeOneAsync</c> reads its <c>.dlq</c> topic by "first non-EOF
-/// message found", not by matching content, so a second poison publisher
-/// on the SAME topic can steal its assertion. A DIFFERENT topic makes the
-/// two tests genuinely independent rather than order-dependent.
+/// <see cref="ProjectorFactTopics.OrdersFacts"/>. That separation was
+/// originally forced: that test read its <c>.dlq</c> topic by "first
+/// non-EOF message found", so a second poison publisher on the SAME topic
+/// could steal its assertion. Backlog id 74 retired the positional read —
+/// both cases there now match the envelope's own <c>correlationId</c> — so
+/// the topic separation is kept for readability, not because correctness
+/// now depends on it.
 /// </summary>
 [Collection(ProjectorInfraCollection.Name)]
 public sealed class LogCorrelationTests(MongoContainerFixture mongoFixture, KafkaContainerFixture kafkaFixture, NatsContainerFixture natsFixture)

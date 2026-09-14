@@ -28,6 +28,18 @@ namespace OrderToCash.Orders.IntegrationTests;
 [Collection(SagaCollection.Name)]
 public sealed class TraceContextPropagationTests(KafkaContainerFixture kafka, NatsContainerFixture nats, MsSqlContainerFixture mssql)
 {
+    /// <summary>
+    /// Backlog id 74 bullet 5's ARM — one span with the SAME DisplayName on a
+    /// DIFFERENT trace, which is exactly what a concurrently running class in
+    /// this assembly puts into this test's exporter. <c>parentContext:
+    /// default</c> makes it a genuine ROOT, so its trace id cannot coincide
+    /// with this test's own.
+    /// </summary>
+    private static void StartAForeignSpan(string displayName)
+    {
+        using var foreign = OtcActivity.Source.StartActivity(displayName, ActivityKind.Internal, parentContext: default);
+    }
+
     private static TracerProvider BuildRecordingProvider(RecordingActivityExporter exporter) =>
         Sdk.CreateTracerProviderBuilder()
             .AddSource(OtcActivity.SourceName)
@@ -145,10 +157,19 @@ public sealed class TraceContextPropagationTests(KafkaContainerFixture kafka, Na
         // span around the work (ledger L23) — so the outbox row's own
         // trace_parent is THAT child's id, not the test's own root
         // activity's id. Same TRACE, by construction a DIFFERENT span.
+        // Backlog id 74 bullet 5 (advisory A13) — this exporter is attached
+        // to the PROCESS-WIDE OrderToCash.Orders ActivitySource, so every span
+        // any concurrently running class in this assembly starts while this
+        // provider is alive lands in exporter.Exported too. The two selections
+        // below used to match on DisplayName ALONE. They now also match this
+        // test's own trace id, and the foreign spans started just above — same
+        // DisplayName, different trace — arm that: matched on DisplayName
+        // alone, each Assert.Single sees two.
+        StartAForeignSpan("writemodel.transaction");
+
         provider.ForceFlush();
-        var writemodelSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "writemodel.transaction");
-        Assert.Equal(writeActivity!.TraceId, writemodelSpan.TraceId);
-        Assert.Equal(writeActivity.SpanId, writemodelSpan.ParentSpanId);
+        var writemodelSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "writemodel.transaction" && a.TraceId == writeActivity!.TraceId);
+        Assert.Equal(writeActivity!.SpanId, writemodelSpan.ParentSpanId);
 
         await using (var assertDb = mssql.CreateDbContext(connectionString))
         {
@@ -165,9 +186,10 @@ public sealed class TraceContextPropagationTests(KafkaContainerFixture kafka, Na
             Assert.Equal(1, result.Published);
         }
 
+        StartAForeignSpan("outbox.publish");
+
         provider.ForceFlush();
-        var publishSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "outbox.publish");
-        Assert.Equal(writeActivity!.TraceId, publishSpan.TraceId);
+        var publishSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "outbox.publish" && a.TraceId == writeActivity!.TraceId);
         Assert.NotEqual(writemodelSpan.SpanId, publishSpan.SpanId);
         Assert.Equal(writemodelSpan.SpanId, publishSpan.ParentSpanId);
 
@@ -321,14 +343,23 @@ public sealed class TraceContextPropagationTests(KafkaContainerFixture kafka, Na
             await relay.RunOnceAsync(CancellationToken.None);
         }
 
-        provider.ForceFlush();
-        var writemodelSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "writemodel.transaction");
-        var publishSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "outbox.publish");
+        // Backlog id 74 bullet 5 (advisory A13) — this exporter is attached
+        // to the PROCESS-WIDE OrderToCash.Orders ActivitySource, so every span
+        // any concurrently running class in this assembly starts while this
+        // provider is alive lands in exporter.Exported too. The two selections
+        // below used to match on DisplayName ALONE. They now also match this
+        // test's own trace id, and the foreign spans started just above — same
+        // DisplayName, different trace — arm that: matched on DisplayName
+        // alone, each Assert.Single sees two.
+        StartAForeignSpan("writemodel.transaction");
+        StartAForeignSpan("outbox.publish");
 
-        Assert.Equal(rpcSpan!.TraceId, writemodelSpan.TraceId);
-        Assert.Equal(rpcSpan.SpanId, writemodelSpan.ParentSpanId);
+        provider.ForceFlush();
+        var writemodelSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "writemodel.transaction" && a.TraceId == rpcSpan!.TraceId);
+        var publishSpan = Assert.Single(exporter.Exported, a => a.DisplayName == "outbox.publish" && a.TraceId == rpcSpan!.TraceId);
+
+        Assert.Equal(rpcSpan!.SpanId, writemodelSpan.ParentSpanId);
         Assert.Equal(writemodelSpan.SpanId, publishSpan.ParentSpanId);
-        Assert.Equal(rpcSpan.TraceId, publishSpan.TraceId);
     }
 
     private static async Task<IAsyncDisposable> StartRawResponderAsync(NatsConnection connection, string subject, Func<NatsHeaders?, string> handleAndReply)

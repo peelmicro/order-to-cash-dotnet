@@ -765,7 +765,7 @@ public sealed class SagaFactHandlerTests
         /// <summary>
         /// Id 71 — what <see cref="FindOperatorCancelNoteAsync"/> returns,
         /// settable per test. <see cref="FindOperatorCancelNoteCalls"/>
-        /// records every <paramref name="orderId"/> asked for, so a test can
+        /// records every <c>orderId</c> asked for, so a test can
         /// prove the lookup actually happened (never merely that
         /// <c>Order.Cancel</c> received SOME note).
         /// </summary>

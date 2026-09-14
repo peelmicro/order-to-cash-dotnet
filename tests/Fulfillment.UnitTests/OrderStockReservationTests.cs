@@ -61,7 +61,7 @@ public sealed class OrderStockReservationTests
     /// directly on a green suite. <c>Reserve</c> calls <c>newId()</c> once per
     /// reservation line before calling it once more for the fact's own
     /// <c>EventId</c>, so the queue's LAST value is the one that must land on
-    /// <see cref="StockReserved.EventId"/>.
+    /// <see cref="FactEvent.EventId"/>, as carried by <c>StockReserved</c>.
     /// </summary>
     [Fact]
     public void Reserve_TheReservedFactsEventId_IsTheOneTheNewIdDelegateReturnedLast()

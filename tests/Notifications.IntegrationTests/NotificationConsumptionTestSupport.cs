@@ -19,6 +19,10 @@ namespace OrderToCash.Notifications.IntegrationTests;
 /// <summary>Shared harness for the real-Kafka/real-MS-SQL consumption suites.</summary>
 internal static class NotificationConsumptionTestSupport
 {
+    /// <summary>The one literal production group every host in this project joins (<c>KafkaFactStreamSubscriber</c>).</summary>
+    public const string KafkaGroupId = "notifications";
+
+
     /// <summary>
     /// Starts a REAL Notifications host (<c>NotificationsHost.CreateBuilder</c>
     /// itself — same call <c>Program.cs</c> makes) against a fresh migrated
@@ -28,11 +32,17 @@ internal static class NotificationConsumptionTestSupport
     /// returning, so every caller's own publish is guaranteed to land after
     /// this consumer group's partitions are genuinely assigned.
     /// </summary>
-    public static async Task<(IHost Host, string ConnectionString, FakeNotificationSender Sender)> StartHostAsync(
+    public static async Task<(KafkaGroupTestHost Host, string ConnectionString, FakeNotificationSender Sender)> StartHostAsync(
         MsSqlContainerFixture mssql,
         KafkaContainerFixture kafka,
         string databaseNameSuffix)
     {
+        // Backlog id 74 bullet 6 — the ENFORCEMENT half, on the setup path.
+        // A no-op unless a previous teardown recorded a leak on this group;
+        // deliberately here rather than in a `finally`, where a throw would
+        // replace the failing test's own exception.
+        await KafkaGroupClearance.EnsureGroupIsClearBeforeStartAsync(kafka.BootstrapServers, KafkaGroupId);
+
         var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_notifications_{databaseNameSuffix}_{Guid.NewGuid():N}");
         await using (var migrateDb = mssql.CreateDbContext(connectionString))
         {
@@ -55,7 +65,10 @@ internal static class NotificationConsumptionTestSupport
         var sender = new FakeNotificationSender();
         builder.Services.Replace(ServiceDescriptor.Singleton<INotificationSender>(sender));
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — every host this helper hands out is a
+        // KafkaGroupTestHost, so a bare host.StopAsync() STILL clears the
+        // group. The escape advisory A16 named does not exist for these hosts.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, KafkaGroupId);
         await host.StartAsync();
 
         // Warmed up on EVERY topic this service subscribes to, not just
@@ -222,41 +235,20 @@ internal static class NotificationConsumptionTestSupport
     /// membership), and closes the class at its cause rather than at one
     /// symptom.
     /// </summary>
-    public static async Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = "notifications", TimeSpan? timeout = null)
-    {
-        await host.StopAsync();
-        host.Dispose();
-
-        var budget = timeout ?? TimeSpan.FromSeconds(150);
-        var startedAt = DateTime.UtcNow;
-        var deadline = startedAt + budget;
-        using var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = kafka.BootstrapServers }).Build();
-
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                var result = await admin.DescribeConsumerGroupsAsync([groupId], new DescribeConsumerGroupsOptions { RequestTimeout = TimeSpan.FromSeconds(10) });
-                var description = result.ConsumerGroupDescriptions.SingleOrDefault(g => g.GroupId == groupId);
-                if (description is null || description.Members.Count == 0)
-                {
-                    return;
-                }
-            }
-            catch (KafkaException)
-            {
-                // DescribeConsumerGroupsAsync itself can transiently fail
-                // under the SAME contention that motivates this wait —
-                // retry within the budget rather than surface a spurious
-                // failure from the PROBE itself.
-            }
-
-            await Task.Delay(300);
-        }
-
-        throw new TimeoutException(
-            $"Consumer group '{groupId}' still reported members {(DateTime.UtcNow - startedAt).TotalSeconds:F0}s after this test's own host was stopped — its teardown left a stale member that would otherwise block the NEXT test's rebalance (observed directly: a silent member can hold every partition of a topic for well over 90s, `zombieprobe` reproduction).");
-    }
+    /// <remarks>
+    /// Backlog id 74 bullet 6 — the body moved to
+    /// <see cref="KafkaGroupClearance"/> and the wait NO LONGER THROWS. The
+    /// 51 existing call sites are all in <c>finally</c> blocks, where a throw
+    /// REPLACES the exception the test itself is reporting; enforcement moved
+    /// to <see cref="KafkaGroupClearance.EnsureGroupIsClearBeforeStartAsync"/>
+    /// on the next host's setup path. Kept as a method so no call site had to
+    /// change, and idempotent against
+    /// <see cref="KafkaGroupTestHost"/>'s own teardown.
+    /// </remarks>
+    public static Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = KafkaGroupId, TimeSpan? timeout = null) =>
+        host is KafkaGroupTestHost wrapper
+            ? wrapper.StopAndClearGroupAsync(timeout)
+            : KafkaGroupClearance.StopAndClearAsync(host, kafka.BootstrapServers, groupId, timeout);
 
     public static async Task<int> WaitForLedgerRowCountAsync(MsSqlContainerFixture mssql, string connectionString, Guid eventId, int atLeast, TimeSpan timeout)
     {

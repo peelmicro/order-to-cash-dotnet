@@ -23,7 +23,7 @@ namespace OrderToCash.Orders.IntegrationTests;
 /// Crucially the stand-ins must also stand in for the responders'
 /// OUTBOX side: in the real system <c>stock.reserved.v1</c> and its
 /// siblings arrive because Fulfillment or Billing committed and relayed
-/// them. <see cref="PublishFactAsync{TPayload}"/> publishes the
+/// them. <c>PublishFactAsync&lt;TPayload&gt;</c> publishes the
 /// corresponding fact envelope directly to the real Kafka topic, keyed by
 /// <c>correlationId</c>, standing in for that outbox relay.
 /// </remarks>

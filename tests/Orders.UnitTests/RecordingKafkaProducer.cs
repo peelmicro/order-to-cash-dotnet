@@ -5,7 +5,7 @@ namespace OrderToCash.Orders.UnitTests;
 /// <summary>
 /// A recording <see cref="IProducer{TKey, TValue}"/> — no real broker, no
 /// real network call. <c>KafkaDeadLetterPublisher.PublishAsync</c> only
-/// ever calls <see cref="ProduceAsync"/>; every other member throws
+/// ever calls <see cref="ProduceAsync(string, Message{string, byte[]}, CancellationToken)"/>; every other member throws
 /// <see cref="NotSupportedException"/>, so a future change reaching for one
 /// of them fails loudly here rather than silently no-op-ing.
 /// </summary>

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using OrderToCash.Gateway.Infrastructure.Observability;
 using OrderToCash.Gateway.Presentation;
 using Xunit;
 
@@ -19,9 +20,20 @@ public sealed class RequestLatencyMiddlewareTests
         var middleware = new RequestLatencyMiddleware(_ => Task.CompletedTask);
 
         using var capture = MetricCapture.ForInstrument("otc_request_latency_ms");
+
+        // Backlog id 74 bullet 5 (advisory A13) — the meter is PROCESS-WIDE.
+        // A concurrently running class in this assembly that drives the real
+        // middleware records into this very capture, and the exactly-one
+        // assertion below used to read the WHOLE capture. This interloper
+        // emits one matching-shaped measurement from a foreign execution
+        // context, deterministically, so that assertion is now ARMED: read
+        // unscoped it sees two.
+        MetricCapture.RecordFromAConcurrentWriter(
+            () => OtcMetrics.RequestLatencyMs.Record(4242, new KeyValuePair<string, object?>("endpoint", "/orders")));
+
         await middleware.InvokeAsync(context);
 
-        var measurement = Assert.Single(capture.Measurements);
+        var measurement = capture.SingleOwnMeasurement();
         Assert.True(measurement.Value >= 0);
         Assert.Equal("/orders", measurement.Tags.Single(t => t.Key == "endpoint").Value?.ToString());
     }
@@ -35,9 +47,14 @@ public sealed class RequestLatencyMiddlewareTests
         var middleware = new RequestLatencyMiddleware(_ => throw new InvalidOperationException("boom"));
 
         using var capture = MetricCapture.ForInstrument("otc_request_latency_ms");
+
+        // Backlog id 74 bullet 5 — same interloper as the success case above.
+        MetricCapture.RecordFromAConcurrentWriter(
+            () => OtcMetrics.RequestLatencyMs.Record(4242, new KeyValuePair<string, object?>("endpoint", "/orders")));
+
         await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.InvokeAsync(context));
 
-        var measurement = Assert.Single(capture.Measurements);
+        var measurement = capture.SingleOwnMeasurement();
         Assert.True(measurement.Value >= 0);
     }
 }

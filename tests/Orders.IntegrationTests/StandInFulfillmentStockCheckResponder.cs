@@ -29,6 +29,7 @@ internal sealed class StandInFulfillmentStockCheckResponder : IAsyncDisposable
     /// </summary>
     public System.Collections.Concurrent.ConcurrentQueue<NATS.Client.Core.NatsHeaders> ObservedHeaders { get; } = new();
 
+    /// <param name="connection">The live NATS connection this stand-in subscribes its responder loop on — supplied by the caller, never opened here.</param>
     /// <param name="rawAnswer">Returning <see langword="null"/> means "received the request, deliberately send no reply" — <see cref="StartSilentAsync"/>'s shape for a Fulfillment that is up (subscribed) but never answers, review D1's TIMEOUT case. Raw bytes, not the typed success payload, so <see cref="StartErrorAsync"/> (feature 46) can answer with an <c>RpcError</c>-shaped body over the same plumbing.</param>
     private StandInFulfillmentStockCheckResponder(INatsConnection connection, Func<StockCheckRequestPayload, byte[]?> rawAnswer)
     {

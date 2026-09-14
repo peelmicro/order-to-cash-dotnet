@@ -53,6 +53,16 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
         using var producer = new ProducerBuilder<string, byte[]>(KafkaFactPublisher.BuildProducerConfig(new KafkaOptions { BootstrapServers = kafka.BootstrapServers, ClientId = "otc-billing-test" })).Build();
         using var publisher = new KafkaFactPublisher(producer);
 
+        // Backlog id 74 bullets 2-3 — the DETERMINISM lives in this test, not
+        // in the mutation. A decoy envelope with a DIFFERENT eventId is placed
+        // on the SAME topic BEFORE the relay runs, under the SAME Kafka key
+        // (the correlationId) the relay will use — so it is on the SAME
+        // partition at a strictly EARLIER offset, and a read that takes
+        // "whatever the first Consume() returns" returns the decoy on EVERY
+        // run. The old read here did exactly that and then asserted only on
+        // the message KEY, which the decoy also satisfies.
+        var decoyEventId = await PublishDecoyAsync(BillingFactTopic.Name, correlationId.Value.ToString());
+
         await using var relayDb = mssql.CreateDbContext(connectionString);
         var relay = new OutboxRelay(relayDb, publisher, new FixedClock(), Microsoft.Extensions.Options.Options.Create(new OutboxRelayOptions()), new NoOpDlqDepthGauge(), Microsoft.Extensions.Logging.Abstractions.NullLogger<OutboxRelay>.Instance);
 
@@ -66,9 +76,10 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
         Assert.NotNull(publishedRow.PublishedAt);
         Assert.Equal("credit.approved.v1", publishedRow.EventType);
 
-        // Read it back through a REAL consumer — exactly one record for
-        // this correlationId, its KEY equal to the order id, read from the
-        // broker, not inferred.
+        // Read it back through a REAL consumer — the record this test's OWN
+        // relay cycle published, selected by the eventId the outbox row
+        // carries, never "whatever arrived first on a topic the whole Kafka
+        // collection shares" (backlog id 74 bullets 1-2).
         using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
         {
             BootstrapServers = kafka.BootstrapServers,
@@ -77,9 +88,90 @@ public sealed class BillingOutboxRelayTests(KafkaContainerFixture kafka, MsSqlCo
         }).Build();
         consumer.Subscribe(BillingFactTopic.Name);
 
-        var consumed = consumer.Consume(TimeSpan.FromSeconds(20));
-        Assert.NotNull(consumed);
-        Assert.Equal(correlationId.Value.ToString(), consumed!.Message.Key);
+        var consumed = ConsumeMatchingEventId(consumer, publishedRow.EventId, TimeSpan.FromSeconds(30), decoyEventId, BillingFactTopic.Name);
+
+        // Deliberately kept after the content-matching read, and deliberately
+        // redundant on the happy path: this is the assertion a REVERSION to a
+        // positional `consumer.Consume(...)` kills. The KEY assertion below
+        // cannot do that job — the decoy carries the SAME key, by design, so
+        // the pre-fix shape passed it while holding another record entirely.
+        AssertIsThisTestsOwnRecord(consumed, publishedRow.EventId, decoyEventId, BillingFactTopic.Name);
+        Assert.Equal(correlationId.Value.ToString(), consumed.Message.Key);
+    }
+
+    /// <summary>Backlog id 74 bullet 3 — names the record actually read, so a positional regression fails with the DECOY's identity rather than silently passing a key assertion the decoy also satisfies.</summary>
+    private static void AssertIsThisTestsOwnRecord(ConsumeResult<string, byte[]> record, Guid expectedEventId, Guid decoyEventId, string topic)
+    {
+        var actualEventId = ReadEventId(record.Message.Value);
+
+        Assert.True(
+            actualEventId == expectedEventId,
+            $"the read from '{topic}' returned the envelope with eventId {actualEventId}, not the fact this test's own relay cycle "
+            + $"published ({expectedEventId}). A decoy with eventId {decoyEventId} was deliberately published to that topic first, "
+            + "under the SAME Kafka key, so a read that selects by POSITION returns the decoy — and the message-key assertion that "
+            + "follows cannot detect it, because the decoy shares the key.");
+    }
+
+    /// <summary>
+    /// Backlog id 74 bullet 3 — publishes a DECOY envelope with a DIFFERENT
+    /// <c>eventId</c> under <paramref name="key"/>, so it shares the real
+    /// record's partition at a strictly earlier offset. Returns the decoy's
+    /// own <c>eventId</c> so a failure can name what was read instead.
+    /// </summary>
+    private async Task<Guid> PublishDecoyAsync(string topic, string key)
+    {
+        var decoyEventId = Guid.NewGuid();
+        var decoy = System.Text.Encoding.UTF8.GetBytes(
+            $"{{\"eventId\":\"{decoyEventId}\",\"eventType\":\"credit.approved.v1\",\"aggregateId\":\"{Guid.NewGuid()}\",\"correlationId\":\"{Guid.NewGuid()}\",\"causationId\":\"{Guid.NewGuid()}\",\"occurredAt\":\"{DateTimeOffset.UtcNow:O}\",\"payload\":{{}}}}");
+
+        using var decoyProducer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafka.BootstrapServers }).Build();
+        await decoyProducer.ProduceAsync(topic, new Message<string, byte[]> { Key = key, Value = decoy });
+        decoyProducer.Flush(TimeSpan.FromSeconds(10));
+
+        return decoyEventId;
+    }
+
+    /// <summary>Returns the record whose envelope <c>eventId</c> is <paramref name="expectedEventId"/>, and fails NAMING the record it did see otherwise.</summary>
+    private static ConsumeResult<string, byte[]> ConsumeMatchingEventId(IConsumer<string, byte[]> consumer, Guid expectedEventId, TimeSpan timeout, Guid decoyEventId, string topic)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        var seen = new List<Guid>();
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var candidate = consumer.Consume(TimeSpan.FromSeconds(5));
+            if (candidate is null || candidate.IsPartitionEOF)
+            {
+                continue;
+            }
+
+            var eventId = ReadEventId(candidate.Message.Value);
+            seen.Add(eventId);
+
+            if (eventId == expectedEventId)
+            {
+                return candidate;
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException(
+            $"the read from '{topic}' never returned this test's own published fact (eventId {expectedEventId}) within {timeout}. "
+            + $"The envelopes it did see, in arrival order, were [{string.Join(", ", seen)}]. "
+            + $"A decoy with eventId {decoyEventId} was deliberately published to that topic first, under the SAME key, so a read that "
+            + "selects by POSITION returns the decoy rather than the record this test produced.");
+    }
+
+    private static Guid ReadEventId(byte[] value)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(value);
+            return document.RootElement.TryGetProperty("eventId", out var element) ? element.GetGuid() : Guid.Empty;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Guid.Empty;
+        }
     }
 
     /// <summary>

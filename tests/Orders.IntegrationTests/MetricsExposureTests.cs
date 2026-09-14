@@ -62,7 +62,17 @@ public sealed class MetricsExposureTests(KafkaContainerFixture kafka, MsSqlConta
             var result = await relay.RunOnceAsync(CancellationToken.None);
             Assert.Equal(1, result.Published);
 
-            var measurement = Assert.Single(capture.Measurements);
+            // Backlog id 74 bullet 5 (advisory A13) — otc_outbox_lag_ms is
+            // recorded on a PROCESS-WIDE meter by every OutboxRelay cycle,
+            // including the relay hosted service inside any Orders host a
+            // concurrently running collection has started. It carries NO tags,
+            // so there is nothing to scope by except provenance: the capture
+            // keeps only the measurements this test's own async flow recorded.
+            // The interloper below makes that scope ARMED rather than merely
+            // present — read unscoped, the exactly-one assertion sees two.
+            MetricCapture.RecordFromAConcurrentWriter(() => OtcMetrics.OutboxLagMs.Record(424242));
+
+            var measurement = capture.SingleOwnMeasurement();
             Assert.Equal(ageMs, measurement.Value, precision: 0);
         }
 
@@ -74,7 +84,17 @@ public sealed class MetricsExposureTests(KafkaContainerFixture kafka, MsSqlConta
             var result = await relay.RunOnceAsync(CancellationToken.None);
             Assert.Equal(0, result.Claimed);
 
-            var measurement = Assert.Single(capture.Measurements);
+            // Backlog id 74 bullet 5 (advisory A13) — otc_outbox_lag_ms is
+            // recorded on a PROCESS-WIDE meter by every OutboxRelay cycle,
+            // including the relay hosted service inside any Orders host a
+            // concurrently running collection has started. It carries NO tags,
+            // so there is nothing to scope by except provenance: the capture
+            // keeps only the measurements this test's own async flow recorded.
+            // The interloper below makes that scope ARMED rather than merely
+            // present — read unscoped, the exactly-one assertion sees two.
+            MetricCapture.RecordFromAConcurrentWriter(() => OtcMetrics.OutboxLagMs.Record(424242));
+
+            var measurement = capture.SingleOwnMeasurement();
             Assert.Equal(0, measurement.Value);
         }
     }
@@ -113,9 +133,16 @@ public sealed class MetricsExposureTests(KafkaContainerFixture kafka, MsSqlConta
         var gauge = new KafkaDlqDepthGauge(Options.Create(new KafkaOptions { BootstrapServers = kafka.BootstrapServers, ClientId = "otc-orders-dlq-depth-test" }));
 
         using var capture = MetricCapture.ForInstrument("otc_dlq_depth");
+
+        // Backlog id 74 bullet 5 (advisory A13) — otc_dlq_depth is recorded on
+        // a PROCESS-WIDE meter by any concurrently running host's own depth
+        // gauge, and carries no tags to scope by. The interloper arms the
+        // exactly-one assertion below: read unscoped, it sees two.
+        MetricCapture.RecordFromAConcurrentWriter(() => OtcMetrics.DlqDepth.Record(424242));
+
         await gauge.RecordAsync(CancellationToken.None);
 
-        var measurement = Assert.Single(capture.LongMeasurements);
+        var measurement = capture.SingleOwnLongMeasurement();
         Assert.Equal(expectedDepth, measurement.Value);
     }
 
@@ -129,13 +156,20 @@ public sealed class MetricsExposureTests(KafkaContainerFixture kafka, MsSqlConta
         var gauge = new KafkaDlqDepthGauge(Options.Create(new KafkaOptions { BootstrapServers = kafka.BootstrapServers, ClientId = "otc-orders-dlq-depth-test" }));
 
         using var capture = MetricCapture.ForInstrument("otc_dlq_depth");
+
+        // Backlog id 74 bullet 5 (advisory A13) — otc_dlq_depth is recorded on
+        // a PROCESS-WIDE meter by any concurrently running host's own depth
+        // gauge, and carries no tags to scope by. The interloper arms the
+        // exactly-one assertion below: read unscoped, it sees two.
+        MetricCapture.RecordFromAConcurrentWriter(() => OtcMetrics.DlqDepth.Record(424242));
+
         var exception = await Record.ExceptionAsync(() => gauge.RecordAsync(CancellationToken.None));
 
         Assert.Null(exception);
         // The measurement is recorded regardless — SagaFactTopics.All's
         // three .dlq topics are queried independently, and any that do not
         // exist contribute 0 rather than throwing (ported case 68).
-        Assert.Single(capture.LongMeasurements);
+        capture.SingleOwnLongMeasurement();
     }
 
     /// <summary>
@@ -181,9 +215,16 @@ public sealed class MetricsExposureTests(KafkaContainerFixture kafka, MsSqlConta
         var gauge = new KafkaDlqDepthGauge(Options.Create(new KafkaOptions { BootstrapServers = kafka.BootstrapServers, ClientId = "otc-orders-dlq-depth-test" }));
 
         using var capture = MetricCapture.ForInstrument("otc_dlq_depth");
+
+        // Backlog id 74 bullet 5 (advisory A13) — otc_dlq_depth is recorded on
+        // a PROCESS-WIDE meter by any concurrently running host's own depth
+        // gauge, and carries no tags to scope by. The interloper arms the
+        // exactly-one assertion below: read unscoped, it sees two.
+        MetricCapture.RecordFromAConcurrentWriter(() => OtcMetrics.DlqDepth.Record(424242));
+
         await gauge.RecordAsync(CancellationToken.None);
 
-        var measurement = Assert.Single(capture.LongMeasurements);
+        var measurement = capture.SingleOwnLongMeasurement();
         // SagaFactTopics.BillingFacts.dlq (not created here) contributes 0
         // — the total is EXACTLY the sum of the two REAL topics' own
         // broker-reported depths.

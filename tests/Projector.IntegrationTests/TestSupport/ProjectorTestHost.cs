@@ -14,13 +14,22 @@ namespace OrderToCash.Projector.IntegrationTests.TestSupport;
 /// <summary>Starts the REAL <see cref="ProjectorHost"/> against real containers, and publishes raw envelopes to the real fact topics.</summary>
 public static class ProjectorTestHost
 {
-    public static async Task<IHost> StartAsync(
+    /// <summary>The one literal production group every host in this project joins (<c>KafkaFactStreamSubscriber</c>).</summary>
+    public const string KafkaGroupId = "projector";
+
+    public static async Task<KafkaGroupTestHost> StartAsync(
         KafkaContainerFixture kafka,
         NatsContainerFixture nats,
         string mongoConnectionUri,
         string mongoDatabase,
         Action<OrderToCash.Projector.Infrastructure.ProjectorOptions>? configure = null)
     {
+        // Backlog id 74 bullet 6 — the ENFORCEMENT half, on the setup path.
+        // A no-op unless a previous teardown recorded a leak on this group;
+        // deliberately here rather than in a `finally`, where a throw would
+        // replace the failing test's own exception.
+        await KafkaGroupClearance.EnsureGroupIsClearBeforeStartAsync(kafka.BootstrapServers, KafkaGroupId);
+
         var builder = ProjectorHost.CreateBuilder(
             args: [],
             configure: options =>
@@ -33,66 +42,28 @@ public static class ProjectorTestHost
                 configure?.Invoke(options);
             });
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — every host this helper hands out is a
+        // KafkaGroupTestHost, so a bare host.StopAsync() STILL clears the
+        // group. The escape advisory A16 named does not exist for these hosts.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, KafkaGroupId);
         await host.StartAsync();
         return host;
     }
 
-    /// <summary>
-    /// Stops <paramref name="host"/> AND CONFIRMS its own consumer has
-    /// actually LEFT <paramref name="groupId"/> before returning — never
-    /// merely that <c>StopAsync</c>/<c>Dispose</c> were called and trusted.
-    /// Ported from the Notifications copy (feature <c>observability_reliability</c>,
-    /// review round 4), which proved directly, against the real
-    /// <c>KafkaFactStreamSubscriber</c>, that <c>host.StopAsync()</c> can
-    /// return successfully — matching .NET's own default
-    /// <c>HostOptions.ShutdownTimeout</c> (30s) — WHILE the broker is still
-    /// unreachable and the subscriber's own <c>finally { consumer.Close(); }</c>
-    /// has not completed, leaving a stale member in the group. Every host
-    /// built by <see cref="StartAsync"/> joins the SAME literal production
-    /// group (<c>"projector"</c>, this service's own
-    /// <c>KafkaFactStreamSubscriber.cs:111</c>), shared sequentially across
-    /// every <c>ProjectorInfraCollection</c> test — so a stale member left
-    /// by one test's teardown can block the NEXT test's own host from ever
-    /// being assigned a partition, exactly the mechanism the Notifications
-    /// copy's own `zombieprobe` reproduced directly (a silent member held a
-    /// fresh topic's partitions for the full 90s a DLQ test budgets).
-    /// </summary>
-    public static async Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = "projector", TimeSpan? timeout = null)
-    {
-        await host.StopAsync();
-        host.Dispose();
-
-        var budget = timeout ?? TimeSpan.FromSeconds(150);
-        var startedAt = DateTime.UtcNow;
-        var deadline = startedAt + budget;
-        using var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = kafka.BootstrapServers }).Build();
-
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                var result = await admin.DescribeConsumerGroupsAsync([groupId], new DescribeConsumerGroupsOptions { RequestTimeout = TimeSpan.FromSeconds(10) });
-                var description = result.ConsumerGroupDescriptions.SingleOrDefault(g => g.GroupId == groupId);
-                if (description is null || description.Members.Count == 0)
-                {
-                    return;
-                }
-            }
-            catch (KafkaException)
-            {
-                // DescribeConsumerGroupsAsync itself can transiently fail
-                // under the SAME contention that motivates this wait —
-                // retry within the budget rather than surface a spurious
-                // failure from the PROBE itself.
-            }
-
-            await Task.Delay(300);
-        }
-
-        throw new TimeoutException(
-            $"Consumer group '{groupId}' still reported members {(DateTime.UtcNow - startedAt).TotalSeconds:F0}s after this test's own host was stopped — its teardown left a stale member that would otherwise block the NEXT test's rebalance (observed directly in the Notifications copy's own `zombieprobe` reproduction: a silent member can hold every partition of a topic for well over 90s).");
-    }
+    /// <remarks>
+    /// Backlog id 74 bullet 6 — the body moved to
+    /// <see cref="KafkaGroupClearance"/> and the wait NO LONGER THROWS. The
+    /// existing call sites are all in <c>finally</c> blocks, where a throw
+    /// REPLACES the exception the test itself is reporting; enforcement moved
+    /// to <see cref="KafkaGroupClearance.EnsureGroupIsClearBeforeStartAsync"/>
+    /// on the next host's setup path. Kept as a method so no call site had to
+    /// change, and idempotent against <see cref="KafkaGroupTestHost"/>'s own
+    /// teardown.
+    /// </remarks>
+    public static Task StopHostAndWaitForGroupToClearAsync(IHost host, KafkaContainerFixture kafka, string groupId = KafkaGroupId, TimeSpan? timeout = null) =>
+        host is KafkaGroupTestHost wrapper
+            ? wrapper.StopAndClearGroupAsync(timeout)
+            : KafkaGroupClearance.StopAndClearAsync(host, kafka.BootstrapServers, groupId, timeout);
 
     public static async Task PublishAsync<TPayload>(KafkaContainerFixture kafka, string topic, Envelope<TPayload> envelope)
     {

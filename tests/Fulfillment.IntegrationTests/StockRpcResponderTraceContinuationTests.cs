@@ -16,7 +16,7 @@ namespace OrderToCash.Fulfillment.IntegrationTests;
 /// §5.5, ledger L24. <c>TraceContextPropagationTests</c> (Orders) proves
 /// the NATS continuation mechanism with a STAND-IN responder, and its own
 /// comment says so. This drives it through the REAL, production
-/// <see cref="StockRpcResponder"/> class itself, over a real NATS socket —
+/// <c>StockRpcResponder</c> class itself, over a real NATS socket —
 /// never merely "a header is present" (design.md §5.5): every assertion
 /// here extracts the header back and compares the REAL trace id, and
 /// requires a DIFFERENT span id.

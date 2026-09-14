@@ -129,7 +129,9 @@ public sealed class NotificationConsumptionTests(MsSqlContainerFixture mssql, Ka
         var sender2 = new NotificationConsumptionTestSupport.FakeNotificationSender();
         builder2.Services.Replace(ServiceDescriptor.Singleton<INotificationSender>(sender2));
 
-        var host2 = builder2.Build();
+        // Backlog id 74 bullet 6 — host2 joins the SAME literal production
+        // group, so it is wrapped too: a bare host2.StopAsync() still clears it.
+        var host2 = new KafkaGroupTestHost(builder2.Build(), kafka.BootstrapServers, NotificationConsumptionTestSupport.KafkaGroupId);
         await host2.StartAsync();
         try
         {

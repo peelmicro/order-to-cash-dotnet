@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OrderToCash.Orders.Application.Ports;
 using OrderToCash.Orders.Infrastructure.Messaging;
+using OrderToCash.Orders.Infrastructure.Observability;
 using Xunit;
 
 namespace OrderToCash.Orders.UnitTests;
@@ -106,9 +107,20 @@ public sealed class FactRetryDispatcherTests
         var process = new SucceedAfterProcess(succeedOnAttempt: 1, onInvoke: () => clock.UtcNow = exitedAt);
 
         using var meterListener = MetricCapture.ForInstrument("otc_fact_processing_latency_ms");
+
+        // Backlog id 74 bullet 5 (advisory A13) — the meter is PROCESS-WIDE,
+        // and this assembly's own SagaFactsConsumerTests builds a REAL
+        // FactRetryDispatcher (BuildRealFactRetryDispatcher), so a parallel
+        // class can record on this very instrument while this case runs. The
+        // exactly-one assertion below used to read the WHOLE capture. This
+        // interloper emits one matching-shaped measurement from a foreign
+        // execution context, deterministically, so that assertion is ARMED.
+        MetricCapture.RecordFromAConcurrentWriter(
+            () => OtcMetrics.FactProcessingLatencyMs.Record(4242, new KeyValuePair<string, object?>("consumer", nameof(ConsumerName.OrdersSaga))));
+
         await dispatcher.DispatchAsync(SourceTopic, BuildMessage(), _eventId, EventType, _correlationId, ConsumerName.OrdersSaga, process.InvokeAsync, CancellationToken.None);
 
-        var measurement = Assert.Single(meterListener.Measurements);
+        var measurement = meterListener.SingleOwnMeasurement();
         Assert.Equal(240, measurement.Value); // 09:00:00.240 - 09:00:00.000, the EXACT clock-driven duration.
         Assert.Equal("OrdersSaga", measurement.Tags.Single(t => t.Key == "consumer").Value?.ToString());
     }
@@ -144,9 +156,14 @@ public sealed class FactRetryDispatcherTests
         var process = new AdvanceOnceThenFailProcess(clock, exitedAt);
 
         using var meterListener = MetricCapture.ForInstrument("otc_fact_processing_latency_ms");
+
+        // Backlog id 74 bullet 5 — same interloper as the success case above.
+        MetricCapture.RecordFromAConcurrentWriter(
+            () => OtcMetrics.FactProcessingLatencyMs.Record(4242, new KeyValuePair<string, object?>("consumer", nameof(ConsumerName.Projector))));
+
         await dispatcher.DispatchAsync(SourceTopic, BuildMessage(), _eventId, EventType, _correlationId, ConsumerName.Projector, process.InvokeAsync, CancellationToken.None);
 
-        var measurement = Assert.Single(meterListener.Measurements);
+        var measurement = meterListener.SingleOwnMeasurement();
         Assert.Equal(5750, measurement.Value); // 09:00:05.750 - 09:00:00.000.
         Assert.Single(deadLetters.Published);
     }
@@ -209,7 +226,7 @@ public sealed class FactRetryDispatcherTests
     /// (backlog id 75) sharpens this further: <c>x-first-failed-at</c> is
     /// the instant the FIRST processing attempt FAILED, never the instant
     /// processing BEGAN
-    /// (<c>enteredAt</c>/<paramref name="cancellationToken"/>-scoped entry
+    /// (<c>enteredAt</c>/<c>cancellationToken</c>-scoped entry
     /// read at the top of <c>DispatchAsync</c>) — a distinction the
     /// dispatcher's own entry read and its first catch-block read could
     /// otherwise share the SAME clock value and make indistinguishable.

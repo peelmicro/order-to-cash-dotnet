@@ -7,8 +7,8 @@ namespace OrderToCash.Fulfillment.IntegrationTests;
 /// <summary>
 /// Feature db_fulfillment, acceptance 2: "round-trip integration test per
 /// table" — for every one of the seven tables, insert a row through
-/// <see cref="FulfillmentDbContext"/>, read it back from a brand-new
-/// <see cref="FulfillmentDbContext"/> instance (so the read genuinely hits
+/// <see cref="OrderToCash.Fulfillment.Infrastructure.Persistence.FulfillmentDbContext"/>, read it back from a brand-new
+/// <see cref="OrderToCash.Fulfillment.Infrastructure.Persistence.FulfillmentDbContext"/> instance (so the read genuinely hits
 /// the database rather than EF's first-level cache), and assert every field
 /// survived unchanged. This is a distinct claim from
 /// <c>SchemaColumnTypeTests</c>: that test proves the column exists with the

@@ -61,7 +61,7 @@ namespace OrderToCash.Architecture.Tests;
 /// scan over the real source text: a lambda body is not a separate type at
 /// the SYNTAX level, whatever it becomes after closure conversion, so a
 /// symbol reference inside it is exactly as visible to
-/// <see cref="SemanticModel.GetSymbolInfo(SyntaxNode, System.Threading.CancellationToken)"/>
+/// <c>SemanticModel.GetSymbolInfo(SyntaxNode, CancellationToken)</c>
 /// as one on the outer type's own body, at any nesting depth.
 /// </summary>
 public sealed class ApplicationInfrastructureLayeringTests
@@ -164,7 +164,7 @@ public sealed class ApplicationInfrastructureLayeringTests
 
     /// <summary>
     /// Advisory A1 (id 83 review round 1): the closure-aware scan below
-    /// resolves symbols via <see cref="SemanticModel.GetSymbolInfo(SyntaxNode, System.Threading.CancellationToken)"/>
+    /// resolves symbols via <c>SemanticModel.GetSymbolInfo(SyntaxNode, CancellationToken)</c>
     /// against a compilation built directly from syntax trees, and that
     /// premise — "the compiler sees what this scan sees" — was previously
     /// observed to hold, never asserted. A silently unresolved symbol is a
@@ -372,7 +372,7 @@ public sealed class ApplicationInfrastructureLayeringTests
     /// <see cref="_allowedErrorDiagnosticIds"/>. An unexpected error
     /// diagnostic can mean the compilation is missing types entirely (a
     /// broken reference, a parse failure elsewhere), which would silently
-    /// widen the set of symbols <see cref="SemanticModel.GetSymbolInfo(SyntaxNode, System.Threading.CancellationToken)"/>
+    /// widen the set of symbols <c>SemanticModel.GetSymbolInfo(SyntaxNode, CancellationToken)</c>
     /// cannot resolve.
     /// </summary>
     private static void AssertCompilationPremiseHolds(CSharpCompilation compilation, string serviceFolder)

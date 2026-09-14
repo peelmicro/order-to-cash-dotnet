@@ -3,7 +3,7 @@ using OrderToCash.Orders.Application.Ports;
 namespace OrderToCash.Orders.IntegrationTests;
 
 /// <summary>
-/// A no-op <see cref="IDlqDepthGauge"/> for every <see cref="OutboxRelay"/>
+/// A no-op <see cref="IDlqDepthGauge"/> for every <c>OutboxRelay</c>
 /// test that is not itself about <c>otc_dlq_depth</c> — the real
 /// <c>KafkaDlqDepthGauge</c> makes one bounded-timeout admin/watermark
 /// round trip per <c>.dlq</c> topic on every <c>RunOnceAsync</c> call, which

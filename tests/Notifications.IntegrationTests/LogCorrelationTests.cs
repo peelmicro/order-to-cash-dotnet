@@ -24,12 +24,13 @@ namespace OrderToCash.Notifications.IntegrationTests;
 /// — a type this consumer's own routing table handles, unlike
 /// <c>stock.reserved.v1</c> on <c>FulfillmentFacts</c>, which this service
 /// silently ignores without ever attempting deserialisation) rather than
-/// <c>NotificationDeadLetterTests</c>' own <see cref="NotificationFactTopics.OrdersFacts"/>
-/// — that test's <c>ConsumeOneAsync</c> reads its <c>.dlq</c> topic by
-/// "first non-EOF message found", not by matching content, so a second
-/// poison publisher on the SAME topic can steal its assertion. A
-/// DIFFERENT topic (this service consumes three) makes the two tests
-/// genuinely independent rather than order-dependent.
+/// <c>NotificationDeadLetterTests</c>' own <see cref="NotificationFactTopics.OrdersFacts"/>.
+/// That separation was originally forced: that test read its <c>.dlq</c>
+/// topic by "first non-EOF message found", so a second poison publisher on
+/// the SAME topic could steal its assertion. Backlog id 74 retired the
+/// positional read — both cases there now match the envelope's own
+/// <c>correlationId</c> — so the topic separation is kept for readability,
+/// not because correctness now depends on it.
 /// </summary>
 [Collection(NotificationsCollection.Name)]
 public sealed class LogCorrelationTests(KafkaContainerFixture kafka, MsSqlContainerFixture mssql)
@@ -68,7 +69,11 @@ public sealed class LogCorrelationTests(KafkaContainerFixture kafka, MsSqlContai
             var sender = new NotificationConsumptionTestSupport.FakeNotificationSender();
             builder.Services.Replace(ServiceDescriptor.Singleton<INotificationSender>(sender));
 
-            var host = builder.Build();
+            // Backlog id 74 bullet 6 — a locally built host joins the SAME literal
+            // production group, so it is wrapped exactly like the ones
+            // NotificationConsumptionTestSupport.StartHostAsync hands out: a bare
+            // host.StopAsync() here still clears the group.
+            var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, NotificationConsumptionTestSupport.KafkaGroupId);
             await host.StartAsync();
 
             try

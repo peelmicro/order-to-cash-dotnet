@@ -8,12 +8,15 @@ using Xunit;
 namespace OrderToCash.Billing.UnitTests;
 
 /// <summary>
-/// `F9`'s own coverage gap closed: <see cref="PaymentReceived"/> has NO live
-/// caller in this feature (feature 22's seam), so
-/// <see cref="BillingFactPayloadMapper"/>'s arm for it is otherwise
-/// unreachable from any integration test. Asserts the mapped payload's
-/// fields against the domain event's OWN fields — corruption, not merely
-/// presence (feature 17's defect).
+/// `F9`'s own coverage gap, closed when <see cref="PaymentReceived"/> still
+/// had no live caller (feature 21 delivered <c>Invoice.MarkPaid</c> uncalled).
+/// Feature 22 ended that — <c>PaymentRegisterService</c> now raises this fact
+/// and <c>Billing.IntegrationTests.PaymentRegisterTests</c> reaches
+/// <see cref="BillingFactPayloadMapper"/>'s arm for it over real
+/// infrastructure — so this class is no longer the ONLY reach, and it is kept
+/// because it asserts the mapped payload's fields against the domain event's
+/// OWN fields field by field: corruption, not merely presence (feature 17's
+/// defect).
 /// </summary>
 public sealed class BillingFactPayloadMapperTests
 {

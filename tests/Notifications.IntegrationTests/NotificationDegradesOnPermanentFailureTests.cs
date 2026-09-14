@@ -68,7 +68,11 @@ public sealed class NotificationDegradesOnPermanentFailureTests(KafkaContainerFi
                     options.Smtp.Port = mailpit.SmtpPort;
                 });
 
-            var host = builder.Build();
+            // Backlog id 74 bullet 6 — a locally built host joins the SAME literal
+            // production group, so it is wrapped exactly like the ones
+            // NotificationConsumptionTestSupport.StartHostAsync hands out: a bare
+            // host.StopAsync() here still clears the group.
+            var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, NotificationConsumptionTestSupport.KafkaGroupId);
             await host.StartAsync();
 
             try

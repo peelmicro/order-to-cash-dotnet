@@ -52,13 +52,26 @@ public sealed class ProjectorDeadLetterTests(MongoContainerFixture mongoFixture,
             var poisonEnvelope = new Envelope<string>(eventId, "order.placed.v1", orderId, orderId, Guid.NewGuid(), DateTimeOffset.UtcNow, "poison-payload-not-an-object");
             var poisonBytes = JsonSerializer.SerializeToUtf8Bytes(poisonEnvelope, JsonWire.Options);
 
+            // Backlog id 74 bullets 2-3 — the DETERMINISM lives in this test,
+            // not in the mutation. A decoy envelope, with a DIFFERENT eventId
+            // and a DIFFERENT correlationId, is placed on the SAME .dlq topic
+            // BEFORE the poison fact is published, under the SAME Kafka key
+            // the real DLQ copy will carry (KafkaDeadLetterPublisher keys the
+            // .dlq message by publication.EventType,
+            // src/Projector/Infrastructure/Messaging/DeadLetter/KafkaDeadLetterPublisher.cs:58),
+            // so the decoy occupies the SAME partition at a strictly EARLIER
+            // offset. A positional "first non-EOF message" read then returns
+            // the decoy on EVERY run, never sometimes.
+            var decoyEventId = await PublishDecoyToDlqAsync(DlqTopic, "order.placed.v1");
+
             await PublishRawAsync(SourceTopic, orderId.ToString(), poisonBytes);
 
             var advanced = await ProjectorOffsetSupport.WaitForCommittedOffsetToExceedAsync(kafkaFixture.BootstrapServers, SourceTopic, GroupId, PartitionCount, baseline, TimeSpan.FromSeconds(90));
             Assert.True(advanced > baseline, $"Committed offset never advanced past baseline {baseline} (last observed {advanced}).");
 
-            var dlqRecord = await ConsumeOneAsync(DlqTopic, TimeSpan.FromSeconds(90));
+            var dlqRecord = await ConsumeMatchingAsync(DlqTopic, orderId, TimeSpan.FromSeconds(90));
             Assert.NotNull(dlqRecord);
+            AssertIsThisTestsOwnRecord(dlqRecord!, eventId, decoyEventId, DlqTopic);
             Assert.Equal(poisonBytes, dlqRecord!.Message.Value);
 
             var headers = ReadHeaders(dlqRecord.Message.Headers);
@@ -129,12 +142,11 @@ public sealed class ProjectorDeadLetterTests(MongoContainerFixture mongoFixture,
     /// made THIS test fail with a byte-mismatch on the WRONG record — the
     /// exact shape advisory A8 (round 2 record) predicts) — AND matched by
     /// CONTENT (<c>correlationId</c>) via <see cref="ConsumeMatchingAsync"/>,
-    /// never by position: the shared class-level
-    /// <see cref="ConsumeOneAsync(string, TimeSpan)"/> matches by POSITION
-    /// ("first non-EOF message"), which is exactly the hazard advisory A8
-    /// names — the SAME fix Orders' own
+    /// never by position. Backlog id 74 retired this class's positional
+    /// <c>ConsumeOneAsync(topic, timeout)</c> overload entirely, so both
+    /// cases here now read the SAME way Orders' own
     /// <c>SagaDeadLetterTests.ConsumeOneAsync(topic, correlationId,
-    /// timeout)</c> already uses.
+    /// timeout)</c> does.
     /// </summary>
     [Fact]
     public async Task OR4_R57_TheConsumeSpanContinuesTheInboundKafkaTrace_TheDlqCopyCarriesTheSameTraceIdAsTheInboundFact()
@@ -163,6 +175,11 @@ public sealed class ProjectorDeadLetterTests(MongoContainerFixture mongoFixture,
             var poisonEnvelope = new Envelope<string>(eventId, "stock.reserved.v1", orderId, orderId, Guid.NewGuid(), DateTimeOffset.UtcNow, "poison-payload-not-an-object");
             var poisonBytes = JsonSerializer.SerializeToUtf8Bytes(poisonEnvelope, JsonWire.Options);
 
+            // Backlog id 74 bullet 3 — the same decoy-first shape as the
+            // sibling case above, so this content match is ARMED rather than
+            // merely correct: a positional read here returns the decoy.
+            var decoyEventId = await PublishDecoyToDlqAsync(altDlqTopic, "stock.reserved.v1");
+
             using (var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafkaFixture.BootstrapServers }).Build())
             {
                 var headers = new Headers { { "traceparent", Encoding.UTF8.GetBytes(inboundTraceParent!) } };
@@ -171,6 +188,7 @@ public sealed class ProjectorDeadLetterTests(MongoContainerFixture mongoFixture,
 
             var dlqRecord = await ConsumeMatchingAsync(altDlqTopic, orderId, TimeSpan.FromSeconds(90));
             Assert.NotNull(dlqRecord);
+            AssertIsThisTestsOwnRecord(dlqRecord!, eventId, decoyEventId, altDlqTopic);
 
             var headersRead = ReadHeaders(dlqRecord!.Message.Headers);
             Assert.True(headersRead.TryGetValue("traceparent", out var dlqTraceParent), "The .dlq message carries no traceparent header at all.");
@@ -224,57 +242,46 @@ public sealed class ProjectorDeadLetterTests(MongoContainerFixture mongoFixture,
     }
 
     /// <summary>
-    /// Reads the SAME <c>.dlq</c> topic with <see cref="IConsumer{TKey,TValue}.Assign"/>
-    /// over its own known partition set, at <see cref="Offset.Beginning"/> —
-    /// deliberately NOT <c>Subscribe()</c>. A consumer-GROUP subscription
-    /// pays the full FindCoordinator/JoinGroup/SyncGroup round trip before
-    /// its first poll can return anything; under the CPU contention of a
-    /// full solution-wide <c>dotnet test</c> run (many concurrent
-    /// Testcontainers-backed suites), that round trip was observed to
-    /// exceed even a 90 s budget while the SAME probe passed reliably
-    /// standalone. A direct partition assignment needs no coordinator at
-    /// all — it is the same class of fix
-    /// <c>SagaIntegrationTestSupport.ReadCommittedOffsetTotalAsync</c>
-    /// already uses (<c>consumer.Committed</c>, not a full group join) for
-    /// exactly this reason.
+    /// Backlog id 74 bullet 3 — publishes a DECOY envelope (a different
+    /// <c>eventId</c> and a different <c>correlationId</c>) onto
+    /// <paramref name="dlqTopic"/> under the SAME Kafka key the real
+    /// dead-letter copy will use, so it occupies the same partition at a
+    /// strictly EARLIER offset. Returns the decoy's own <c>eventId</c> so a
+    /// failure can name which record was read.
     /// </summary>
-    private async Task<ConsumeResult<string, byte[]>?> ConsumeOneAsync(string topic, TimeSpan timeout)
+    private async Task<Guid> PublishDecoyToDlqAsync(string dlqTopic, string eventType)
     {
-        using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
-        {
-            BootstrapServers = kafkaFixture.BootstrapServers,
-            GroupId = $"dlq-probe-{Guid.NewGuid():N}",
-            EnableAutoCommit = false,
-        }).Build();
+        var decoyEventId = Guid.NewGuid();
+        var decoy = new Envelope<string>(decoyEventId, eventType, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow, "decoy-from-another-test-on-this-shared-dlq-topic");
 
-        consumer.Assign(Enumerable.Range(0, 6)
-            .Select(p => new TopicPartitionOffset(topic, new Partition(p), Offset.Beginning))
-            .ToList());
+        using var producer = new ProducerBuilder<string, byte[]>(new ProducerConfig { BootstrapServers = kafkaFixture.BootstrapServers }).Build();
+        await producer.ProduceAsync(dlqTopic, new Message<string, byte[]> { Key = eventType, Value = JsonSerializer.SerializeToUtf8Bytes(decoy, JsonWire.Options) });
+        producer.Flush(TimeSpan.FromSeconds(10));
 
-        var deadline = DateTime.UtcNow + timeout;
+        return decoyEventId;
+    }
 
-        while (DateTime.UtcNow < deadline)
-        {
-            var result = consumer.Consume(TimeSpan.FromMilliseconds(500));
-            if (result is not null && !result.IsPartitionEOF)
-            {
-                return result;
-            }
-        }
+    /// <summary>Backlog id 74 bullet 3 — names the record actually read, so a positional regression fails with the DECOY's identity rather than an opaque byte-array diff.</summary>
+    private static void AssertIsThisTestsOwnRecord(ConsumeResult<string, byte[]> record, Guid expectedEventId, Guid decoyEventId, string topic)
+    {
+        using var document = JsonDocument.Parse(record.Message.Value);
+        var actualEventId = document.RootElement.TryGetProperty("eventId", out var value) ? value.GetGuid() : Guid.Empty;
 
-        return null;
+        Assert.True(
+            actualEventId == expectedEventId,
+            $"the read from '{topic}' returned the envelope with eventId {actualEventId}, not this test's own poison fact {expectedEventId}. "
+            + $"A decoy with eventId {decoyEventId} was deliberately published to that topic first, so a read that selects by POSITION "
+            + "('the first non-EOF message') returns the decoy instead of the record this test produced.");
     }
 
     /// <summary>
-    /// Review round 2 — the CONTENT-matching counterpart to
-    /// <see cref="ConsumeOneAsync(string, TimeSpan)"/> above, the SAME
-    /// shape Orders' own <c>SagaDeadLetterTests.ConsumeOneAsync(topic,
-    /// correlationId, timeout)</c> already uses: matches the <c>.dlq</c>
-    /// payload's OWN <c>correlationId</c> field (the payload is the
-    /// UNMODIFIED original envelope, ledger L15), never "whatever arrived
-    /// first" — advisory A8 (round 2 record) names the positional overload
-    /// above as a hazard for any second poison publisher on the SAME
-    /// <c>.dlq</c> topic in the same collection.
+    /// Review round 2, and now the ONLY read this class performs (backlog
+    /// id 74 bullets 1-2): matches the <c>.dlq</c> payload's OWN
+    /// <c>correlationId</c> field (the payload is the UNMODIFIED original
+    /// envelope, ledger L15), never "whatever arrived first". The positional
+    /// <c>ConsumeOneAsync(topic, timeout)</c> overload that used to sit here
+    /// is deleted rather than left unused — an unused positional reader is a
+    /// loaded gun for the next test that needs a <c>.dlq</c> read.
     /// </summary>
     private async Task<ConsumeResult<string, byte[]>?> ConsumeMatchingAsync(string topic, Guid correlationId, TimeSpan timeout)
     {

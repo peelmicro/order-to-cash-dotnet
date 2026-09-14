@@ -247,7 +247,11 @@ public sealed class SagaCommandRetryTests(KafkaContainerFixture kafka, NatsConta
                 sp.GetRequiredService<IClock>(),
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OrderToCash.Orders.Infrastructure.OrdersSagaOptions>>()))));
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — a locally built host that joins the SAME
+        // literal production group, wrapped exactly like the ones the test
+        // support helper hands out: a bare host.StopAsync() here still clears
+        // the group.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, SagaIntegrationTestSupport.KafkaGroupId);
         await host.StartAsync();
         try
         {

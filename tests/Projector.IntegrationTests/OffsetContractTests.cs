@@ -88,7 +88,11 @@ public sealed class OffsetContractTests : IAsyncLifetime
                 sp.GetRequiredService<OrderToCash.Projector.Infrastructure.Messaging.IdempotentConsumer>()),
                 gate)));
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — a locally built host that joins the SAME
+        // literal production group, wrapped exactly like the ones the test
+        // support helper hands out: a bare host.StopAsync() here still clears
+        // the group.
+        var host = new KafkaGroupTestHost(builder.Build(), _kafka.BootstrapServers, ProjectorTestHost.KafkaGroupId);
         await host.StartAsync();
         try
         {
@@ -130,6 +134,11 @@ public sealed class OffsetContractTests : IAsyncLifetime
         // InitializeAsync spins up a brand-new broker each time) never
         // touched by any other test — mechanism 2 needs a broker SHARED
         // across tests to cross a test boundary, which cannot happen here.
+        // Backlog id 74 bullet 6 note: the bare StopAsync() below now runs
+        // the clearance anyway, because the host is a KafkaGroupTestHost.
+        // That is the point — the teardown no longer depends on this
+        // classification being remembered — and it costs one immediately
+        // satisfied DescribeConsumerGroups call against a private broker.
         finally
         {
             await host.StopAsync();
@@ -163,6 +172,11 @@ public sealed class OffsetContractTests : IAsyncLifetime
         // InitializeAsync spins up a brand-new broker each time) never
         // touched by any other test — mechanism 2 needs a broker SHARED
         // across tests to cross a test boundary, which cannot happen here.
+        // Backlog id 74 bullet 6 note: the bare StopAsync() below now runs
+        // the clearance anyway, because the host is a KafkaGroupTestHost.
+        // That is the point — the teardown no longer depends on this
+        // classification being remembered — and it costs one immediately
+        // satisfied DescribeConsumerGroups call against a private broker.
         finally
         {
             await host.StopAsync();

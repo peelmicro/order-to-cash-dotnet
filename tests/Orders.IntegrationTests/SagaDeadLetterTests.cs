@@ -215,7 +215,7 @@ public sealed class SagaDeadLetterTests(KafkaContainerFixture kafka, NatsContain
     }
 
     /// <summary>
-    /// Reads the SAME <c>.dlq</c> topic with <see cref="IConsumer{TKey,TValue}.Assign"/>
+    /// Reads the SAME <c>.dlq</c> topic with <see cref="IConsumer{TKey, TValue}.Assign(TopicPartition)"/>
     /// over its own known partition set, at <see cref="Offset.Beginning"/> —
     /// deliberately NOT <c>Subscribe()</c>. A consumer-GROUP subscription
     /// pays the full FindCoordinator/JoinGroup/SyncGroup round trip before

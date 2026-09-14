@@ -13,7 +13,7 @@ namespace OrderToCash.Orders.IntegrationTests;
 /// — <see cref="EfCoreSagaCommandStore.TryClaimDeadLetterAsync"/>'s
 /// at-most-once claim, against a REAL MS-SQL database and GENUINELY
 /// concurrent callers (separate <c>OrdersDbContext</c>/connection instances,
-/// driven with <see cref="Task.WhenAll"/>). A single-threaded proof is not
+/// driven with <see cref="Task.WhenAll(IEnumerable{Task})"/>). A single-threaded proof is not
 /// evidence for this claim — the whole point of the guarded
 /// <c>UPDATE ... WHERE dead_lettered_at IS NULL</c> is that it survives a
 /// GENUINE race, which only a real database's row-level locking can prove.

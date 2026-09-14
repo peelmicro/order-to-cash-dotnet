@@ -55,7 +55,7 @@ public sealed class CancelOrderCommandHandlerTests
     /// SA-2/feature <c>operator_note_reaches_the_timeline</c> bullet 1's
     /// handler half — the immediate branch threads
     /// <see cref="CancelOrderCommand.Note"/> onto the raised
-    /// <see cref="OrderCancelled"/> domain event, bracketed to the exact
+    /// <see cref="OrderToCash.Orders.Domain.Events.OrderCancelled"/> domain event, bracketed to the exact
     /// text supplied (provenance, not merely non-null).
     /// </summary>
     [Fact]

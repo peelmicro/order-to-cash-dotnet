@@ -34,7 +34,7 @@ public sealed class NotificationDispatchServiceTests
 
     /// <summary>
     /// The absence half of NS8 — a redelivered eventId must send NO second
-    /// email, and <paramref name="buildMessage"/> itself must never even run
+    /// email, and the dispatch call's own <c>buildMessage</c> delegate must never even run
     /// (proving the redelivery costs nothing beyond the ledger's own
     /// duplicate-key check, not merely "the send happened not to be
     /// observed").

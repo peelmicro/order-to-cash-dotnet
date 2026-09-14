@@ -5,7 +5,7 @@ using Xunit;
 
 namespace OrderToCash.Gateway.IntegrationTests;
 
-/// <summary>R54 — served exclusively from the read model, over a REAL MongoDB, never a mock. Proves the query/filter/sort/pagination behaviour <see cref="MongoOrderReadModelMappingTests"/> (unit, no server) cannot: whether the actual driver's <c>$in</c>/dotted-field filters, sort and skip/limit behave as this class assumes.</summary>
+/// <summary>R54 — served exclusively from the read model, over a REAL MongoDB, never a mock. Proves the query/filter/sort/pagination behaviour <c>MongoOrderReadModelMappingTests</c> (unit, no server) cannot: whether the actual driver's <c>$in</c>/dotted-field filters, sort and skip/limit behave as this class assumes.</summary>
 [Collection(MongoCollection.Name)]
 public sealed class MongoOrderReadModelIntegrationTests(MongoContainerFixture mongo)
 {

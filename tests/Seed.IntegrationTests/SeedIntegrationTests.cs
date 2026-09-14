@@ -224,7 +224,7 @@ public sealed class SeedIntegrationTests(SeedContainersFixture fixture)
     /// (<c>node --experimental-transform-types</c>, #7's source files
     /// copied verbatim with only <c>@otc/shared-kernel</c> and
     /// <c>mongodb</c> repointed — the same technique
-    /// <see cref="DeterministicParityTests"/>-equivalent oracle values used,
+    /// <c>DeterministicParityTests</c>-equivalent oracle values used,
     /// and the same technique the reviewer used independently). This is
     /// what
     /// <see cref="Order_Timeline_Documents_Carry_Every_Field_With_The_Right_Types"/>

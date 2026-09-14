@@ -538,7 +538,7 @@ public sealed class OrdersCancelAcceptanceTests(KafkaContainerFixture kafka, Nat
     /// Id 71's parity bullet — a parked operator-cancel compensation command
     /// (deliberately NO <c>stock.release</c> responder, so SO4 exhausts and
     /// SO5 parks it) publishes the SAME synthetic envelope R29's dead-letter
-    /// clause already threads through <see cref="SagaFirstParkDeadLetterHandler"/>
+    /// clause already threads through <c>SagaFirstParkDeadLetterHandler</c>
     /// to <c>.dlq</c>, byte-equal to the stored column — porting #7's
     /// non-nullable port (<c>saga-command-store.port.ts:40</c>): an
     /// operator-cancel compensation now dead-letters SOMETHING, closing the

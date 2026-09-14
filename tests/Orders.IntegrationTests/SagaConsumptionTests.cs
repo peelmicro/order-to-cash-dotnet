@@ -102,7 +102,11 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
                 options.Sweeper.PendingGraceMs = 300;
             });
 
-        var secondHost = secondBuilder.Build();
+        // Backlog id 74 bullet 6 — a locally built host with the FULL saga
+        // wiring joins the SAME literal production group, so it is wrapped
+        // exactly like the ones SagaIntegrationTestSupport.StartHostAsync hands
+        // out: a bare secondHost.StopAsync() here still clears the group.
+        var secondHost = new KafkaGroupTestHost(secondBuilder.Build(), kafka.BootstrapServers, SagaIntegrationTestSupport.KafkaGroupId);
         await secondHost.StartAsync();
         try
         {
@@ -146,7 +150,11 @@ public sealed class SagaConsumptionTests(KafkaContainerFixture kafka, NatsContai
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OrderToCash.Orders.Infrastructure.OrdersSagaOptions>>()),
                 gate)));
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — a locally built host that joins the SAME
+        // literal production group, wrapped exactly like the ones the test
+        // support helper hands out: a bare host.StopAsync() here still clears
+        // the group.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, SagaIntegrationTestSupport.KafkaGroupId);
         await host.StartAsync();
         try
         {

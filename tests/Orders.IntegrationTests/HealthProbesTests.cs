@@ -153,7 +153,11 @@ public sealed class HealthProbesTests(KafkaContainerFixture kafka, NatsContainer
                 options.KafkaBootstrapServers = kafka.BootstrapServers;
             });
 
-        var host = builder.Build();
+        // Backlog id 74 bullet 6 — a locally built host that joins the SAME
+        // literal production group, wrapped exactly like the ones the test
+        // support helper hands out: a bare host.StopAsync() here still clears
+        // the group.
+        var host = new KafkaGroupTestHost(builder.Build(), kafka.BootstrapServers, SagaIntegrationTestSupport.KafkaGroupId);
         await host.StartAsync();
         try
         {
