@@ -242,7 +242,13 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 14 COMPLETE — 13 of 13 entries closed, 78 of 94 features done.** Counted from `feature_list.json` on 2026-09-14.
+**Position: Phase 15 COMPLETE — 4 of 4 entries closed, 82 of 94 features done.** Counted from `feature_list.json` on 2026-09-15.
+
+The phase's actual feature (id 28, end-to-end saga verification against real infrastructure) found a genuine production defect while proving its own fifth criterion — the id-80 fast-path dispatcher propagated no trace context, so three services observed three different trace ids for one order's happy path. **Fixed in the same session rather than filed**, on explicit direction: disclosed issues are fixed as soon as they are detected, not deferred to a future entry. The same direction applied to two smaller disclosures inherited from phase 14 (id 94's Projector sibling and missing Orders config guard), both closed alongside their parent entry rather than left as recommendations.
+
+One phase-14 design question (id 93 — should the duplicated `orders.*`/`catalog.*` payload records move into `src/Contracts/Rpc`) was answered directly rather than routed back for a decision, because id 84 had already set the applicable precedent in the same phase; applying it was not a new choice.
+
+> The paragraph below this note describes the previous phase's position and is retained as history.
 
 Eleven entries were re-opened after the maintainer rejected closing the phase by disposition, and every one was **worked and approved** — 84, 70, 69, 82, 89, 81, 85, 74, 78, 90, 86, none rejected, six approved on the first round. Ids 88 and 92 were then **accepted with evidence and a re-open trigger**, on the explicit ground that neither is work developed incorrectly: id 88 is a stated residual of id 80 whose elimination would be a design change, and id 92 is coverage #7 lacks that #8 already has in both orderings.
 
