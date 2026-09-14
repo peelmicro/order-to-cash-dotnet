@@ -242,7 +242,21 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 14 CLOSED TO SCOPE at the human gate — 73 of 89 features done, with 3 of its 26 entries deliberately left open.** Counted from `feature_list.json`, not carried forward. The backlog grew from 77 entries to 89 because the guard-hardening audit files what it finds: this phase closed nine features (ids 62, 67, 68, 72, 73, 76, 80, 83, 87) and filed ten new entries (ids 81–90). **That growth is the phase's defining fact**, and it is what ended the phase: at roughly 200k–800k tokens per closed entry — id 87 alone cost 432k — finishing the queue would have cost several million more.
+**Position: Phase 14 COMPLETE — 13 of 13 entries closed, 78 of 94 features done.** Counted from `feature_list.json` on 2026-09-14.
+
+Eleven entries were re-opened after the maintainer rejected closing the phase by disposition, and every one was **worked and approved** — 84, 70, 69, 82, 89, 81, 85, 74, 78, 90, 86, none rejected, six approved on the first round. Ids 88 and 92 were then **accepted with evidence and a re-open trigger**, on the explicit ground that neither is work developed incorrectly: id 88 is a stated residual of id 80 whose elimination would be a design change, and id 92 is coverage #7 lacks that #8 already has in both orderings.
+
+**The mechanism added during this finish is the part worth carrying forward.** Nothing in this harness read the coordinator's own prose — arming checks guards, review checks implementations, enumeration checks sweeps, and a brief is none of those. `premise_checker` now fact-checks a brief or a recommendation before it is acted on. Its record in this phase: the finishing plan v1 returned 2 false claims, brief D1 v1 returned 9 (including one that would have had an implementer distrust correct line citations), and after briefs stopped paraphrasing acceptance bullets altogether, D2, D3, D4 and D5 each cleared on their first version.
+
+> The paragraphs below this note describe earlier positions and are retained as history.
+
+> **SUPERSEDED, 2026-09-13.** This section previously recorded phase 14 as *closed to scope* with eleven entries **DISPOSITIONED rather than worked**. **The maintainer rejected that.** The ruling is that phase 14 be finished and correct, so all eleven were re-opened to `pending`, each keeping its `ACCEPTED, NOT FIXED` note as history beneath a `RE-OPENED 2026-09-13 by maintainer ruling` marker. `init.sh`'s backlog tripwire fired on all eleven reversions exactly as designed — it cannot distinguish a deliberate re-opening from the corruption it exists to catch — and the failure was recorded verbatim before the within-session snapshot was re-baselined. The phase is now a **frozen list of 13 items** (69, 70, 74, 78, 81, 82, 84, 85, 86, 88, 89, 90, 92), and nothing found while working it is added to it: three findings went to phase 15 instead (ids 93, 94, 95). Completion is a command the maintainer runs, not a claim anyone makes:
+
+```
+python3 -c "import json;d=json.load(open('feature_list.json'));print([f['id'] for f in d['features'] if f.get('phase')==14 and f['status']!='done'])"
+```
+
+> The paragraphs below this note describe the superseded position and are retained as history.
 
 **So eleven entries were DISPOSITIONED rather than worked** (69, 70, 74, 78, 81, 82, 84, 85, 88, 89, 90): closed with documented evidence because none of them changes shipped behaviour. The backlog has no `accepted` status, so they carry `done` plus an explicit **"ACCEPTED, NOT FIXED"** note, each with its own reason and, where one exists, a **re-open trigger** — most sharply id 90, which must be re-opened the moment `DegreeOfParallelism` is bound to an environment variable, because a value ≤ 0 makes the host report healthy while dispatching nothing.
 

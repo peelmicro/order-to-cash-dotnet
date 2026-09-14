@@ -95,3 +95,29 @@ The 11 dispositioned entries were re-opened because **the maintainer rejected th
 The `.backlog-snapshot` was then cleared deliberately so the next clean run re-baselines. It is untracked and within-session by design (`init.sh:216-218`). This is recorded here rather than done silently, because a guard that is routinely worked around stops being a guard.
 
 **What made this necessary was a caught error, not a plan.** The first version of brief D1 was premise-checked and returned `DO NOT ACT` on nine findings, the critical one being that the brief presented ids 84 and 70 as open work while the on-disk record said `done — ACCEPTED, NOT FIXED`, dated the same day. The backlog would have said one thing while the work said another. The record is now consistent with the ruling, and only then is a brief dispatched against it.
+
+
+---
+
+## COMPLETE — 2026-09-14
+
+`python3 -c "import json;d=json.load(open('feature_list.json'));print([f['id'] for f in d['features'] if f.get('phase')==14 and f['status']!='done'])"` → `[]`
+
+**Worked and approved (11):** 84, 70, 69, 82, 89, 81, 85, 74, 78, 90, 86. None rejected; six approved first round.
+**Accepted with evidence and a re-open trigger (2):** 88, 92 — neither is work developed incorrectly, which is the distinction against the 2026-09-13 ruling.
+
+`./quality.sh`: 18 projects, **2 042 passed, 0 failed, 0 skipped, 0 build warnings**. Backlog 78/94.
+
+**The freeze held.** Three findings surfaced while finishing and **none** was added to phase 14 — ids 93, 94 and 95, all phase 15. That was the point of writing the list down before starting.
+
+**What the finish found that the audit had not:**
+
+| Entry | Found by finishing it |
+|---|---|
+| 90 | Its first guard **passed under the very mutation it exists to catch** — `Task.WhenAll(IEnumerable<Task>)` enumerates asynchronously, so the task reads `WaitingForActivation` whatever the degree. And the entry's own premise was wrong: only `0` produces the silent-healthy shape, not `<= 0` |
+| 81 | The cause was **not** the budget the entry blamed. 8 losses in 648 cold rounds against 0 in 700 warm; one loss under a **120 000 ms** budget on an idle machine. Raising the timeout would have buried it |
+| 74 | The class did not end at the three sites named — `BC16` and `FS16` asserted only the message **key**, so a same-key decoy passes while the test holds the wrong record |
+| 86 | "Delete two false absolutes" reached **three** copies, and a fourth was in `progress/current.md` |
+| 78 | **107** doc-comment defects across 28 projects, visible only once `GenerateDocumentationFile` made the check able to fire |
+
+**And the coordinator's own error rate is the other half of the record.** The premise check caught 2 false claims in the finishing plan, 9 in brief D1 and 9 in brief D6 — including telling an implementer that correct line citations were stale. Six of D1's nine were the leader narrowing acceptance bullets in paraphrase; briefs stopped paraphrasing them at all, and that class did not recur.
