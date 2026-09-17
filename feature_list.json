@@ -471,7 +471,7 @@
       "phase": 18,
       "title": "API tests: xUnit + HttpClient black-box through the Gateway — the SAME script #7's API tests prove",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "full happy path",
         "full compensation path",
@@ -1564,14 +1564,27 @@
       "phase": 18,
       "title": "Each service's dead-letter producer has its own bootstrap default ('localhost:9092'), independent of Kafka.BootstrapServers, so an in-process test host that points Kafka at a container still dead-letters to whatever broker is on localhost:9092",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "DeadLetterKafkaOptions.BootstrapServers in Orders, Notifications and Projector falls back to the service's own Kafka.BootstrapServers when not set explicitly, so configuring Kafka once configures both clients; production configuration (the *ProgramConfiguration files) is unchanged in effect",
         "a test per service proves the fallback: a host configured with only Kafka.BootstrapServers dead-letters to that broker; armed by restoring the independent localhost default",
         "the test hosts enumerated on 2026-09-17 (about twenty files under tests/ that call *Host.CreateBuilder without setting DeadLetter.BootstrapServers) are re-checked against the enumeration command, and any explicit workaround made redundant is left or removed deliberately, with the reason recorded",
         "the same question is asked of #7, citing its checkout either way"
       ],
-      "notes": "Found by the phase-16 wrap-up's quality gate on 2026-09-17. SagaEndToEndVerificationTests.Criterion1 failed twice with the developer's infrastructure down: the fleet's Projector dead-lettered Criterion4's poison to localhost:9092 (connection refused), which stalled its consumer. The test had passed in phase 15 only because a developer Kafka was listening there, so dead letters silently went to the developer broker. The wrap-up fixed that one test (StartProjectorAsync now sets DeadLetter.BootstrapServers; Criterion4 now selects each consumer's DLQ record and asserts that the Projector's also arrives, armed by removing the setting). Disposition: fix in phase 18. The class is latent: the other hosts that leave the default never dead-letter in their tests. It is not worked during the wrap-up, per the maintainer's instruction that the wrap-up comes first."
+      "notes": "CLOSED 2026-09-17 as a LIGHT change (CLAUDE.md Cost discipline): the leader read the diff and re-ran Orders/Projector/Notifications unit tests (503/121/114), Architecture.Tests 50 and dotnet format, and re-armed the Projector fallback (localhost default restored → DeadLetterBootstrapServersFallback fails 'Expected projector-kafka-only.example:9092 / Actual localhost:9092'; restored, cmp, green). Record: progress/impl_dead_letter_producer_defaults_to_localhost.md. Found by the phase-16 wrap-up's quality gate on 2026-09-17. SagaEndToEndVerificationTests.Criterion1 failed twice with the developer's infrastructure down: the fleet's Projector dead-lettered Criterion4's poison to localhost:9092 (connection refused), which stalled its consumer. The test had passed in phase 15 only because a developer Kafka was listening there, so dead letters silently went to the developer broker. The wrap-up fixed that one test (StartProjectorAsync now sets DeadLetter.BootstrapServers; Criterion4 now selects each consumer's DLQ record and asserts that the Projector's also arrives, armed by removing the setting). Disposition: fix in phase 18. The class is latent: the other hosts that leave the default never dead-letter in their tests. It is not worked during the wrap-up, per the maintainer's instruction that the wrap-up comes first."
+    },
+    {
+      "id": 105,
+      "name": "causal_order_check_is_vacuous_without_causation_id",
+      "phase": 18,
+      "title": "BlackBoxApiTests.AssertCausalOrder checks nothing if causationId ever stops reaching the timeline wire — every entry would lack a cause, and the ordering assertion would pass on zero pairs (the same gap as #7's review N7)",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "AssertCausalOrder fails when the timeline it receives carries no causationId pairs, or fewer than the happy path's known minimum; the failure message names the missing pairs",
+        "armed once by stripping causationId from the entries the helper reads"
+      ],
+      "notes": "CLOSED 2026-09-17 as a LIGHT change: the helper now counts the edges it checks and fails if fewer than the minimum (happy path: 3, measured on the real 9-entry timeline); a new fleet-free meta-guard covers the no-causationId case. The implementer armed it by removing the Gateway's causationId mapping (MongoOrderReadModel.cs:132): the happy-path fact failed with 'no causal edges were checked', and the file was restored and verified with cmp. The leader verified that the src file matches HEAD, re-ran both meta-guards (2/2) and read the helper; the happy path runs in the wrap-up's quality.sh. Record: progress/impl_causal_order_check_is_vacuous_without_causation_id.md. Filed from progress/review_api_tests.md N1 (2026-09-17, id 31 approved). LIGHT change under CLAUDE.md Cost discipline (test-only). Disposition: fix in phase 18's next session if the maintainer agrees; it does not block id 31. #7 carries the same gap (its review N7) and is not mirrored, per the #7-is-complete rule."
     }
   ]
 }

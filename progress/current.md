@@ -1,23 +1,24 @@
 # Current session
 
-**Feature:** none in progress; phase 18 is next, in a fresh session. **Phase 16 COMPLETE (2026-09-17)**, with phase 17 (id 30) delivered inside it. 92 of 103 backlog features are done. Full wrap-up DONE: `./quality.sh` exit 0 (.NET 2115, web 286 + 7); #8 commits 226c707 (SA-5), 04d4329, 83223f1, e351603, 240ad06 and the docs commit; #7 commits 6dafee0 (SA-5), 828c743, e07d9ee, 3b3f98e, 1823f11; both pushed; external docs and both DotNet quizzes regenerated.
+**Feature:** none in progress. **Phase 18 COMPLETE (2026-09-17)**: ids 104 (light), 31 (full, approved on Opus in its first review round) and 105 (light) are all done. 95 of 104 backlog features are done. Full wrap-up DONE: `./quality.sh` exit 0 (.NET 2126, including Gateway.IntegrationTests 78; web 286 + 7); commits e58ea63 (id 104) and c376b26 (ids 31 and 105), plus the docs commit; pushed; external docs and both DotNet quizzes regenerated. Next: phase 19, in a fresh session.
 
-## Next phase — Phase 18: API tests through the Gateway (id 31), plus id 104
+## Next phase — Phase 19: Playwright end-to-end (id 32)
 
-**Brief for the next session. Read before dispatching anything.** Start phase 18 in a FRESH session. Apply CLAUDE.md's "Cost discipline" section (maintainer ruling of 2026-09-17: the process is sized to the change, the reviewer runs on Sonnet outside the full group, and the maintainer is asked after a second rejection). Id 31 is API-test work against the saga, so it belongs to the full group. Id 104 is test and config plumbing, so it is light.
-- **Id 31 `api_tests`** (sdd: false). Its acceptance bullets are in `feature_list.json`:
-  - happy path;
-  - compensation path;
-  - a duplicate `paymentReference` yields one payment;
-  - R24's API half, with a structural causal-order assertion;
-  - R49's API half, through the REAL Gateway, asserting against Billing's own database.
-- **What to port.** It ports #7's `apps/gateway/src/black-box-api.integration.spec.ts`. That means a ported-idiom ledger in `progress/impl_api_tests.md`, and #7's assertions enumerated as a search result, with its amendment A1 (see #7's `progress/review_api_tests.md` §2 D4).
-- **Harness to reuse.** Phase 15's real fleet (`tests/Gateway.IntegrationTests/SagaEndToEndVerificationTests.cs`, `SagaFleet`) is the proven harness. Decide, with evidence, whether id 31 reuses that fleet or builds its own; do not supply the answer in the brief.
-- **Id 104 `dead_letter_producer_defaults_to_localhost`.** The dead-letter producer's bootstrap should fall back to `Kafka.BootstrapServers`. Found by this wrap-up's gate; do it first, because id 31's fleet dead-letters too.
-- **Stopping rule for phase 18, written now:** the phase closes ids 31 and 104. A new finding outside them is filed with a disposition and worked only if the maintainer says so. **If the maintainer asks for a full wrap-up, it comes first**: ask before starting any fix (memory: `wrap-up-request-comes-first`).
+**Brief for the next session.** Start it in a FRESH session, and apply CLAUDE.md's "Cost discipline".
+- **Id 32 `e2e_playwright`** (sdd: false). Its acceptance bullets:
+  - an order reaches `completed` in the UI;
+  - a `.99` order reaches `cancelled` with its compensation visible.
+- **Classification: FULL**, because it exercises the saga end to end. That means one Sonnet implementer and one Opus review.
+- **What to port:** #7's `apps/web/e2e/` (`global.setup.ts`, `happy-path.spec.ts`, `compensation.spec.ts`) and #7's `apps/web/playwright.config.ts`, whose base URL now honours `WEB_PORT`, default 3010. That means a ledger, plus an inventory of #7's assertions.
+- **Questions the implementer answers with evidence:**
+  - What stack does Playwright run against? `scripts/dev-stack.sh` (in-process .NET services plus `next start`), or a composed stack? Full Docker Compose is phase 23.
+  - How are browsers installed?
+  - How does the suite join `./quality.sh`, or why does it stay a separate gate, as in #7?
 - **Environment:**
-  - Integration tests must pass with the developer infrastructure DOWN. Run them that way at least once per feature; id 104 was hidden for a whole phase by a developer Kafka on 9092.
-  - The maintainer's `~/.docker/config.json` names a missing `docker-credential-desktop`. For image builds, use a scratch `DOCKER_CONFIG`; never edit their file.
+  - The web app runs on 3010.
+  - Tests must not depend on data left in the developer databases, which hold junk probe orders.
+  - For any image build, use a scratch `DOCKER_CONFIG`.
+- **Stopping rule:** the phase closes id 32. Any new finding is filed with a disposition. If the maintainer asks for a full wrap-up, that comes first.
 
 ## FULL WRAP-UP DONE (user's word, 2026-09-11) — phase 14 checkpoint pushed; continuing with id 62
 

@@ -3064,3 +3064,44 @@ This entry came from advisory A1 of id 29's review round 4, and it was fixed as 
 - **Result:** the saga class passes 5/5 with the infrastructure down. Removing the setting fails Criterion 4 with `Assert.NotNull() Failure: Value is null`; the file was restored and checked with `cmp`.
 - **The wider class is filed as backlog id 104 for phase 18:** about twenty test hosts leave the dead-letter default. The maintainer asked that the wrap-up come first.
 - Also fixed during the gate: an IDE1006 field name in `CurrencyExponentWebParityTests.cs` (id 103's round), found by `dotnet format`.
+
+## Id 104 `dead_letter_producer_defaults_to_localhost` (phase 18, light): closed 2026-09-17
+
+- **Change:** in Orders, Projector and Notifications, `DeadLetterKafkaOptions.BootstrapServers` now defaults to empty and falls back to the service's own `Kafka.BootstrapServers` at registration. Production configuration still sets it explicitly. Test hosts that configure Kafka once no longer dead-letter to `localhost:9092`.
+- **Tests:** three new unit tests, one per service, each armed by the implementer.
+- **The leader's check (the first light-process close):**
+  - read the diff; the test-file edits were comment-only;
+  - re-ran the Orders, Projector and Notifications unit tests (503/121/114), `Architecture.Tests` (50) and `dotnet format`;
+  - re-armed the Projector fallback test.
+  - The implementer also ran `Projector.IntegrationTests` (68/68) with nothing on port 9092.
+- **Effort:** one implementer session, about 15 minutes, 149k subagent tokens; no reviewer.
+
+## Id 31 `api_tests` (phase 18, full process): closed 2026-09-17, approved on the first review
+
+- **Change:** `tests/Gateway.IntegrationTests/BlackBoxApiTests.cs` adds 7 facts. They drive the real Gateway (in-process, over real Kestrel, with `HttpClient` as the only client) against its own `SagaFleet`, in its own xUnit collection with its own four containers.
+  - The facts cover the full happy path, the full compensation path, and a duplicate `paymentReference` yielding one payment.
+  - They close R24's API half structurally, with `AssertCausalOrder` (#7's amendment A1).
+  - They close R49's API half with three refusals. Each is checked against Billing's own database. #8 is the first in the trilogy to close R49 at API level.
+- **Matrix:** R24 and R49 Status cells flipped. Columns 1–4 are unchanged and match #7.
+- **Verification:**
+  - The reviewer ran `Gateway.IntegrationTests` once with the developer infrastructure down: 77/77.
+  - The reviewer's six arms each failed on the claim they target (`progress/review_api_tests.md` §2). Arm A reversed the projector's causal-depth tiebreak (D4's shape) and failed inside `AssertCausalOrder`.
+  - The implementer reported 77/77 on three runs and 5 arms.
+- **Condition of approval (F1):** one sentence in the R49 Status cell ("the third is the identical code path") must be corrected before the commit.
+- **Open, non-blocking:** N1, the `AssertCausalOrder` helper has no at-least-one-edge check (#7's N7, not ported). The leader should file it as a light backlog entry.
+- **Review:** `progress/review_api_tests.md`.
+
+**Effort record.**
+- 1 implementer session, 09:33:16Z → 11:03:39Z (about 1 h 30 min, 124k output tokens). It included one self-found regression: the shared collection caused 5 timeouts, fixed by splitting the collection.
+- 1 review (Opus), 12:32Z → about 13:00Z (about 30 min). It included 6 single-test arms and one full project run of 9 min 5 s.
+- Totals: **1 implementer session, 1 review, 0 rejections.** About 3 h 30 min from dispatch to close, including the leader's idle time between sessions; about 2 h of agent work.
+
+**Against #7's baseline:** #7's id 31 took **8 sessions**: 3 implementer passes, 3 reviews (2 rejected), a spec amendment and a human gate, with about 2 h 55 min of evidenced work on its second day plus the first evening's session. #8 closed in **2 sessions with no rejection**. This was faster, and the reason is traceable: #7's rejections (the R28 tie, then D4's tiebreak) were projector ordering defects, and #8's projector already shipped #7's "Option B" causal-depth sort. The black-box suite therefore found nothing in production to fix, and the review confirmed this by reversing that sort. The saving comes from reusing #7's findings, not from the test port itself.
+
+## Id 105 `causal_order_check_is_vacuous_without_causation_id` (phase 18, light): closed 2026-09-17
+
+- **Found by:** id 31's review (N1).
+- **Change:** `AssertCausalOrder` now fails when it checked fewer causal edges than required (the happy path needs 3, measured on the real timeline). A fleet-free meta-guard covers a timeline with no `causationId`.
+- **Proof:** the implementer removed the Gateway's `causationId` mapping, and the happy path failed with "no causal edges were checked"; the mapping was restored.
+- **Leader check:** the source file matches HEAD; both meta-guards pass.
+- **Effort:** one implementer session, about 16 minutes, 97k tokens; no reviewer.
