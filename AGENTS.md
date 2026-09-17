@@ -22,7 +22,8 @@
 | `progress/review_<feature>.md` | Reviewer's verdict for one feature | When closing a feature |
 | `specs/shared/` | The stack-agnostic spec, **copied verbatim from #7** — read it, never rewrite it | Before designing anything |
 | `specs/<feature>/` | Triple-doc (`requirements.md` EARS + `design.md` + `tasks.md`) | Before implementing any `"sdd": true` feature |
-| `CLAUDE.md` | Leader role + project conventions (layering, naming, money, testing, commits) | Before writing code |
+| `CLAUDE.md` | Leader role + project conventions (cost discipline, layering, naming, money, testing, commits) — kept short | Before writing code |
+| `docs/lessons.md` | The incident record and reasoning behind each `CLAUDE.md` rule (archive) | Only when you need the *why* of a rule |
 | `CHECKPOINTS.md` | Objective "is this session closeable" criteria | To self-assess before closing |
 | `docs/PROCESS.md` | The full process guide: harness + SDD concepts, the cast, the loop, EARS, the artifact registry, current status | To understand or replicate the process; **updated at the end of every phase** |
 | `.claude/agents/` | Subagent definitions (leader, spec_author, implementer, reviewer, test_maintainer, suite_runner) | When orchestrating work |

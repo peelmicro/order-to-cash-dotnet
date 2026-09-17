@@ -47,15 +47,16 @@ Do not continue. Remind the human it is their turn.
 An interrupted session. Ask the human whether to resume the implementer or abort.
 
 **Case F — `in_review`**
-Launch **one `reviewer`**. If it rejects, set `in_progress` and relaunch the
-implementer with the review file as input.
+Launch **one `reviewer`** (`model: "sonnet"` unless the change is in CLAUDE.md's
+full group). If it rejects, set `in_progress` and relaunch the implementer with
+the review file as input. After a SECOND rejection, stop and ask the human.
 
 ## Effort scaling
 
 | Complexity | Subagents |
 |---|---|
-| Trivial (1 file) | 1 implementer |
-| Small (2–3 files, `sdd: false`) | 1 implementer → 1 reviewer |
+| Light (UI text, config, docs, formatting, test-only — see CLAUDE.md "Cost discipline") | 1 implementer → leader reads the diff and runs the tests; no reviewer |
+| Small, full group (saga, money domain, contract, persistence, security) | 1 implementer → 1 reviewer (Opus) |
 | Large (`sdd: true`) | 1 spec_author → ⏸ → 1 implementer → 1 reviewer |
 | Very large / unfamiliar | 2–3 Explore agents in parallel → 1 spec_author → ⏸ → 1 implementer → 1 reviewer |
 
@@ -69,7 +70,7 @@ accept a result that arrives as text without a file reference.
 ## What you never do
 
 - ❌ Edit files under `src/` or `apps/web/`.
-- ❌ Mark a feature `done` — that is the reviewer's call.
+- ❌ Mark a full-group feature `done` — that is the reviewer's call. A light change may be closed by the leader after reading the diff and running the affected tests, with that recorded in the entry's notes.
 - ❌ Skip the human approval gate between `spec_ready` and `in_progress`.
 - ❌ Run `git commit` or `git push`. Report what was done and how to test it;
   the human commits.

@@ -242,6 +242,14 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
+**Process change, 2026-09-17 (maintainer ruling after phase 16).** Phase 16 used 24% of a weekly usage allowance in under a day: 92% of it in subagents and 85% at over 150k context. So:
+- `CLAUDE.md` was cut from 81 KB to 14 KB, and its incident narratives moved to `docs/lessons.md`.
+- A "Cost discipline" section now sizes the process to the change. Light changes get one implementer, and the leader checks the diff. The full implementer-plus-reviewer process is kept for saga, money-domain, contract, spec, persistence and security work.
+- The reviewer runs on Sonnet outside that group.
+- After a second rejection the leader asks the maintainer.
+- #7 is touched only for spec amendments or on request.
+- Each phase runs in a fresh session.
+
 **Position: Phase 16 COMPLETE (and phase 17, completed inside it) — 92 of 103 features done.** Counted from `feature_list.json` on 2026-09-17, after the wrap-up filed id 104 (a test host dead-lettering to the developer's Kafka, found by the quality gate, fixed in the one test it broke and routed to phase 18). All nine phase-16 entries are done (29, 96, 97, 98, 99, 100, 101, 102, 103), and phase 17's only entry (id 30, web component tests with Vitest + React Testing Library) was built alongside the web app it tests. Next: **phase 18, API tests through the Gateway** (id 31).
 
 The phase's feature (id 29) is the Next.js App Router web app with a BFF: the session token lives in an httpOnly sealed cookie, and route handlers proxy to the Gateway, including the live SSE timeline with `Last-Event-ID` resume. It took **four review rounds**. Twice review defeated a syntax guard over the pages' error handling, so the guard was replaced by a **behavioural error sweep** that fails every request each page makes and checks what reaches the screen. The sweep found five real silent failures, and the two shapes that had beaten the syntax guard became rows 11 and 12 of `CLAUDE.md`'s defeat list. Two smaller defects were fixed alongside it: the Gateway ignored `GATEWAY_PORT` (id 96), and an expired session on a finished order showed "connection lost" (id 98).

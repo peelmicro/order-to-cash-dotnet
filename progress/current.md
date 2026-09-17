@@ -1,10 +1,10 @@
 # Current session
 
-**Feature:** none in progress. **Phase 16 COMPLETE (2026-09-17)**, with phase 17 (id 30) delivered inside it. 92 of 103 backlog features are done. Full wrap-up DONE: `./quality.sh` exit 0 (.NET 2115, web 286 + 7); #8 commits 226c707 (SA-5), 04d4329, 83223f1, e351603, 240ad06 and the docs commit; #7 commits 6dafee0 (SA-5), 828c743, e07d9ee, 3b3f98e, 1823f11; both pushed; external docs and both DotNet quizzes regenerated.
+**Feature:** none in progress; phase 18 is next, in a fresh session. **Phase 16 COMPLETE (2026-09-17)**, with phase 17 (id 30) delivered inside it. 92 of 103 backlog features are done. Full wrap-up DONE: `./quality.sh` exit 0 (.NET 2115, web 286 + 7); #8 commits 226c707 (SA-5), 04d4329, 83223f1, e351603, 240ad06 and the docs commit; #7 commits 6dafee0 (SA-5), 828c743, e07d9ee, 3b3f98e, 1823f11; both pushed; external docs and both DotNet quizzes regenerated.
 
 ## Next phase — Phase 18: API tests through the Gateway (id 31), plus id 104
 
-**Brief for the next session. Read before dispatching anything.**
+**Brief for the next session. Read before dispatching anything.** Start phase 18 in a FRESH session. Apply CLAUDE.md's "Cost discipline" section (maintainer ruling of 2026-09-17: the process is sized to the change, the reviewer runs on Sonnet outside the full group, and the maintainer is asked after a second rejection). Id 31 is API-test work against the saga, so it belongs to the full group. Id 104 is test and config plumbing, so it is light.
 - **Id 31 `api_tests`** (sdd: false). Its acceptance bullets are in `feature_list.json`:
   - happy path;
   - compensation path;
