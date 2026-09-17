@@ -9,6 +9,18 @@ namespace OrderToCash.Gateway.Infrastructure;
 /// <summary>Every configuration knob <see cref="GatewayServiceCollectionExtensions.AddGateway"/> needs — the <c>NotificationsOptions</c>/<c>ProjectorOptions</c> shape.</summary>
 public sealed class GatewayOptions
 {
+    /// <summary>
+    /// Backlog id 96 — the TCP port the Gateway's HTTP surface listens on,
+    /// read from <c>GATEWAY_PORT</c> (default 3001) by
+    /// <c>GatewayProgramConfiguration.Configure</c>, exactly as #7's
+    /// <c>apps/gateway/src/main.ts:30</c> reads it. <see langword="null"/>
+    /// means "no port chosen": <c>GatewayHost.CreateBuilder</c> then leaves
+    /// Kestrel's own URL configuration alone, which is what every test host
+    /// that supplies its own <c>configure</c> delegate (and its own
+    /// <c>--urls</c>) relies on.
+    /// </summary>
+    public int? Port { get; set; }
+
     public NatsOptions Nats { get; } = new();
 
     public GatewayMongoOptions Mongo { get; set; } = new();

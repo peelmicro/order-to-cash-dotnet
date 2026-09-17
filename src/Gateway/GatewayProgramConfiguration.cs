@@ -29,6 +29,10 @@ public static class GatewayProgramConfiguration
 {
     public static void Configure(GatewayOptions options)
     {
+        // Backlog id 96 — #7: `Number(process.env.GATEWAY_PORT ?? 3001)`
+        // (apps/gateway/src/main.ts:30). The same TryParse-or-default shape
+        // the five sibling services use for their own *_HEALTH_PORT reads.
+        options.Port = int.TryParse(Environment.GetEnvironmentVariable("GATEWAY_PORT"), out var port) ? port : 3001;
         options.Nats.Url = BuildNatsUrl();
         options.Mongo = GatewayMongoOptions.FromEnvironment();
         options.LoginThrottle = LoginThrottleOptions.FromEnvironment();

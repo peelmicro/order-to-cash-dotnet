@@ -30,6 +30,18 @@ public sealed class GatewayProgramConfigurationTests
         "GATEWAY_LOGIN_RATE_LIMIT", "GATEWAY_LOGIN_RATE_WINDOW_SECONDS",
         "JWT_SECRET", "JWT_ISSUER", "JWT_EXPIRES_IN",
         "GATEWAY_SSE_BUFFER_CAPACITY", "GATEWAY_SSE_PING_INTERVAL_MS",
+        "GATEWAY_PORT", "ORDERS_HEALTH_PORT", "FULFILLMENT_HEALTH_PORT", "BILLING_HEALTH_PORT", "NOTIFICATIONS_HEALTH_PORT", "PROJECTOR_HEALTH_PORT", "WEB_PORT",
+    ];
+
+    /// <summary>Backlog id 96 — GATEWAY_PORT's sibling family: every other <c>*_PORT</c> a service process of this stack reads for its own listener, each given a DISTINCT non-default value so a repointed read fails naming the key it read.</summary>
+    private static readonly (string Name, int Value)[] _siblingPorts =
+    [
+        ("ORDERS_HEALTH_PORT", 23002),
+        ("FULFILLMENT_HEALTH_PORT", 23003),
+        ("BILLING_HEALTH_PORT", 23004),
+        ("NOTIFICATIONS_HEALTH_PORT", 23005),
+        ("PROJECTOR_HEALTH_PORT", 23006),
+        ("WEB_PORT", 23010),
     ];
 
     private static void ClearAll()
@@ -157,5 +169,78 @@ public sealed class GatewayProgramConfigurationTests
         {
             ClearAll();
         }
+    }
+
+    /// <summary>Backlog id 96 — GATEWAY_PORT defaults to 3001 when unset, exactly as #7's <c>Number(process.env.GATEWAY_PORT ?? 3001)</c> (apps/gateway/src/main.ts:30).</summary>
+    [Fact]
+    public void Configure_DefaultsGatewayPortTo3001_WhenGatewayPortIsUnset()
+    {
+        ClearAll();
+        SetRequiredMongoPassword();
+        try
+        {
+            var options = new GatewayOptions();
+            GatewayProgramConfiguration.Configure(options);
+
+            Assert.True(
+                options.Port == 3001,
+                $"GATEWAY_PORT unset must default GatewayOptions.Port to 3001 (#7 main.ts:30); got {Describe(options.Port)}.");
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    /// <summary>
+    /// ⚑ARM — backlog id 96, substitution: GATEWAY_PORT and every sibling
+    /// port variable are set to DISTINCT non-default values before the
+    /// assertion, so repointing the read at a sibling fails on that
+    /// sibling's value — and the message names the key that was read —
+    /// never on the fallback-to-default reason. Deleting the read fails
+    /// here too (the port stays unset).
+    /// </summary>
+    [Fact]
+    public void Configure_ReadsGatewayPort_FromItsOwnDistinctVariableName_NeverASiblingsKey()
+    {
+        ClearAll();
+        SetRequiredMongoPassword();
+        Environment.SetEnvironmentVariable("GATEWAY_PORT", "13001");
+        foreach (var (name, value) in _siblingPorts)
+        {
+            Environment.SetEnvironmentVariable(name, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        try
+        {
+            var options = new GatewayOptions();
+            GatewayProgramConfiguration.Configure(options);
+
+            Assert.True(
+                options.Port == 13001,
+                $"GatewayOptions.Port must come from GATEWAY_PORT (=13001); got {Describe(options.Port)}.");
+        }
+        finally
+        {
+            ClearAll();
+        }
+    }
+
+    private static string Describe(int? port)
+    {
+        if (port is null)
+        {
+            return "null — GATEWAY_PORT was never read";
+        }
+
+        foreach (var (name, value) in _siblingPorts)
+        {
+            if (value == port)
+            {
+                return $"{port} — the value of {name}, so the read is repointed at {name}";
+            }
+        }
+
+        return port == 3001 ? "3001 — the default, so GATEWAY_PORT was not read" : port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 }

@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -71,6 +72,8 @@ public static class GatewayHost
         var options = new GatewayOptions();
         configure(options);
 
+        ApplyListenPort(builder, options);
+
         builder.Services.AddGateway(options);
         builder.Services.AddLoginRateLimiter(options.LoginThrottle);
 
@@ -98,6 +101,39 @@ public static class GatewayHost
         builder.Services.AddDispatcher(Assembly.GetExecutingAssembly());
 
         return builder;
+    }
+
+    /// <summary>
+    /// Backlog id 96 — binds Kestrel to <see cref="GatewayOptions.Port"/> on
+    /// every interface (#7's <c>app.listen(port)</c> with no host does the
+    /// same), UNLESS an explicit URL is already configured.
+    /// <para>
+    /// Precedence: an explicit <c>urls</c> setting — <c>--urls</c> on the
+    /// command line, or <c>ASPNETCORE_URLS</c>/<c>DOTNET_URLS</c> in the
+    /// environment — wins over <c>GATEWAY_PORT</c>. It is the platform's own
+    /// explicit, full-URL override (scheme and host as well as port), and it
+    /// is the seam every in-process test host already uses
+    /// (<c>--urls http://127.0.0.1:0</c>) to take an ephemeral port, so those
+    /// hosts can never collide on 3001. <c>ASPNETCORE_HTTP_PORTS</c> is
+    /// deliberately NOT treated as explicit: the official ASP.NET Core
+    /// container images set it to 8080 by default, so honouring it would
+    /// silently defeat <c>GATEWAY_PORT</c> in exactly the environment that
+    /// declares it; <c>UseUrls</c> takes precedence over it.
+    /// </para>
+    /// </summary>
+    private static void ApplyListenPort(WebApplicationBuilder builder, GatewayOptions options)
+    {
+        if (options.Port is not { } port)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(builder.Configuration[WebHostDefaults.ServerUrlsKey]))
+        {
+            return;
+        }
+
+        builder.WebHost.UseUrls($"http://+:{port}");
     }
 
     /// <summary>Wires the middleware pipeline and maps every endpoint this feature builds — a separate step from <see cref="CreateBuilder"/> so a test can build the app WITHOUT ever starting Kestrel and still enumerate real endpoint metadata (<c>app.Services.GetRequiredService&lt;EndpointDataSource&gt;()</c>).</summary>
