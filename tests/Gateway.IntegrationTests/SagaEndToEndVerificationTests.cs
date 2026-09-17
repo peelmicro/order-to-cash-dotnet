@@ -325,7 +325,7 @@ public sealed class SagaEndToEndVerificationTests(
             await producer.ProduceAsync(SagaFleet.OrdersFactsTopic, new Message<string, byte[]> { Key = correlationId.ToString(), Value = poisonBytes });
         }
 
-        var dlqRecord = await ConsumeOneFromDlqAsync(correlationId, TimeSpan.FromSeconds(90));
+        var dlqRecord = await ConsumeOneFromDlqAsync(correlationId, "orders.saga", TimeSpan.FromSeconds(90));
         Assert.NotNull(dlqRecord);
         Assert.Equal(poisonBytes, dlqRecord!.Message.Value);
 
@@ -336,6 +336,15 @@ public sealed class SagaEndToEndVerificationTests(
         Assert.Equal("orders.saga", headers["x-failed-consumer"]);
         Assert.Equal(SagaFleet.OrdersFactsTopic, headers["x-original-topic"]);
         Assert.Equal("stock.reserved.v1", headers["x-event-type"]);
+
+        // Verify the Projector's own dead-lettering for the same poison reaches the container.
+        var projectorDlqRecord = await ConsumeOneFromDlqAsync(correlationId, "projector", TimeSpan.FromSeconds(90));
+        Assert.NotNull(projectorDlqRecord);
+        var projectorHeaders = projectorDlqRecord.Message.Headers.ToDictionary(
+            h => h.Key,
+            h => System.Text.Encoding.UTF8.GetString(h.GetValueBytes()),
+            StringComparer.Ordinal);
+        Assert.Equal(SagaFleet.OrdersFactsTopic, projectorHeaders["x-original-topic"]);
 
         // THE property that actually failed live: the NEXT, DISTINCT,
         // WELL-FORMED fact on the SAME partition (same key) still
@@ -582,7 +591,7 @@ public sealed class SagaEndToEndVerificationTests(
         throw new TimeoutException($"no saga_ignored_facts row ever appeared for eventId {eventId} within {timeout}.");
     }
 
-    private async Task<ConsumeResult<string, byte[]>?> ConsumeOneFromDlqAsync(Guid correlationId, TimeSpan timeout)
+    private async Task<ConsumeResult<string, byte[]>?> ConsumeOneFromDlqAsync(Guid correlationId, string expectedFailedConsumer, TimeSpan timeout)
     {
         const string dlqTopic = SagaFleet.OrdersFactsTopic + ".dlq";
         using var consumer = new ConsumerBuilder<string, byte[]>(new ConsumerConfig
@@ -600,7 +609,16 @@ public sealed class SagaEndToEndVerificationTests(
             var result = consumer.Consume(TimeSpan.FromMilliseconds(500));
             if (result is not null && !result.IsPartitionEOF && MatchesCorrelationId(result.Message.Value, correlationId))
             {
-                return result;
+                var headers = result.Message.Headers.ToDictionary(
+                    h => h.Key,
+                    h => System.Text.Encoding.UTF8.GetString(h.GetValueBytes()),
+                    StringComparer.Ordinal);
+                if (headers.TryGetValue("x-failed-consumer", out var failedConsumer) && failedConsumer == expectedFailedConsumer)
+                {
+                    return result;
+                }
+                // Record did not match the expected consumer; skip and continue searching.
+                continue;
             }
         }
 
@@ -941,6 +959,9 @@ internal sealed class SagaFleet : IAsyncDisposable
             {
                 options.Kafka.BootstrapServers = kafka.BootstrapServers;
                 options.Kafka.PollTimeoutMs = 200;
+                // ProjectorFacts' DeadLetter is a SEPARATE, dedicated
+                // producer connection that defaults to "localhost:9092".
+                options.DeadLetter.BootstrapServers = kafka.BootstrapServers;
                 options.Nats.Url = nats.Url;
                 options.Mongo.ConnectionUri = mongo.ConnectionString;
                 options.Mongo.Database = mongoDatabase;
