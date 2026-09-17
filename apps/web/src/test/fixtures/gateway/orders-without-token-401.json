@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /orders",
+  "capturedAt": "2026-09-16T14:53:36.568Z",
+  "status": 401,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"Missing, expired or invalid bearer token\",\"status\":401,\"detail\":\"missing bearer token\",\"code\":\"UNAUTHORIZED\",\"correlationId\":\"dc613816-fc40-4142-bc0b-9cbd65723422\",\"occurredAt\":\"2026-09-16T14:53:36.549Z\"}"
+}

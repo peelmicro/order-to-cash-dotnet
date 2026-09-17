@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /invoices",
+  "capturedAt": "2026-09-16T14:57:32.421Z",
+  "status": 503,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The owning context is unreachable\",\"status\":503,\"detail\":\"RPC call to \\\"billing.invoice.list\\\" failed: no responder is subscribed to this subject.\",\"code\":\"UPSTREAM_UNAVAILABLE\",\"correlationId\":\"ffb9923e-71bf-4297-bd08-a6e39a1404c1\",\"occurredAt\":\"2026-09-16T14:57:32.420Z\"}"
+}

@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "POST /invoices/{issued invoice}/payments",
+  "capturedAt": "2026-09-17T06:24:34.848Z",
+  "status": 422,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"Payment amount does not match the invoice total\",\"status\":422,\"detail\":\"Payment amount 92.46 EUR does not equal the invoice's totalAmount 92.45 EUR.\",\"code\":\"PAYMENT_MISMATCH\",\"correlationId\":\"3e26385c-e39d-4424-aff3-2316262110ee\",\"occurredAt\":\"2026-09-17T06:24:34.846Z\"}"
+}

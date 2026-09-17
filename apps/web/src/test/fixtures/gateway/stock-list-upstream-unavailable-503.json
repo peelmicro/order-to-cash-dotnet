@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /stock",
+  "capturedAt": "2026-09-16T14:57:32.415Z",
+  "status": 503,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The owning context is unreachable\",\"status\":503,\"detail\":\"RPC call to \\\"fulfillment.stock.list\\\" failed: no responder is subscribed to this subject.\",\"code\":\"UPSTREAM_UNAVAILABLE\",\"correlationId\":\"a8e6f3d5-1e23-4eef-8d84-1857161f1622\",\"occurredAt\":\"2026-09-16T14:57:32.413Z\"}"
+}

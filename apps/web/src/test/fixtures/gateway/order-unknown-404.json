@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /orders/{random uuid}",
+  "capturedAt": "2026-09-16T14:53:36.653Z",
+  "status": 404,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"No such resource\",\"status\":404,\"detail\":\"no order for id \\\"dffe6be7-6db7-4212-bd37-88e3f5ab430c\\\"\",\"code\":\"NOT_FOUND\",\"correlationId\":\"462b52c4-9dfb-46a1-b41a-cceeaafd664c\",\"occurredAt\":\"2026-09-16T14:53:36.651Z\"}"
+}

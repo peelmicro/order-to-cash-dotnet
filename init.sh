@@ -187,8 +187,22 @@ if [ -f .superseded-rules ]; then
   SUPERSEDED_HITS=0
   while IFS= read -r rule; do
     case "$rule" in ''|'#'*) continue ;; esac
-    HITS="$(grep -rlF -- "$rule" --include='*.md' --include='*.json' --include='*.sh' --include='*.yml' . 2>/dev/null \
-              | grep -vE '^\./(progress/|\.superseded-rules|node_modules/|bin/|obj/)' || true)"
+    # Options BEFORE `--`: after it grep reads every argument as a path, so the
+    # original `-- "$rule" --include=...` silently dropped every --include and
+    # scanned all file types — including apps/web/node_modules (600+ MB), which
+    # its `^\./node_modules/` post-filter never matched.
+    #
+    # Every TEXT file is scanned (-I skips binaries), not an extension list: the
+    # first fix used one, and it went blind to extension-less tracked files such
+    # as scripts/git-hooks/commit-msg — a narrowing found by review, not by the
+    # author. Build output, dependencies, logs and history are excluded at the
+    # source, never by post-filtering the output.
+    HITS="$(grep -rlIF \
+              --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=coverage \
+              --exclude-dir=bin --exclude-dir=obj --exclude-dir=.git \
+              --exclude-dir=TestResults --exclude-dir=logs --exclude-dir=progress \
+              -- "$rule" . 2>/dev/null \
+              | grep -vE '^\./\.superseded-rules$' || true)"
     if [ -n "$HITS" ]; then
       fail "superseded rule text still present: \"$(printf '%.60s' "$rule")...\""
       printf '%s\n' "$HITS" | sed 's/^/          /'

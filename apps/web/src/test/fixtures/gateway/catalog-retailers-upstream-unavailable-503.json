@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /catalog/retailers",
+  "capturedAt": "2026-09-16T17:27:43.099Z",
+  "status": 503,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The owning context is unreachable\",\"status\":503,\"detail\":\"RPC call to \\\"catalog.reference.list\\\" failed: no responder is subscribed to this subject.\",\"code\":\"UPSTREAM_UNAVAILABLE\",\"correlationId\":\"e983dc0b-0f21-4668-85ca-b20609d60a6e\",\"occurredAt\":\"2026-09-16T17:27:43.097Z\"}"
+}

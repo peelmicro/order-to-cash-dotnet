@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /orders/not-a-uuid",
+  "capturedAt": "2026-09-16T14:53:36.578Z",
+  "status": 400,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The request was malformed or failed schema validation\",\"status\":400,\"detail\":\"id: \\\"not-a-uuid\\\" is not a valid id\",\"code\":\"VALIDATION_FAILED\",\"correlationId\":\"bc852556-4389-4855-92ad-914e12c2b1cf\",\"occurredAt\":\"2026-09-16T14:53:36.574Z\",\"errors\":[{\"field\":\"id\",\"message\":\"\\\"not-a-uuid\\\" is not a valid id\"}]}"
+}

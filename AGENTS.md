@@ -29,7 +29,8 @@
 | `http/` | REST Client `.http` files for manual probing of a running stack | When testing by hand |
 | `src/` | The 6 services + `SharedKernel` (dependency-free) + `Contracts` (generated types) + `Cqrs` (the in-process dispatcher, Application-layer only) + `Seed` | To implement |
 | `tests/` | Architecture (NetArchTest), unit, integration, API and end-to-end suites | To implement |
-| `apps/web/` | The Next.js app — the only place pnpm lives | To implement |
+| `apps/web/` | The Next.js app, with its own `package.json` and lockfile | To implement |
+| `package.json` (root) | Command shortcuts only (`pnpm run` lists them), modelled on #7's; no dependencies. Services run with the stack's env through `scripts/dev-stack.sh env` | To run things by hand |
 | `infra/`, `docker-compose*.yml` | Infrastructure | For environment work |
 
 ## 3. Hard rules (non-negotiable)

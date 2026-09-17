@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "POST /orders",
+  "capturedAt": "2026-09-16T14:57:32.451Z",
+  "status": 503,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The owning context is unreachable\",\"status\":503,\"detail\":\"fulfillment.stock.check: transport failure on subject \\\"fulfillment.stock.check\\\": no responder is subscribed to fulfillment.stock.check.\",\"code\":\"UPSTREAM_UNAVAILABLE\",\"correlationId\":\"d84f8d71-ce8c-4139-ad0c-976d2a30e1ab\",\"occurredAt\":\"2026-09-16T14:57:32.449Z\"}"
+}

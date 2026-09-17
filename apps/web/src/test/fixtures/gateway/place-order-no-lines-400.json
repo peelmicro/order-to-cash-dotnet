@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "POST /orders",
+  "capturedAt": "2026-09-16T14:53:36.667Z",
+  "status": 400,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The request was malformed or failed schema validation\",\"status\":400,\"detail\":\"lines: at least one line is required.\",\"code\":\"VALIDATION_FAILED\",\"correlationId\":\"1c8f9f14-466a-44c8-9fbd-c3ff359e088f\",\"occurredAt\":\"2026-09-16T14:53:36.665Z\",\"errors\":[{\"field\":\"lines\",\"message\":\"at least one line is required.\"}]}"
+}

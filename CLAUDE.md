@@ -331,6 +331,8 @@ Dependencies point **inwards**: presentation → application → domain. Infrast
   | 8 | **Compare a literal to a literal** — a population "check" that never reads the tree | id 68 D2 |
   | 9 | **Satisfy the closer half of a two-part claim and leave the premise half stale** | id 72, four times |
   | 10 | **Let a build-output copy join the population** (`bin/`, `obj/`, `publish/`) | id 68 D9 |
+  | 11 | **Write the thing in a form the instrument does not recognise** — a statement where it parses expressions (an early `return`, a `switch`, a `||` fallback), an indirection it does not follow (component state, a hook in another file, a neutral prop name), or a framework convention file (`error.tsx`). **When a syntax guard keeps losing to new forms of a behavioural claim, test the behaviour instead** | id 29, review rounds 1 and 2 |
+  | 12 | **Serve the failure through a path the population never drives** — a second consumer of a shared hook, a read that only fires after a click, a request after the "settled" window, a status the probe never sends. Row 11's behavioural counterpart: an observational sweep sees only what it exercises | id 29, review round 3 |
 
   Not every attack applies to every guard — a guard that executes code cannot be beaten by a comment. **State which of the ten you ran, and for each one you skipped, why it does not apply.** That sentence is cheap to write and is the whole point: it converts "I did not think of it" into "I considered it and here is why it cannot bite", which is a claim a reviewer can check in seconds instead of a hole it must find in a round.
 

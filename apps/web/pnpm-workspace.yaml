@@ -1,0 +1,15 @@
+# apps/web is a standalone pnpm project (the backend has no Node dependency),
+# so this file carries only install policy, no `packages:` list.
+
+# unrs-resolver (transitive, via eslint-config-next -> eslint-import-resolver-typescript)
+# ships prebuilt native bindings as optional dependencies; its postinstall only
+# re-checks for them. Not needed — denied, as #7 denied non-project postinstalls.
+allowBuilds:
+  unrs-resolver: false
+
+# pnpm's supply-chain age gate: these exact versions were pinned on the day this
+# app was scaffolded (2026-09-16), younger than the default minimum release age.
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.103.0'
+  - '@tanstack/react-query@5.103.0'
+  - '@types/node@24.13.5'

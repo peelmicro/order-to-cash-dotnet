@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /orders?page=0",
+  "capturedAt": "2026-09-16T17:27:36.275Z",
+  "status": 400,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The request was malformed or failed schema validation\",\"status\":400,\"detail\":\"page: \\\"0\\\" is not a valid page (expected an integer between 1 and 2147483647)\",\"code\":\"VALIDATION_FAILED\",\"correlationId\":\"4918b6e2-e119-4ca8-9d7e-dfcead878986\",\"occurredAt\":\"2026-09-16T17:27:36.258Z\",\"errors\":[{\"field\":\"page\",\"message\":\"\\\"0\\\" is not a valid page (expected an integer between 1 and 2147483647)\"}]}"
+}

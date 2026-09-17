@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "POST /stock/replenish",
+  "capturedAt": "2026-09-16T14:53:37.037Z",
+  "status": 404,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"No such resource\",\"status\":404,\"detail\":\"No stock item for company 'IBERFOODS', product 'PRD-DOES-NOT-EXIST'.\",\"code\":\"NOT_FOUND\",\"correlationId\":\"12dca417-8a79-41a0-abd5-a9124c5a7e5b\",\"occurredAt\":\"2026-09-16T14:53:37.036Z\"}"
+}

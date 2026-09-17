@@ -1,0 +1,9 @@
+{
+  "capturedFrom": "GET /credits",
+  "capturedAt": "2026-09-16T14:57:32.426Z",
+  "status": 503,
+  "headers": {
+    "content-type": "application/problem+json"
+  },
+  "body": "{\"type\":\"about:blank\",\"title\":\"The owning context is unreachable\",\"status\":503,\"detail\":\"RPC call to \\\"billing.credit.list\\\" failed: no responder is subscribed to this subject.\",\"code\":\"UPSTREAM_UNAVAILABLE\",\"correlationId\":\"d9860514-8afa-4b98-90f2-e5060e482310\",\"occurredAt\":\"2026-09-16T14:57:32.425Z\"}"
+}
