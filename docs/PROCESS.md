@@ -250,6 +250,16 @@ Every process artifact in this repository: what it is for, and where it came fro
 - #7 is touched only for spec amendments or on request.
 - Each phase runs in a fresh session.
 
+**Position: Phase 19 COMPLETE, 1 of 1 entry closed, 96 of 105 features done.** Counted from `feature_list.json` on 2026-09-17.
+
+Id 32, Playwright end-to-end: full process, one Sonnet implementer, one Opus review. Approved on the first round, with two pre-commit corrections to the ported-idiom ledger — a false claim about a #7 locator, and a missing row for a property #8 already supplies. Both were record corrections, not behavioural defects; the reviewer verified the acceptance bullets and the assertions' teeth independently, from a stack it started and tore down itself, with mutation probes of its own design.
+
+This session also ran on Sonnet 5 as the session model (a maintainer choice, mid-usage-budget), with the reviewer still launched explicitly on Opus for this full-process work — the leader's own coordination ran on Sonnet, which held up for a well-scoped, single-feature phase.
+
+Found during the port and not fixed: id 106, a frontend accessibility defect (a per-line form field's `id` and its label's `htmlFor` can disagree under repeated server-side renders in a long-lived process). Filed as LIGHT, for a future session.
+
+> The paragraph below this note describes phase 18's position and is kept as history.
+
 **Position: Phase 18 COMPLETE, 3 of 3 entries closed, 95 of 104 features done.** Counted from `feature_list.json` on 2026-09-17.
 
 This was the first phase run under the new cost discipline:

@@ -1,24 +1,23 @@
 # Current session
 
-**Feature:** none in progress. **Phase 18 COMPLETE (2026-09-17)**: ids 104 (light), 31 (full, approved on Opus in its first review round) and 105 (light) are all done. 95 of 104 backlog features are done. Full wrap-up DONE: `./quality.sh` exit 0 (.NET 2126, including Gateway.IntegrationTests 78; web 286 + 7); commits e58ea63 (id 104) and c376b26 (ids 31 and 105), plus the docs commit; pushed; external docs and both DotNet quizzes regenerated. Next: phase 19, in a fresh session.
+**Feature:** none in progress. **Phase 19 COMPLETE (2026-09-17)**: id 32 `e2e_playwright` (full process, approved on Opus's first review with two pre-commit record corrections, both discharged) is done. 96 of 106 backlog features are done (id 106, a light frontend defect found during id 32, is filed and pending — the `place-order-form.tsx` per-line `id`/`htmlFor` mismatch). Not yet committed or pushed: id 32's work and its corrections, id 106's filing, and this session's use of Sonnet 5 as the session model with Opus still used explicitly for the full-process review.
 
-## Next phase — Phase 19: Playwright end-to-end (id 32)
+## Next phase — Phase 20: n8n demo workflows (id 33)
 
 **Brief for the next session.** Start it in a FRESH session, and apply CLAUDE.md's "Cost discipline".
-- **Id 32 `e2e_playwright`** (sdd: false). Its acceptance bullets:
-  - an order reaches `completed` in the UI;
-  - a `.99` order reaches `cancelled` with its compensation visible.
-- **Classification: FULL**, because it exercises the saga end to end. That means one Sonnet implementer and one Opus review.
-- **What to port:** #7's `apps/web/e2e/` (`global.setup.ts`, `happy-path.spec.ts`, `compensation.spec.ts`) and #7's `apps/web/playwright.config.ts`, whose base URL now honours `WEB_PORT`, default 3010. That means a ledger, plus an inventory of #7's assertions.
-- **Questions the implementer answers with evidence:**
-  - What stack does Playwright run against? `scripts/dev-stack.sh` (in-process .NET services plus `next start`), or a composed stack? Full Docker Compose is phase 23.
-  - How are browsers installed?
-  - How does the suite join `./quality.sh`, or why does it stay a separate gate, as in #7?
-- **Environment:**
-  - The web app runs on 3010.
-  - Tests must not depend on data left in the developer databases, which hold junk probe orders.
-  - For any image build, use a scratch `DOCKER_CONFIG`.
-- **Stopping rule:** the phase closes id 32. Any new finding is filed with a disposition. If the maintainer asks for a full wrap-up, that comes first.
+- **Id 33 `n8n_workflows`** (sdd: false). Its acceptance bullets:
+  - order generator, bank robot, stock replenishment, burst;
+  - auto-imported on container startup;
+  - removing n8n does not break the stack.
+- **Classification: LIGHT** (infra/config verification, no saga/money/contract/security touch). One implementer; the leader checks the diff and re-runs the affected checks. Re-classify to full only if evidence during the work says otherwise.
+- **The leader already checked three premises that change this phase's shape — do not re-derive them, but DO verify them live:**
+  1. `n8n/workflows/{1-order-generator,2-payment-robot,3-stock-replenishment,4-burst}.json` are already present and **byte-identical** to #7's (`diff -rq n8n/workflows ../order-to-cash-nestjs/n8n/workflows` — exit 0, no output), copied during the harness phase before any #8 code existed. There is nothing to "port" here.
+  2. `docker-compose.infra.yml` already has an `n8n-init` one-shot service (`n8n-init`, profile `n8n`) that runs `infra/n8n/import-workflows-on-startup.sh` — also reused byte-identically from #7, gated by `N8N_WORKFLOWS_ENABLED` per `specs/shared/n8n-workflows.md` §7.1. This has never been run against #8's stack and needs live verification: does `docker compose -f docker-compose.infra.yml --profile n8n up` actually import all four workflows, idempotently, on repeat runs?
+  3. **The four workflow JSONs' HTTP nodes point at `http://gateway:3001`** (the `GATEWAY_URL` variable, container-network hostname) — that hostname only resolves inside a composed stack with a `gateway` service, i.e. `docker-compose.apps.yml`, which **does not exist in #8 until phase 23**. So the workflows cannot be exercised end-to-end (actually triggered, actually hitting the Gateway) against `scripts/dev-stack.sh`'s in-process services today. **Open question, genuinely unresolved — the implementer answers it with evidence, not the leader:** can this phase's acceptance be met by (a) verifying the import mechanism only, deferring live execution to phase 23, (b) overriding `GATEWAY_URL` at import/run time to point at the host's `localhost:3001` so the workflows really run today, or (c) something else? Check `specs/shared/n8n-workflows.md` and #7's own phase history for how #7 sequenced this before deciding.
+- **The `n8n:import`/`n8n:export` root package.json shortcuts** (`README.md` lists them as waiting on this phase) port `scripts/import-n8n-workflows.sh` from #7 — read its header comment (cited by `infra/n8n/import-workflows-on-startup.sh`'s own header) for why the manual and auto-import paths differ (the manual one has no `N8N_WORKFLOWS_ENABLED` gate).
+- **"Removing n8n does not break the stack"**: check that no other `docker-compose.infra.yml` service has `depends_on: n8n` or `n8n-init`, and that `pnpm dc:up:infra:no-n8n` (already in the root `package.json`) genuinely starts everything else.
+- **Environment:** the web app runs on 3010; for any image build, use a scratch `DOCKER_CONFIG`, never edit the maintainer's `~/.docker/config.json`.
+- **Stopping rule:** the phase closes id 33. Id 106 (found in phase 19, a frontend `id`/`htmlFor` mismatch, LIGHT, non-blocking) is a candidate for the same session if there's room, but is not required to close phase 20. Any new finding is filed with a disposition. If the maintainer asks for a full wrap-up, that comes first.
 
 ## FULL WRAP-UP DONE (user's word, 2026-09-11) — phase 14 checkpoint pushed; continuing with id 62
 

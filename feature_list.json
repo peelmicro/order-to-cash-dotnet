@@ -1585,6 +1585,21 @@
         "armed once by stripping causationId from the entries the helper reads"
       ],
       "notes": "CLOSED 2026-09-17 as a LIGHT change: the helper now counts the edges it checks and fails if fewer than the minimum (happy path: 3, measured on the real 9-entry timeline); a new fleet-free meta-guard covers the no-causationId case. The implementer armed it by removing the Gateway's causationId mapping (MongoOrderReadModel.cs:132): the happy-path fact failed with 'no causal edges were checked', and the file was restored and verified with cmp. The leader verified that the src file matches HEAD, re-ran both meta-guards (2/2) and read the helper; the happy path runs in the wrap-up's quality.sh. Record: progress/impl_causal_order_check_is_vacuous_without_causation_id.md. Filed from progress/review_api_tests.md N1 (2026-09-17, id 31 approved). LIGHT change under CLAUDE.md Cost discipline (test-only). Disposition: fix in phase 18's next session if the maintainer agrees; it does not block id 31. #7 carries the same gap (its review N7) and is not mirrored, per the #7-is-complete rule."
+    },
+    {
+      "id": 106,
+      "name": "place_order_line_key_is_module_scope_mutable_state",
+      "phase": 19,
+      "title": "The order-line label htmlFor and its <select> id can disagree, because both derive from a module-scope mutable counter (nextLineKey) that free-runs across every SSR render a long-lived next start process serves, while the browser recomputes it from 1 on every hard navigation",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "the per-line product select's id and its label's htmlFor always agree, on the FIRST render after any number of prior server-side renders in the same process, not only on a freshly restarted process",
+        "the key is derived from something request- or render-scoped (e.g. React's useId()) rather than a module-level free-running counter, so it cannot leak state across unrelated requests in the same long-lived server process",
+        "a test proves it survives repeated renders: render the form N times in the same module instance (or otherwise force multiple SSR passes without a process restart) and assert the label/select ids still match on each one",
+        "getByLabel('Product') / getByRole('combobox', { name: 'Product' }) resolve correctly once fixed; apps/web/e2e/happy-path.spec.ts and compensation.spec.ts may then be simplified back from the structural locator (getByTestId('order-line').locator('select')) they were written to use instead, if the leader judges that worthwhile at the time"
+      ],
+      "notes": "Found by id 32's implementer while porting the Playwright suite (2026-09-17), confirmed live twice against a running dev-stack.sh: for=\"product-6\"/id=\"product-2\" on one load, for=\"product-7\"/id=\"product-2\" on the next. apps/web/src/features/orders/place-order-form.tsx:32-35, let nextLineKey = 1; incremented by emptyLine(). Does not block id 32's acceptance bullets (a mouse-driven operator is unaffected; the e2e tests route around it with a structural locator) and breaks label-click-to-focus and real assistive technology independent of Playwright. LIGHT change under CLAUDE.md Cost discipline (a component-local id-generation fix): one implementer, leader checks the diff and re-runs the affected Vitest/Playwright tests. Re-open trigger named in acceptance: any test that starts relying on getByLabel/getByRole name matching for a per-line field."
     }
   ]
 }
