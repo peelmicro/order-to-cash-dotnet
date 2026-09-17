@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "node --env-file-if-exists=../../.env ./node_modules/@playwright/test/cli.js test",
     "types:generate": "node scripts/openapi-types.mjs generate",
     "types:check": "node scripts/openapi-types.mjs check"
   },
@@ -33,6 +34,7 @@
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@tailwindcss/postcss": "4.3.3",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
