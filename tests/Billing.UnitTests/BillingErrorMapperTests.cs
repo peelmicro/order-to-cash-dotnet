@@ -36,9 +36,9 @@ public sealed partial class BillingErrorMapperTests
             new InvalidCreditRequestError("bad request"),
             new CreditLineNotFoundError("CarrefourEs", "IBERFOODS"),
             new CreditCurrencyMismatchError("EUR", "GBP"),
-            new CreditLimitExceededError(1_000, 500),
-            new CreditRefusalMismatchError(1_000, 2_000),
-            new CreditReleaseUnderflowError("ORD-000001", 500, 600),
+            new CreditLimitExceededError(1_000, 500, "EUR"),
+            new CreditRefusalMismatchError(1_000, 2_000, "EUR"),
+            new CreditReleaseUnderflowError("ORD-000001", 500, 600, "EUR"),
             new NoActiveHoldError("ORD-000001"),
             new CreditLedgerOverflowError(new OverflowException()),
             BuildDeadlockException(),
@@ -103,7 +103,7 @@ public sealed partial class BillingErrorMapperTests
     [Fact]
     public void NegativeInvoiceTotalError_MapsToValidationFailed_CarryingItsCode()
     {
-        var error = new NegativeInvoiceTotalError(1_000, 2_000);
+        var error = new NegativeInvoiceTotalError(1_000, 2_000, "EUR");
         var reply = BillingErrorMapper.Map(error, DateTimeOffset.UtcNow);
 
         Assert.Equal("VALIDATION_FAILED", reply.Code);
@@ -123,7 +123,7 @@ public sealed partial class BillingErrorMapperTests
     [Fact]
     public void InvoicePaymentAmountMismatchError_MapsToPreconditionFailed_CarryingItsCode()
     {
-        var error = new InvoicePaymentAmountMismatchError(1_000, 2_000);
+        var error = new InvoicePaymentAmountMismatchError(1_000, 2_000, "EUR");
         var reply = BillingErrorMapper.Map(error, DateTimeOffset.UtcNow);
 
         Assert.Equal("PRECONDITION_FAILED", reply.Code);

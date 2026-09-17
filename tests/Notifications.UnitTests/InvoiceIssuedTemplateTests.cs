@@ -37,7 +37,7 @@ public sealed class InvoiceIssuedTemplateTests
         Assert.Contains("Invoice <strong>INV-000001</strong> has been issued for order ORD-000001", message.Html, StringComparison.Ordinal);
         Assert.Contains("Retailer: CarrefourEs", message.Html, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Html, StringComparison.Ordinal);
-        Assert.Contains("1242.50 USD", message.Html, StringComparison.Ordinal);
+        Assert.Contains("1 242.50 USD", message.Html, StringComparison.Ordinal);
         Assert.Contains($"Invoice date: {_invoiceDate:O}", message.Html, StringComparison.Ordinal);
     }
 }

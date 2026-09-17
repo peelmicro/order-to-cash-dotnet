@@ -39,7 +39,7 @@ public sealed class OrderCompletedTemplateTests
         Assert.Contains("Order <strong>ORD-000001</strong> is complete", message.Html, StringComparison.Ordinal);
         Assert.Contains("Retailer: CarrefourEs", message.Html, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Html, StringComparison.Ordinal);
-        Assert.Contains("1242.50 USD", message.Html, StringComparison.Ordinal);
+        Assert.Contains("1 242.50 USD", message.Html, StringComparison.Ordinal);
         Assert.Contains($"Completed at: {_completedAt:O}", message.Html, StringComparison.Ordinal);
     }
 }

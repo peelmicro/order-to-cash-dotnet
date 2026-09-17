@@ -1,4 +1,5 @@
 using System.Text;
+using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Notifications.Application.Templates;
 
@@ -16,19 +17,15 @@ public static class NotificationFormat
     /// <summary>
     /// Renders an integer-minor-units amount (CLAUDE.md's Money rule: "never
     /// a float, never a decimal in domain arithmetic") as a human-readable
-    /// major-unit string for an email body — e.g.
-    /// <c>FormatMoney(124250, "USD")</c> -&gt; <c>"1242.50 USD"</c>. Display
-    /// only: integer division and modulo throughout, no floating-point or
-    /// <c>decimal</c> conversion anywhere in this method.
+    /// string for an email body, scaled by the currency's own ISO 4217
+    /// minor-unit exponent (SA-5) — e.g. <c>FormatMoney(124250, "USD")</c>
+    /// -&gt; <c>"1 242.50 USD"</c>, <c>FormatMoney(5000, "JPY")</c> -&gt;
+    /// <c>"5 000 JPY"</c>. Delegates to <see cref="MoneyText"/> — the same
+    /// implementation the Projector's timeline summaries and the Seed's
+    /// timeline fixtures use, so an email and a timeline entry read alike
+    /// for the same amount (backlog id 100).
     /// </summary>
-    public static string FormatMoney(long amountMinorUnits, string currency)
-    {
-        var sign = amountMinorUnits < 0 ? "-" : string.Empty;
-        var absoluteMinorUnits = amountMinorUnits == long.MinValue ? (ulong)long.MaxValue + 1 : (ulong)Math.Abs(amountMinorUnits);
-        var majorUnits = absoluteMinorUnits / 100;
-        var minorUnits = absoluteMinorUnits % 100;
-        return $"{sign}{majorUnits}.{minorUnits:D2} {currency}";
-    }
+    public static string FormatMoney(long amountMinorUnits, string currency) => MoneyText.Format(amountMinorUnits, currency);
 
     /// <summary>
     /// Synthesizes a recipient address from <paramref name="identifier"/> —

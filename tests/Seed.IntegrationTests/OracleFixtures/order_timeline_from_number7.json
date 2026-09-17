@@ -62,7 +62,7 @@
         "eventId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8",
         "eventType": "credit.approved.v1",
         "occurredAt": "2026-06-01T09:02:00.000Z",
-        "summary": "Credit hold of 16130 EUR approved",
+        "summary": "Credit hold of 161.30 EUR approved",
         "causationId": "07931069-003f-4cae-bde3-df5e37eed326"
       },
       {
@@ -187,7 +187,7 @@
         "eventId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19",
         "eventType": "credit.approved.v1",
         "occurredAt": "2026-06-02T09:02:00.000Z",
-        "summary": "Credit hold of 10374 EUR approved",
+        "summary": "Credit hold of 103.74 EUR approved",
         "causationId": "5651f5e0-c836-450c-8337-0c89c2e88f58"
       },
       {
@@ -312,7 +312,7 @@
         "eventId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f",
         "eventType": "credit.approved.v1",
         "occurredAt": "2026-06-03T09:02:00.000Z",
-        "summary": "Credit hold of 19450 EUR approved",
+        "summary": "Credit hold of 194.50 EUR approved",
         "causationId": "1c07c725-460a-46b6-8de2-7ec4cfd604b0"
       },
       {
@@ -437,7 +437,7 @@
         "eventId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e",
         "eventType": "credit.approved.v1",
         "occurredAt": "2026-06-04T09:02:00.000Z",
-        "summary": "Credit hold of 23972 EUR approved",
+        "summary": "Credit hold of 239.72 EUR approved",
         "causationId": "fcd71b31-7de9-48d8-973d-2182dd516fbe"
       },
       {
@@ -562,7 +562,7 @@
         "eventId": "45a832c1-2c42-45e5-bb59-82632d452d49",
         "eventType": "credit.approved.v1",
         "occurredAt": "2026-06-05T09:02:00.000Z",
-        "summary": "Credit hold of 10055 GBP approved",
+        "summary": "Credit hold of 100.55 GBP approved",
         "causationId": "839ccae2-cfe1-4447-9cbc-e53f919eb594"
       },
       {
@@ -680,7 +680,7 @@
         "eventId": "5cd7556e-6db2-414c-8910-2fe851c7db47",
         "eventType": "credit.rejected.v1",
         "occurredAt": "2026-06-06T09:02:00.000Z",
-        "summary": "Credit hold of 24999 EUR rejected (simulated_cents_rule)",
+        "summary": "Credit hold of 249.99 EUR rejected (simulated_cents_rule)",
         "detail": {
           "reason": "simulated_cents_rule",
           "requestedAmount": 24999

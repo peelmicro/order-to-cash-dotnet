@@ -10,8 +10,16 @@ namespace OrderToCash.Billing.Domain.Errors;
 /// outstanding exposure), so this error is the domain's own defence rather
 /// than a reachable caller mistake.
 /// </summary>
-public sealed class CreditReleaseUnderflowError(string orderReference, long outstandingMinorUnits, long requestedMinorUnits)
-    : DomainError("CREDIT_RELEASE_UNDERFLOW", $"Order '{orderReference}': releasing {requestedMinorUnits} would drive exposure below zero (outstanding {outstandingMinorUnits}).")
+/// <remarks>
+/// Backlog id 102: reaches a human via <c>BillingErrorMapper</c> -&gt;
+/// Gateway problem+json <c>detail</c>. Rendered with the shared money-text
+/// formatter (id 100). <paramref name="currency"/> is the credit line's own
+/// currency (<see cref="BuyerCredit.CreditLimit"/>'s).
+/// </remarks>
+public sealed class CreditReleaseUnderflowError(string orderReference, long outstandingMinorUnits, long requestedMinorUnits, string currency)
+    : DomainError(
+        "CREDIT_RELEASE_UNDERFLOW",
+        $"Order '{orderReference}': releasing {MoneyText.Format(requestedMinorUnits, currency)} would drive exposure below zero (outstanding {MoneyText.Format(outstandingMinorUnits, currency)}).")
 {
     public string OrderReference { get; } = orderReference;
 }

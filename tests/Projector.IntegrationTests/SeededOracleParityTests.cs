@@ -87,13 +87,14 @@ public sealed class SeededOracleParityTests(MongoContainerFixture mongoFixture, 
 
             // "detail" is excluded entirely (PR44) — the seed's fixtures
             // carry a hand-written subset; PR16's builders are detail's oracle.
-            // "summary" is excluded ONLY for credit.approved.v1/credit.rejected.v1
-            // (PR44 — #7's projector groups thousands, its seed did not).
-            var eventType = expectedEntry["eventType"].AsString;
-            if (eventType is not ("credit.approved.v1" or "credit.rejected.v1"))
-            {
-                AssertFieldEqual($"events[{i}].summary", expectedEntry["summary"], projectedEntry["summary"]);
-            }
+            // "summary" is now compared UNCONDITIONALLY, including for
+            // credit.approved.v1/credit.rejected.v1: backlog id 100 closed
+            // the voice difference PR44 used to except here — the seed
+            // (SagaFixtures.cs) and the projector (Summaries.cs) both
+            // delegate to the SAME OrderToCash.SharedKernel.MoneyText.Format,
+            // so their money-bearing summaries are byte-identical by
+            // construction, not merely voice-matched.
+            AssertFieldEqual($"events[{i}].summary", expectedEntry["summary"], projectedEntry["summary"]);
         }
     }
 

@@ -286,7 +286,7 @@ public static class SagaFixtures
         {
             new TimelineEntryFixture(orderPlacedEventId, "order.placed.v1", t0, $"Order {orderReference} placed for {input.RetailerCode}", orderPlacedCausationId),
             new TimelineEntryFixture(stockReservedEventId, "stock.reserved.v1", tStockReserved, $"Stock reserved for {reservations.Length} line(s)", stockReservedCausationId),
-            new TimelineEntryFixture(creditApprovedEventId, "credit.approved.v1", tCreditApproved, $"Credit hold of {totalAmount} {currency.Code} approved", creditApprovedCausationId),
+            new TimelineEntryFixture(creditApprovedEventId, "credit.approved.v1", tCreditApproved, $"Credit hold of {MoneyText.Format(totalAmount, currency.Code)} approved", creditApprovedCausationId),
             new TimelineEntryFixture(orderConfirmedEventId, "order.confirmed.v1", tOrderConfirmed, "Order confirmed (ORDRSP)", orderConfirmedCausationId),
             new TimelineEntryFixture(orderDespatchedEventId, "order.despatched.v1", tDespatched, $"Despatch {despatchReference} created", orderDespatchedCausationId),
             new TimelineEntryFixture(invoiceIssuedEventId, "invoice.issued.v1", tInvoiceIssued, $"Invoice {invoiceReference} issued", invoiceIssuedCausationId),
@@ -466,7 +466,7 @@ public static class SagaFixtures
                 creditRejectedEventId,
                 "credit.rejected.v1",
                 tCreditRejected,
-                $"Credit hold of {totalAmount} {currency.Code} rejected (simulated_cents_rule)",
+                $"Credit hold of {MoneyText.Format(totalAmount, currency.Code)} rejected (simulated_cents_rule)",
                 creditRejectedCausationId,
                 new Dictionary<string, object> { ["reason"] = "simulated_cents_rule", ["requestedAmount"] = totalAmount }),
             new TimelineEntryFixture(

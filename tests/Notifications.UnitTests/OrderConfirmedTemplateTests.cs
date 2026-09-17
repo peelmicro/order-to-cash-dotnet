@@ -37,7 +37,7 @@ public sealed class OrderConfirmedTemplateTests
         Assert.Contains("Order <strong>ORD-000001</strong> has been confirmed", message.Html, StringComparison.Ordinal);
         Assert.Contains("Retailer: CarrefourEs", message.Html, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Html, StringComparison.Ordinal);
-        Assert.Contains("1242.50 USD", message.Html, StringComparison.Ordinal);
+        Assert.Contains("1 242.50 USD", message.Html, StringComparison.Ordinal);
         Assert.Contains($"Confirmed at: {_confirmedAt:O}", message.Html, StringComparison.Ordinal);
     }
 }

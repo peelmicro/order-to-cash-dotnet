@@ -14,7 +14,11 @@ public sealed class OrderTotalMustNotBeNegativeError : DomainError
     public OrderTotalMustNotBeNegativeError(Money candidateTotalAmount)
         : base(
             "order.total_must_not_be_negative",
-            $"The resulting total amount would be negative: {candidateTotalAmount.MinorUnits} {candidateTotalAmount.Currency}.")
+            // Backlog id 102: this message reaches a human, via
+            // OrdersCreateErrorMapper -> Gateway problem+json `detail` ->
+            // the web app. Rendered with the shared money-text formatter
+            // (id 100), never as a raw minor-units integer.
+            $"The resulting total amount would be negative: {MoneyText.Format(candidateTotalAmount.MinorUnits, candidateTotalAmount.Currency)}.")
     {
         CandidateTotalAmount = candidateTotalAmount;
     }

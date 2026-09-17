@@ -6,12 +6,14 @@ namespace OrderToCash.Notifications.UnitTests;
 public sealed class NotificationFormatTests
 {
     [Theory]
-    [InlineData(124250, "USD", "1242.50 USD")]
+    [InlineData(124250, "USD", "1 242.50 USD")]
     [InlineData(0, "EUR", "0.00 EUR")]
     [InlineData(5, "EUR", "0.05 EUR")]
-    [InlineData(-124250, "USD", "-1242.50 USD")]
+    [InlineData(-124250, "USD", "-1 242.50 USD")]
     [InlineData(100, "USD", "1.00 USD")]
-    public void FormatMoney_RendersIntegerMinorUnitsAsAMajorUnitDisplayString(long minorUnits, string currency, string expected) =>
+    [InlineData(5000, "JPY", "5 000 JPY")]
+    [InlineData(12345, "BHD", "12.345 BHD")]
+    public void FormatMoney_RendersIntegerMinorUnitsScaledByTheCurrencysExponent(long minorUnits, string currency, string expected) =>
         Assert.Equal(expected, NotificationFormat.FormatMoney(minorUnits, currency));
 
     [Fact]

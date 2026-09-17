@@ -36,7 +36,10 @@ public sealed class CreditLedgerEntry : Entity
     {
         if (amount.MinorUnits <= 0)
         {
-            throw new InvalidBuyerCreditSnapshotError($"a {CreditEntryTypes.ToToken(type)} entry's amount must be strictly positive; got {amount.MinorUnits}.");
+            // Backlog id 102: reaches a human via BillingErrorMapper ->
+            // Gateway problem+json `detail`. Rendered with the shared
+            // money-text formatter (id 100).
+            throw new InvalidBuyerCreditSnapshotError($"a {CreditEntryTypes.ToToken(type)} entry's amount must be strictly positive; got {MoneyText.Format(amount.MinorUnits, amount.Currency)}.");
         }
 
         return new CreditLedgerEntry(id, orderReference, amount, type, entryDate);

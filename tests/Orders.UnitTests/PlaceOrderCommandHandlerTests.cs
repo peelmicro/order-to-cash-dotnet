@@ -136,6 +136,15 @@ public sealed class PlaceOrderCommandHandlerTests
         Assert.Equal(150, error.OrderDiscountMinorUnits);
         Assert.Empty(stock.Calls);
         Assert.Empty(repository.Added);
+
+        // Backlog id 102: this message reaches a human (VALIDATION_FAILED ->
+        // Gateway problem+json `detail`) — rendered with the shared
+        // money-text formatter (id 100), scaled by the request's own
+        // `currency` (EUR here), never a raw minor-units integer.
+        Assert.Equal(
+            "orderDiscount 1.50 EUR was supplied, but the Order aggregate carries no order-level discount " +
+            "(orders_aggregate design.md §4.3/§4.4) — use per-line lineDiscount instead.",
+            error.Message);
     }
 
     [Fact]

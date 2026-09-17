@@ -159,7 +159,7 @@ public sealed class Invoice : AggregateRoot
 
         if (totalAmount.IsNegative)
         {
-            throw new NegativeInvoiceTotalError(amount.MinorUnits, input.Discount.MinorUnits);
+            throw new NegativeInvoiceTotalError(amount.MinorUnits, input.Discount.MinorUnits, currency);
         }
 
         var invoice = new Invoice(
@@ -252,21 +252,24 @@ public sealed class Invoice : AggregateRoot
 
         if (recomputedAmount != snapshot.Amount.MinorUnits)
         {
+            // Backlog id 102: reaches a human via BillingErrorMapper ->
+            // Gateway problem+json `detail`. Rendered with the shared
+            // money-text formatter (id 100).
             throw new InvalidInvoiceSnapshotError(
-                $"invoice '{snapshot.InvoiceReference}': stored amount {snapshot.Amount.MinorUnits} disagrees with the lines' own total {recomputedAmount} — invariant B6.");
+                $"invoice '{snapshot.InvoiceReference}': stored amount {MoneyText.Format(snapshot.Amount.MinorUnits, snapshot.Currency)} disagrees with the lines' own total {MoneyText.Format(recomputedAmount, snapshot.Currency)} — invariant B6.");
         }
 
         var recomputedTotal = snapshot.Amount.Subtract(snapshot.Discount);
         if (recomputedTotal.MinorUnits != snapshot.TotalAmount.MinorUnits)
         {
             throw new InvalidInvoiceSnapshotError(
-                $"invoice '{snapshot.InvoiceReference}': stored totalAmount {snapshot.TotalAmount.MinorUnits} disagrees with amount − discount {recomputedTotal.MinorUnits} — invariant B6.");
+                $"invoice '{snapshot.InvoiceReference}': stored totalAmount {MoneyText.Format(snapshot.TotalAmount.MinorUnits, snapshot.Currency)} disagrees with amount − discount {MoneyText.Format(recomputedTotal.MinorUnits, snapshot.Currency)} — invariant B6.");
         }
 
         if (recomputedTotal.IsNegative)
         {
             throw new InvalidInvoiceSnapshotError(
-                $"invoice '{snapshot.InvoiceReference}': totalAmount {recomputedTotal.MinorUnits} is negative — invariant B6.");
+                $"invoice '{snapshot.InvoiceReference}': totalAmount {MoneyText.Format(recomputedTotal.MinorUnits, snapshot.Currency)} is negative — invariant B6.");
         }
 
         var invoice = new Invoice(
@@ -327,7 +330,7 @@ public sealed class Invoice : AggregateRoot
 
         if (input.Amount.MinorUnits != TotalAmount.MinorUnits)
         {
-            throw new InvoicePaymentAmountMismatchError(TotalAmount.MinorUnits, input.Amount.MinorUnits);
+            throw new InvoicePaymentAmountMismatchError(TotalAmount.MinorUnits, input.Amount.MinorUnits, Currency);
         }
 
         _state = new InvoiceState.Paid(ctx.OccurredAt);

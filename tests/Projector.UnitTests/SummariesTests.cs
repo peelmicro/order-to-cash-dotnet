@@ -65,8 +65,24 @@ public sealed class SummariesTests
     {
         var payload = new CreditApprovedPayload("ORD-000001", "RET01", "COM01", "CR-000001", "EUR", 16130, 50000);
         var result = Summaries.CreditApproved(payload);
-        Assert.Equal("Credit hold of 16 130 EUR approved", result.Summary);
+        Assert.Equal("Credit hold of 161.30 EUR approved", result.Summary);
         Assert.Null(result.Detail);
+    }
+
+    /// <summary>
+    /// Backlog id 100: the exponent scaling flows all the way through
+    /// <c>Summaries.CreditApproved</c>, not merely through
+    /// <c>MoneyFormat.Of</c> in isolation — a 0-exponent and a 3-exponent
+    /// currency, asserted as whole strings.
+    /// </summary>
+    [Fact]
+    public void B100_CreditApproved_ScalesByTheCurrencysOwnExponent_ZeroAndThreeDecimalCurrencies()
+    {
+        var jpy = Summaries.CreditApproved(new CreditApprovedPayload("ORD-000001", "RET01", "COM01", "CR-000001", "JPY", 5000, 50000));
+        Assert.Equal("Credit hold of 5 000 JPY approved", jpy.Summary);
+
+        var bhd = Summaries.CreditApproved(new CreditApprovedPayload("ORD-000001", "RET01", "COM01", "CR-000001", "BHD", 12345, 50000));
+        Assert.Equal("Credit hold of 12.345 BHD approved", bhd.Summary);
     }
 
     [Fact]
@@ -74,7 +90,7 @@ public sealed class SummariesTests
     {
         var payload = new CreditRejectedPayload("ORD-000001", "RET01", "COM01", "EUR", 16130, 5000, "insufficient_credit");
         var result = Summaries.CreditRejected(payload);
-        Assert.Equal("Credit hold of 16 130 EUR rejected (insufficient_credit)", result.Summary);
+        Assert.Equal("Credit hold of 161.30 EUR rejected (insufficient_credit)", result.Summary);
         Assert.Equal("insufficient_credit", result.Detail!["reason"]);
         Assert.Equal(16130L, result.Detail["requestedAmount"]);
     }

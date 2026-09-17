@@ -212,12 +212,44 @@ public sealed class OrdersCreateErrorMapperTests
     [Fact]
     public void Map_OrderDiscountNotSupportedError_MapsToValidationFailedWithNoDetails()
     {
-        var error = new OrderDiscountNotSupportedError(150);
+        var error = new OrderDiscountNotSupportedError(150, "EUR");
 
         var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
 
         Assert.Equal("VALIDATION_FAILED", payload.Code);
         Assert.Null(payload.Details);
+    }
+
+    /// <summary>
+    /// Backlog id 102, fix round 1 (review defect E1). The reviewer's own
+    /// arm showed a mapper can rebuild a raw-minor-units message and leave
+    /// a domain-only test suite green, because nothing drives a REAL
+    /// domain error through the REAL mapper and asserts the whole wire
+    /// <c>message</c>. This is that test for <see cref="OrderDiscountNotSupportedError"/>
+    /// — one of id 102's own fixed Orders sites.
+    /// </summary>
+    [Fact]
+    public void Map_OrderDiscountNotSupportedError_ReachesTheWireMessage_ScaledByTheCurrencysExponent()
+    {
+        var error = new OrderDiscountNotSupportedError(150, "EUR");
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal(
+            "orderDiscount 1.50 EUR was supplied, but the Order aggregate carries no order-level discount (orders_aggregate design.md §4.3/§4.4) — use per-line lineDiscount instead.",
+            payload.Message);
+    }
+
+    /// <summary>Same purpose as the test above, for <see cref="OrderTotalMustNotBeNegativeError"/> — id 102's other fixed Orders site, mapped via the generic <c>DomainError</c> case.</summary>
+    [Fact]
+    public void Map_OrderTotalMustNotBeNegativeError_ReachesTheWireMessage_ScaledByTheCurrencysExponent()
+    {
+        var error = new OrderTotalMustNotBeNegativeError(new Money(-150, "EUR"));
+
+        var payload = OrdersCreateErrorMapper.Map(error, _occurredAt);
+
+        Assert.Equal("VALIDATION_FAILED", payload.Code);
+        Assert.Equal("The resulting total amount would be negative: -1.50 EUR.", payload.Message);
     }
 
     /// <summary>Every aggregate refusal collapses to VALIDATION_FAILED, but the specific domain Code survives in `details.code` — design.md §9.2: "The details key is code, not domainCode".</summary>

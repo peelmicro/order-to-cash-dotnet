@@ -1,4 +1,5 @@
 using OrderToCash.Orders.Application.Ports;
+using OrderToCash.SharedKernel;
 
 namespace OrderToCash.Orders.Application.Commands;
 
@@ -47,8 +48,14 @@ public sealed class StockUnavailableError(IReadOnlyList<StockAvailabilityLineRes
 /// discounts. A non-zero value is refused rather than silently dropped
 /// (design.md §4.4, inherited from #7's <c>OrderDiscountNotSupportedError</c>).
 /// </summary>
-public sealed class OrderDiscountNotSupportedError(long orderDiscountMinorUnits)
-    : PlaceOrderError($"orderDiscount {orderDiscountMinorUnits} was supplied, but the Order aggregate carries no order-level discount " +
+public sealed class OrderDiscountNotSupportedError(long orderDiscountMinorUnits, string currency)
+    // Backlog id 102: reaches a human, via OrdersCreateErrorMapper ->
+    // Gateway problem+json `detail` -> the web app. Rendered with the
+    // shared money-text formatter (id 100). `currency` is the request's
+    // own wire `currency` field — the only currency this error's throw
+    // site has, since it fires before reference-data resolution confirms
+    // the code exists (PlaceOrderCommandHandler.HandleAsync).
+    : PlaceOrderError($"orderDiscount {MoneyText.Format(orderDiscountMinorUnits, currency)} was supplied, but the Order aggregate carries no order-level discount " +
         "(orders_aggregate design.md §4.3/§4.4) — use per-line lineDiscount instead.")
 {
     public override string Code => "ORDER_DISCOUNT_NOT_SUPPORTED";

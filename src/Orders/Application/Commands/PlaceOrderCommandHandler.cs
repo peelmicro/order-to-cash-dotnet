@@ -47,7 +47,7 @@ public sealed class PlaceOrderCommandHandler(
 
         if (command.OrderDiscountMinorUnits is { } orderDiscount && orderDiscount != 0)
         {
-            throw new OrderDiscountNotSupportedError(orderDiscount);
+            throw new OrderDiscountNotSupportedError(orderDiscount, command.Currency);
         }
 
         var retailer = await referenceCatalog.FindRetailerAsync(command.RetailerCode, cancellationToken).ConfigureAwait(false)

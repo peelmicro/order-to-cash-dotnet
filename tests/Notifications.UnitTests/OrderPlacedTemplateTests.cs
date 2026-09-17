@@ -31,9 +31,9 @@ public sealed class OrderPlacedTemplateTests
         Assert.Contains("Order ORD-000001 has been placed", message.Text, StringComparison.Ordinal);
         Assert.Contains("Retailer: CarrefourEs", message.Text, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Text, StringComparison.Ordinal);
-        Assert.Contains("Total: 1242.50 USD", message.Text, StringComparison.Ordinal);
+        Assert.Contains("Total: 1 242.50 USD", message.Text, StringComparison.Ordinal);
         Assert.Contains($"Order date: {_orderDate:O}", message.Text, StringComparison.Ordinal);
-        Assert.Contains("1242.50 USD", message.Html, StringComparison.Ordinal);
+        Assert.Contains("1 242.50 USD", message.Html, StringComparison.Ordinal);
         Assert.Contains("Order <strong>ORD-000001</strong> has been placed", message.Html, StringComparison.Ordinal);
         Assert.Contains("Retailer: CarrefourEs", message.Html, StringComparison.Ordinal);
         Assert.Contains("Company: COMP01", message.Html, StringComparison.Ordinal);

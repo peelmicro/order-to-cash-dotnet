@@ -70,8 +70,11 @@ public sealed class BuyerCredit : AggregateRoot
 
         if (snapshot.CommittedExposureMinorUnits > snapshot.CreditLimit.MinorUnits)
         {
+            // Backlog id 102: reaches a human via BillingErrorMapper ->
+            // Gateway problem+json `detail`. Rendered with the shared
+            // money-text formatter (id 100).
             throw new InvalidBuyerCreditSnapshotError(
-                $"credit line '{snapshot.Code}': committed exposure ({snapshot.CommittedExposureMinorUnits}) already exceeds the credit limit ({snapshot.CreditLimit.MinorUnits}) — invariant B1.");
+                $"credit line '{snapshot.Code}': committed exposure ({MoneyText.Format(snapshot.CommittedExposureMinorUnits, snapshot.CreditLimit.Currency)}) already exceeds the credit limit ({MoneyText.Format(snapshot.CreditLimit.MinorUnits, snapshot.CreditLimit.Currency)}) — invariant B1.");
         }
 
         foreach (var entrySnapshot in snapshot.Entries)
@@ -139,7 +142,7 @@ public sealed class BuyerCredit : AggregateRoot
 
         if (EvaluateHold(request) is not HoldEvaluation.Fits)
         {
-            throw new CreditLimitExceededError(request.Amount.MinorUnits, AvailableCredit.MinorUnits);
+            throw new CreditLimitExceededError(request.Amount.MinorUnits, AvailableCredit.MinorUnits, CreditLimit.Currency);
         }
 
         var entry = CreditLedgerEntry.Create(newId(), request.OrderReference, request.Amount, CreditEntryType.Hold, ctx.OccurredAt);
@@ -181,7 +184,7 @@ public sealed class BuyerCredit : AggregateRoot
             string.Equals(request.Amount.Currency, CreditLimit.Currency, StringComparison.Ordinal) &&
             request.Amount.MinorUnits <= AvailableCredit.MinorUnits)
         {
-            throw new CreditRefusalMismatchError(request.Amount.MinorUnits, AvailableCredit.MinorUnits);
+            throw new CreditRefusalMismatchError(request.Amount.MinorUnits, AvailableCredit.MinorUnits, CreditLimit.Currency);
         }
 
         Raise(new CreditRejected(
@@ -225,7 +228,7 @@ public sealed class BuyerCredit : AggregateRoot
         // in Fulfillment, rather than a reachable caller mistake.
         if (outstanding - amount.MinorUnits < 0)
         {
-            throw new CreditReleaseUnderflowError(orderReference.Value, outstanding, amount.MinorUnits);
+            throw new CreditReleaseUnderflowError(orderReference.Value, outstanding, amount.MinorUnits, CreditLimit.Currency);
         }
 
         AppendEntry(entry);

@@ -87,6 +87,13 @@ public sealed class OrderTotalsTests
             "PROD-B", "B", new Quantity(1), new Money(50, currency), new Money(500, currency), OrderTestData.Now));
 
         Assert.Equal("order.total_must_not_be_negative", error.Code);
+
+        // Backlog id 102: this message reaches a human (VALIDATION_FAILED
+        // -> Gateway problem+json `detail`) — rendered with the shared
+        // money-text formatter (id 100), never a raw minor-units integer.
+        Assert.Equal(-350, error.CandidateTotalAmount.MinorUnits);
+        Assert.Equal("The resulting total amount would be negative: -3.50 EUR.", error.Message);
+
         Assert.Equal(statusBefore, order.Status);
         Assert.Equal(initialAmountBefore, order.InitialAmount);
         Assert.Equal(initialDiscountBefore, order.InitialDiscount);

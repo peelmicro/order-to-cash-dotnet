@@ -10,8 +10,16 @@ namespace OrderToCash.Billing.Domain.Errors;
 /// <c>EvaluateHold</c> first (the only supported path) never actually
 /// reaches this.
 /// </summary>
-public sealed class CreditLimitExceededError(long requestedMinorUnits, long availableMinorUnits)
-    : DomainError("CREDIT_LIMIT_EXCEEDED", $"Requested amount {requestedMinorUnits} exceeds available credit {availableMinorUnits}.")
+/// <remarks>
+/// Backlog id 102: reaches a human via <c>BillingErrorMapper</c> -&gt;
+/// Gateway problem+json <c>detail</c>. Rendered with the shared money-text
+/// formatter (id 100). <paramref name="currency"/> is the credit line's own
+/// currency (<see cref="BuyerCredit.CreditLimit"/>'s).
+/// </remarks>
+public sealed class CreditLimitExceededError(long requestedMinorUnits, long availableMinorUnits, string currency)
+    : DomainError(
+        "CREDIT_LIMIT_EXCEEDED",
+        $"Requested amount {MoneyText.Format(requestedMinorUnits, currency)} exceeds available credit {MoneyText.Format(availableMinorUnits, currency)}.")
 {
     public long RequestedMinorUnits { get; } = requestedMinorUnits;
 
