@@ -1,6 +1,23 @@
 # Current session
 
-**Feature:** none active — **PHASE 15 COMPLETE: 4 of 4, committed and pushed 2026-09-15.** Commits `40b37b2` (id 95), `6c35084` (id 94), `461e987` (id 93), `b144788` (id 28 + the trace-context fix it found). 82 of 94 backlog features done. `./quality.sh`-equivalent verified independently by the coordinator at every step: multiple full solution rebuilds, all 0 warnings/0 errors; unit tier re-run fresh after the final change, ~1467 tests, 0 failed. README, docs/PROCESS.md §10, the plan document, the Spanish solution-documents catalogue, the private stack-comparison and both DotNet quizzes all updated to reflect the close. #7 untouched this session, clean at `c20bdc0`. Next: phase 16 (Next.js web app) is the next item in the plan document; no brief written for it yet.
+**Feature:** none in progress. **Phase 16 COMPLETE (2026-09-17)**, with phase 17 (id 30) delivered inside it. 92 of 103 backlog features are done. Full wrap-up DONE: `./quality.sh` exit 0 (.NET 2115, web 286 + 7); #8 commits 226c707 (SA-5), 04d4329, 83223f1, e351603, 240ad06 and the docs commit; #7 commits 6dafee0 (SA-5), 828c743, e07d9ee, 3b3f98e, 1823f11; both pushed; external docs and both DotNet quizzes regenerated.
+
+## Next phase — Phase 18: API tests through the Gateway (id 31), plus id 104
+
+**Brief for the next session. Read before dispatching anything.**
+- **Id 31 `api_tests`** (sdd: false). Its acceptance bullets are in `feature_list.json`:
+  - happy path;
+  - compensation path;
+  - a duplicate `paymentReference` yields one payment;
+  - R24's API half, with a structural causal-order assertion;
+  - R49's API half, through the REAL Gateway, asserting against Billing's own database.
+- **What to port.** It ports #7's `apps/gateway/src/black-box-api.integration.spec.ts`. That means a ported-idiom ledger in `progress/impl_api_tests.md`, and #7's assertions enumerated as a search result, with its amendment A1 (see #7's `progress/review_api_tests.md` §2 D4).
+- **Harness to reuse.** Phase 15's real fleet (`tests/Gateway.IntegrationTests/SagaEndToEndVerificationTests.cs`, `SagaFleet`) is the proven harness. Decide, with evidence, whether id 31 reuses that fleet or builds its own; do not supply the answer in the brief.
+- **Id 104 `dead_letter_producer_defaults_to_localhost`.** The dead-letter producer's bootstrap should fall back to `Kafka.BootstrapServers`. Found by this wrap-up's gate; do it first, because id 31's fleet dead-letters too.
+- **Stopping rule for phase 18, written now:** the phase closes ids 31 and 104. A new finding outside them is filed with a disposition and worked only if the maintainer says so. **If the maintainer asks for a full wrap-up, it comes first**: ask before starting any fix (memory: `wrap-up-request-comes-first`).
+- **Environment:**
+  - Integration tests must pass with the developer infrastructure DOWN. Run them that way at least once per feature; id 104 was hidden for a whole phase by a developer Kafka on 9092.
+  - The maintainer's `~/.docker/config.json` names a missing `docker-credential-desktop`. For image builds, use a scratch `DOCKER_CONFIG`; never edit their file.
 
 ## FULL WRAP-UP DONE (user's word, 2026-09-11) — phase 14 checkpoint pushed; continuing with id 62
 

@@ -73,7 +73,8 @@ Where the .NET implementation proves the shared specification wrong or incomplet
 OrderToCash.sln          the six services + SharedKernel + Contracts + Cqrs + Seed
 src/                     one project per service, Clean Architecture folders inside each
 tests/                   architecture, unit, integration, API and end-to-end tests
-apps/web/                Next.js app (the only place pnpm lives)
+apps/web/                Next.js app, with its own package.json and lockfile
+package.json             command shortcuts only (pnpm run lists them), modelled on #7's
 specs/shared/            the stack-agnostic specification — copied verbatim from #7
 specs/<feature>/         per-feature triple-doc (EARS requirements, design, tasks)
 progress/                the agent harness's external memory, including the effort records
@@ -104,8 +105,8 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 13 | Gateway / BFF | ✅ **the sixth and last service.** REST per the copied `openapi.yaml` (14 paths), hand-rolled JWT, login rate limiting, NATS RPC clients, MongoDB-only reads, SSE with heartbeat and `Last-Event-ID` replay — **and not one new NuGet package**, where the predecessor needed three. Two Orders responders were built first so the Gateway had real responders to talk to, which is where its predecessor's seam defect lived; six backlog entries then closed the guards those features exposed |
 | 14 | Health checks, OTel propagation, retry + DLQ — **and the guard-hardening audit** | ✅ **complete, 13 of 13.** The audit filed findings faster than it closed them, so the phase was first closed *by disposition*; the maintainer **overruled that** and eleven entries were re-opened and genuinely finished — all eleven approved, none rejected. Two were then accepted with evidence and a re-open trigger, neither being work developed incorrectly. What the finish found: a guard that passed under the very mutation it existed to catch; a flake whose real cause was a lazily-connecting client, not the timeout its entry blamed; a defect class that did not end at the sites its entry named; and **107** doc-comment defects that became visible only once the check could actually fire |
 | 15 | End-to-end saga verification | ✅ **complete, 4 of 4.** Ported #7's proven fleet architecture (real Testcontainers infrastructure, no mocks) into a single shared-fleet suite covering all five criteria — happy path, `.99` compensation, redelivery, poisoned-message DLQ, and one trace id spanning the whole saga. The trace criterion found a real production gap: the id-80 fast-path dispatcher carried no trace context at all, so three services saw three different trace ids for one order — fixed in the same pass. Also closed: a cold-connection flake ported from id 81, a dead arm from phase 14 that OR1's later retry logic had silently defeated (fixed in Orders **and** its Projector sibling), and the last RPC-payload duplication unified into `src/Contracts/Rpc` |
-| 16 | Next.js web app | ⬜ |
-| 17 | Web component tests | ⬜ |
+| 16 | Next.js web app | ✅ **complete, 9 of 9.** Next.js App Router web app with a BFF: the session token stays in an httpOnly sealed cookie, and route handlers proxy to the Gateway, including the live SSE timeline with `Last-Event-ID` resume. A behavioural error sweep fails every request each page makes and asserts that the Gateway's own problem text reaches the screen; it replaced a syntax guard that review defeated twice, and it found five real silent failures. Also fixed: the Gateway ignored `GATEWAY_PORT`, and an expired session on a finished order showed "connection lost". Spec amendment **SA-5** (money is formatted from the currency's ISO 4217 exponent) was applied to both repositories, with #7's money code aligned to it; both web apps now show which stack they are (`#8 · .NET / Next.js`, `#7 · NestJS / Nuxt`). Four money and display defects were then fixed in both repositories: the timeline (id 100) and problem `detail` text (id 102) showed raw minor units, the stock page repeated the product code (id 101), and the web apps took the currency exponent from `Intl`'s CLDR digits rather than ISO 4217 (id 103). Each repository now has one ISO 4217 table, and #8's web app is checked against it |
+| 17 | Web component tests | ✅ **complete, 1 of 1.** Delivered inside phase 16: the Vitest + React Testing Library suite (id 30) was built alongside the web app it tests, 22 files / 286 tests |
 | 18 | API tests through the Gateway | ⬜ |
 | 19 | Playwright end-to-end tests | ⬜ |
 | 20 | n8n demo workflows, reused unchanged | ⬜ |
@@ -115,65 +116,38 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 24 | Documentation, demo recording, **#7 vs #8 benchmark** | ⬜ |
 | 25 | Final checkpoint | ⬜ |
 
-## Running what exists so far
+## Running it
 
-The Orders service is the first one that runs. It has no HTTP surface yet — the Gateway is Phase 13 — so it is driven over NATS, and it needs a stand-in for the Fulfillment service that Phase 9 will build. The commands below were run exactly as written; the outputs are the real ones.
-
-Since the saga orchestrator landed, the service also **consumes** the fact stream, so placing an order does more than reply. The `order.placed.v1` fact comes back in through the Kafka consumer, the saga issues the owed `stock.reserve` command over NATS, and — with no Fulfillment service in existence until Phase 9 — that command parks:
-
-```sql
-SELECT order_reference, command, status, attempts, last_error FROM dbo.saga_commands;
-```
-
-```
-ORD-000010 | stock.reserve | parked | attempts=6 | fulfillment.stock.reserve: transport failure: no responder i...
-```
-
-Parked rows plus structured logs are the **correct** steady state, not a stall: the sweeper keeps retrying on capped backoff, and they resume unattended the moment a responder exists. The stand-in above answers `fulfillment.stock.check` — the synchronous check the acceptance path makes — and deliberately not `fulfillment.stock.reserve`, which is the saga's own command.
-
-**That last claim is now demonstrated rather than designed.** Four commands sat parked for a day, at six attempts each. Starting the real Fulfillment service resumed all four with no operator action:
+The root `package.json` holds command shortcuts only, modelled on #7's scripts. The backend is .NET; `apps/web` keeps its own `package.json` and lockfile. Run `pnpm run` to list every shortcut. Prerequisites: Docker, the .NET SDK pinned in `global.json`, and Node from `.nvmrc` with pnpm via corepack.
 
 ```bash
-dotnet run --project src/Fulfillment    # in place of the stand-in
+cp .env.example .env            # optional: .env overrides .env.example
+pnpm dc:up:infra                # MS-SQL, MongoDB, Kafka, NATS, Mailpit, observability, n8n
+pnpm web:install                # once, for apps/web
+pnpm stack:start                # build, seed + migrate, six services and the web app, in the background
+# open http://localhost:3010 and sign in as operator / $GATEWAY_OPERATOR_PASSWORD
+pnpm stack:status
+pnpm stack:stop
 ```
 
-so the stand-in above is only needed until you run the real thing.
+The web app listens on **3010** (`WEB_PORT`), not Next.js's usual 3000, which is often taken by another app. #7 uses the same port, and the two stacks never run together because they share every other host port. A value set in your shell wins over both env files, e.g. `WEB_PORT=3020 pnpm stack:start`.
 
-```bash
-docker compose -f docker-compose.infra.yml up -d
-export $(grep -E '^(MSSQL_APP_PASSWORD|MSSQL_APP_USER|MSSQL_DB_ORDERS|MSSQL_HOST|MSSQL_HOST_PORT|KAFKA_HOST_PORT|NATS_CLIENT_HOST_PORT|MONGO_.*)=' .env | xargs)
+To work on one service in the foreground instead, run each in its own terminal: `pnpm seed`, then `pnpm dev:orders`, `dev:fulfillment`, `dev:billing`, `dev:notifications`, `dev:projector`, `dev:gateway` and `dev:web`. Each loads `.env.example`, then `.env`, then your shell (`scripts/dev-stack.sh env`).
 
-# migrations + deterministic master data (idempotent; the seed applies the migrations itself)
-dotnet run --project src/Seed
-
-# a stand-in Fulfillment, in its own terminal — Phase 9 replaces it with the real service
-docker run --rm --network otcnet-net natsio/nats-box \
-  nats --server nats://otcnet-nats:4222 reply fulfillment.stock.check \
-  '{"available":true,"lines":[{"productCode":"PRD-0001","requested":2,"available":500,"sufficient":true}]}'
-
-# the service, in another
-dotnet run --project src/Orders
-
-# place an order
-docker run --rm --network otcnet-net natsio/nats-box \
-  nats --server nats://otcnet-nats:4222 request orders.create \
-  '{"retailerCode":"CarrefourEs","companyCode":"IBERFOODS","currency":"EUR","lines":[{"productCode":"PRD-0001","quantity":2}]}'
-```
-
-```json
-{"orderId":"8b0670d1-...","orderReference":"ORD-000007","status":"placed","currency":"EUR","initialAmount":49998,"initialDiscount":0,"totalAmount":49998,"orderDate":"2026-09-03T18:04:27.376Z"}
-```
-
-`ORD-000007` because the seed's six sample orders already hold `ORD-000001`–`ORD-000006`; amounts are minor units, always. An `order.placed.v1` fact appears on the `otc.orders.facts.v1` Kafka topic moments later, published by the outbox relay running inside the same host — envelope fields in the order the shared contract declares, `eventId` first and `payload` last.
-
-Two negative probes, both real output:
-
-| Probe | Reply |
+| Group | Shortcuts |
 |---|---|
-| Omit `lines` from the request | `{"code":"VALIDATION_FAILED","message":"orders.create request is missing or has an empty required field: lines."}` |
-| Stop the stand-in, then request again | `{"code":"UNAVAILABLE","message":"fulfillment.stock.check: transport failure ... no responder is subscribed"}` — deliberately not `TIMEOUT`, a distinction Phase 8's terminal-rejection classification depends on |
+| Harness and quality | `init`, `quality`, `quality:web`, `build`, `format`, `format:fix`, `test`, `test:unit`, `test:integration` (needs Docker) |
+| Contracts | `contracts:generate`, `contracts:check` (the web app's OpenAPI types against `specs/shared/openapi.yaml`) |
+| Database | `db:migrate:orders`, `db:migrate:fulfillment`, `db:migrate:billing`, `db:migrate:notifications`, `seed` (the seed also applies every migration) |
+| Web app | `web:install`, `web:build`, `web:start`, `web:lint`, `web:typecheck`, `web:test`, `web:test:coverage`, `web:test:integration` |
+| Infrastructure | `dc:up:infra`, `dc:up:infra:no-n8n`, `dc:down:infra`, `dc:ps:infra`, `dc:clean:infra`, `kafka:topics`, `dc:logs:infra`, `dc:logs:<service>`, `dc:up:sonar`, `dc:down:sonar` |
+| Demo | `saga:watch` (every order's status and the saga command table, read from MS-SQL) |
 
-One thing that does **not** work yet, on purpose: a repeated `requestId` currently creates a second order. Idempotent replay of `orders.create` is its own requirement, still `TODO` in the traceability matrix and owned by `observability_reliability` in Phase 14 — the same feature that owns it in #7; the field is carried through the command and explicitly ignored until then.
+#7 shortcuts with no #8 counterpart yet:
+- `dc:*:apps` and `dc:seed` wait for the full Docker Compose (phase 23);
+- `n8n:import`/`n8n:export` wait for phase 20;
+- `sonar:scan` waits for phase 21;
+- `order:place` and `invoice:pay` are Node scripts built on NestJS's NATS client, so they do not carry over as they are.
 
 ## Licence
 

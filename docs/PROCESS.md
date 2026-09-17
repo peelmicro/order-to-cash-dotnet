@@ -242,13 +242,31 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
+**Position: Phase 16 COMPLETE (and phase 17, completed inside it) — 92 of 103 features done.** Counted from `feature_list.json` on 2026-09-17, after the wrap-up filed id 104 (a test host dead-lettering to the developer's Kafka, found by the quality gate, fixed in the one test it broke and routed to phase 18). All nine phase-16 entries are done (29, 96, 97, 98, 99, 100, 101, 102, 103), and phase 17's only entry (id 30, web component tests with Vitest + React Testing Library) was built alongside the web app it tests. Next: **phase 18, API tests through the Gateway** (id 31).
+
+The phase's feature (id 29) is the Next.js App Router web app with a BFF: the session token lives in an httpOnly sealed cookie, and route handlers proxy to the Gateway, including the live SSE timeline with `Last-Event-ID` resume. It took **four review rounds**. Twice review defeated a syntax guard over the pages' error handling, so the guard was replaced by a **behavioural error sweep** that fails every request each page makes and checks what reaches the screen. The sweep found five real silent failures, and the two shapes that had beaten the syntax guard became rows 11 and 12 of `CLAUDE.md`'s defeat list. Two smaller defects were fixed alongside it: the Gateway ignored `GATEWAY_PORT` (id 96), and an expired session on a finished order showed "connection lost" (id 98).
+
+**Spec amendment SA-5 (id 97)** changed `openapi.yaml` so that money is formatted from the currency code's ISO 4217 exponent, because no REST response carries the `decimalPoints` field the spec used to name. It was applied to both repositories, and #7's money code was aligned (rejected once, for an input `step` with no test). Id 99 labels each web app with its stack: `#8 · .NET / Next.js` and `#7 · NestJS / Nuxt`. The maintainer also asked for `WEB_PORT` to default to 3010 in both repositories, and for a root `package.json` of command shortcuts in #8, modelled on #7's scripts.
+
+**Then the maintainer's screenshots found two more defects, and the reviews of those fixes found two after that.** All four were fixed in both repositories:
+- id 100: the timeline showed raw minor units ("9 245 EUR" for €92.45); rejected once, because #7 took the exponent from `Intl`, a floating-point arm survived, and most table rows had no test;
+- id 101: the stock page showed "PRD-0001 (PRD-0001)"; approved first time;
+- id 102: problem-document `detail` text carried raw minor units; rejected once, because nothing tested the service error mapper;
+- id 103: both web apps took the exponent from `Intl`'s CLDR display digits rather than ISO 4217, which differ for about 15 codes (HUF, IDR, COP, IQD, …); rejected once, because the parity test read C# source as text and lost to a block comment, `#if false` and two rows on one line. The instrument was then changed to compare against the compiled table.
+
+The fix is **one ISO 4217 table per repository**. In #8 it is `src/SharedKernel/CurrencyExponent.cs`, checked in both directions against a committed JSON that the web app imports. In #7 it is `packages/shared-kernel`, which #7's web app now imports.
+
+**The process lesson of this phase is about the coordinator, not the code.** The maintainer asked for a full wrap-up. The leader did not wrap up: it spent hours fixing the screenshot findings, and the defects the reviews then found, without asking first. The fixes were real, but that choice belonged to the maintainer. **When findings arrive after a wrap-up request, ask the maintainer whether to fix them first or commit first.**
+
+> The paragraph below this note describes the previous phase's position and is retained as history.
+
 **Position: Phase 15 COMPLETE — 4 of 4 entries closed, 82 of 94 features done.** Counted from `feature_list.json` on 2026-09-15.
 
 The phase's actual feature (id 28, end-to-end saga verification against real infrastructure) found a genuine production defect while proving its own fifth criterion — the id-80 fast-path dispatcher propagated no trace context, so three services observed three different trace ids for one order's happy path. **Fixed in the same session rather than filed**, on explicit direction: disclosed issues are fixed as soon as they are detected, not deferred to a future entry. The same direction applied to two smaller disclosures inherited from phase 14 (id 94's Projector sibling and missing Orders config guard), both closed alongside their parent entry rather than left as recommendations.
 
 One phase-14 design question (id 93 — should the duplicated `orders.*`/`catalog.*` payload records move into `src/Contracts/Rpc`) was answered directly rather than routed back for a decision, because id 84 had already set the applicable precedent in the same phase; applying it was not a new choice.
 
-> The paragraph below this note describes the previous phase's position and is retained as history.
+> The paragraphs below this note describe phase 14's position and are retained as history.
 
 Eleven entries were re-opened after the maintainer rejected closing the phase by disposition, and every one was **worked and approved** — 84, 70, 69, 82, 89, 81, 85, 74, 78, 90, 86, none rejected, six approved on the first round. Ids 88 and 92 were then **accepted with evidence and a re-open trigger**, on the explicit ground that neither is work developed incorrectly: id 88 is a stated residual of id 80 whose elimination would be a design change, and id 92 is coverage #7 lacks that #8 already has in both orderings.
 

@@ -2795,6 +2795,128 @@ The same comparison surfaced a second #7 defect: a contracts test **writes into 
 
 **Effort record:** **1 implementer session, 0 rejections, 1 review session.** Implementer wall-clock ≈ **51 min** (brief 01:05:38 → record 01:56:32; thirteen arms 01:22–01:30, four controls 01:28–01:31, `./quality.sh` finishing 01:45:48 at **2 042 / 0 / 0** across 18 projects — unchanged from D5, and this entry genuinely adds no test: the guard file holds 9 `[Fact]`s at HEAD and 9 now). Review ≈ **35 min**, nearly all of it the control work. **The datum worth keeping is how cheap the control was.** These guards read source from disk rather than from the assembly under test, so one extra `--no-incremental` build buys the *entire* old-guard direction and every mutation after it costs seconds. Five rounds of this feature were argued from single-direction evidence — "the new guard is red" — which cannot distinguish a fix from a guard that was always red. At one build, the second direction should have been standard from round 2.
 
+---
+
+## Backlog id 96 — `gateway_ignores_gateway_port` (phase 16) — APPROVED first round
+
+**A ported-idiom miss from phase 13 that no guard could see.** The problem was a variable that nothing read, while phase 13's environment-read guards only cover variables that are read. #7's Gateway reads `Number(process.env.GATEWAY_PORT ?? 3001)` (`apps/gateway/src/main.ts:30`) and listens on it. #8's Gateway never read the variable and bound Kestrel's default. The web-app implementer found it during live verification, because it had to bind the port through `ASPNETCORE_URLS`.
+
+- **The read** is in `GatewayProgramConfiguration.Configure` → `GatewayOptions.Port` (`int?`).
+- **The binding** is in `GatewayHost.CreateBuilder` → `UseUrls("http://+:{port}")`, which, like #7's host-less `app.listen`, binds every interface. It is skipped when an explicit `urls` setting exists.
+- **Precedence:** `--urls`, `ASPNETCORE_URLS` and `DOTNET_URLS` override `GATEWAY_PORT`. `ASPNETCORE_HTTP_PORTS` deliberately does not, because the official images default it to 8080.
+- **Class enumeration:** re-run by the reviewer. 59 of 97 `.env.example` variables are read by no `src/*.cs` file, and `GATEWAY_PORT` is no longer one of them.
+
+**Review.** The review re-armed the fix and did not re-read the implementer's arms:
+- **A sibling substitution the record had not used.** Reading `PROJECTOR_HEALTH_PORT` instead of `GATEWAY_PORT` failed, with a message naming the key and its value 23006.
+- **Deleting the binding.** The real-socket test failed with `Value: "http://localhost:5000"`, and the configuration test failed with `Actual: null`.
+- **Collision under contention.** The collision claim was tested, not just read: the full `./quality.sh` ran with **port 3001 held by a dummy listener**, and `Gateway.IntegrationTests` passed **70/70**, including `SagaEndToEndVerificationTests`.
+- **Live check.** Through `scripts/dev-stack.sh`, the Gateway answered `/health/ready` on 3001 with no `ASPNETCORE_*` in its process environment.
+- **Full suite.** `./quality.sh` exited 0: **2 057 .NET tests passed / 0 failed** across 18 projects. That reconciles exactly as 2 049 (the web-app record's run) + 8 (this entry's new tests).
+
+The precedence decision was judged sound. Its one residual is documented in both `dev-stack.sh` and `.env.example`: a stale `ASPNETCORE_URLS` in a shell silently wins.
+
+**Effort record:** **1 implementer session, 0 rejections, 1 review session** (a combined phase-16 review, shared with ids 29/30). No #7 counterpart exists, because #7's Gateway read the port from its first commit.
+- **Implementer wall-clock ≈ 20–27 min**, taken from the filesystem, not from the record:
+  - dispatched after the web-app record (≈18:17);
+  - first arm backup 18:25:22;
+  - `id96_enum.txt` 18:29:42;
+  - arms through 18:39:21;
+  - live start/stop 18:42–18:43;
+  - record 18:44:25.
+- **Review ≈ 1 h** (brief 18:28:33 → about 19:25) for all three entries together. Id 96's own share was the two arms plus the contended suite run.
+
+**The same review REJECTED id 29 (`web_app`)** for one generic error notice (the place-order catalogue failure). It also found two defects in the leader's own phase-16 harness edits: a `WEB_PORT` override that `.env.example` now clobbers, and a narrowed `init.sh` scan. See `progress/review_web_app.md`.
+
+---
+
+## Backlog id 29 — `web_app` (phase 16): APPROVED at review round 4, after three rejections
+
+**What was built.** A Next.js App Router app with shadcn/ui, TanStack Query and Tailwind v4. Its main properties:
+- The JWT stays server-side, behind an httpOnly session cookie, and every Gateway call is made from a route handler. That includes the SSE stream, which is proxied with `Last-Event-ID` and upstream abort.
+- Types are generated from `openapi.yaml` and drift-checked.
+- The live timeline resumes after a reconnect and de-duplicates its two frame types separately.
+- A 202 renders an honest waiting state.
+- Payments use exact integer minor units.
+
+**The expensive part was one bullet: every error must be shown in its own words.** That bullet took the three rejections. #7's app shipped generic error text on every page for its whole life, and this bullet exists because of that, so it was worth getting right. The rounds went:
+- **Round 1** found one generic catalogue notice.
+- **Round 2** defeated fix round 1's syntax guard twice. The coordinator then replaced the instrument, rather than extending it, with a **behavioural sweep**: render every page as the browser does, fail each observed request in turn, and require the problem's own text on screen.
+- **Round 3** found that the sweep worked, but hid a real no-JavaScript sign-in bug behind a hand-picked exception (`GET /auth/me` → `Sign-in failed (HTTP 503).`). It also found the "never a generic message" half unasserted, and four population shapes that no page yet exercised.
+
+Before fix round 3, the leader wrote a **stopping rule** (`progress/current.md:3`): verify exactly that list, and reject only for an unmet item or a live product defect. Round 4 held to it. Every item was met, each re-armed arm failed with a message naming its claim, and the remaining coverage shapes were recorded as limits carried to phase 19's Playwright suite. The stopping rule is the reason this entry closed at round 4 rather than turning into an audit.
+
+**Review round 4 (this close).** The review re-ran the arms for the claims under test and did not re-run the world:
+- **Review-authored exploits, re-run:** D1, G1, G2, G3, G4 and G6. Each had been green in round 3; each now fails with page, request and sentinel named.
+- **Three probes of the reviewer's own:**
+  - title-before-detail corruption in the login route, killed by the detail variant's decoy title;
+  - a 409-only generic branch, killed on `POST /orders`;
+  - `relay` clearing the cookie on every 4xx/5xx, killed by the 403 and 500 cases.
+- **U1 and U4**, re-armed from FR3.7's new session-expiry tests.
+- **Web gate:** `QUALITY_ONLY=web ./quality.sh` exited 0, with Vitest **20 files / 264**, coverage 96.58% statements, and integration 7/7. The count reconciles as 251 − 52 + 56 + 9 = 264.
+- **.NET:** not re-run; no `.cs` file changed after the 22:06 full run (2 057 / 0 / 0).
+- **Advisories (not blocking):**
+  - A1: on a terminal order, an expired session shows `Connection lost`, not a sign-in prompt;
+  - A2: the FR3 record's end time is impossible.
+- **Owed at this close:** RR6's `specs/shared/test-matrix.md` edits for R55's web half. They are routed to the leader in `progress/review_web_app.md`.
+
+**Effort record** (timings from the filesystem where the record's own figures disagree):
+
+| Pass | Wall-clock | Notes |
+|---|---|---|
+| Implementer, initial | 2026-09-16 ≈16:30 → 18:20 (≈1 h 50) | |
+| Review round 1 | 18:28 → ≈19:25 (≈1 h) | Shared with ids 30 and 96. REJECTED |
+| Fix round 1 | 19:26 → ≈19:43 (≈20 min, plus reading) | |
+| Review round 2 | ≈19:35 → 20:20 (≈45 min) | REJECTED |
+| Fix round 2 | 2 sessions; the resumed one ran 21:46 → 22:22 (≈40 min) | The first session was cut off by a rate limit before any edit |
+| Review round 3 | 22:31 → 22:48 (≈17 min) | REJECTED |
+| Fix round 3 | ≈22:50 → 00:03 (≈1 h 15, of which ≈60 min was the 39-arm re-run) | The record's "to about 00:40" is contradicted by its own last save, at 00:10:55 |
+| FR3.7 | 00:06 → 00:11 (≈5 min) | A coordinator-directed addition: session-expiry tests |
+| Review round 4 | ≈00:12 → 00:32 (≈20 min) | APPROVED — end time corrected by the leader from "≈00:40" to the file time of `progress/review_web_app.md`, last saved at 00:32, as id 98's review pointed out |
+
+**Totals:** **6 implementer sessions** (5 dispatches, one of which was resumed), **3 rejections**, **4 review rounds**. That is about **4 h 10 min** of implementer time and about **2 h 30 min** of review time, across an elapsed span of about 8 h 10 min.
+
+**Against #7's baseline** (#7 `progress/history.md:1101-1103`: **14 implementer pass sections + 7 review passes + 1 closure review**, spread over two days and three commits):
+- **#8 took fewer passes:** 6 against 14, and 4 reviews against 8.
+- **The comparison is not like for like.** #7's passes built the app incrementally, one page group per pass, and only 2 of its 7 reviews rejected. #8 built the whole app in one pass, and then spent **three of its four review rounds, and most of its fix time, on a single bullet**. The rejection rate is therefore worse here (3 of 4, against #7's 2 of 7).
+- **The two runs spent different amounts on that bullet.** #7 spent nothing on it until its closure review found every page silently generic. #8 paid up front to make the bullet mechanically enforced: the behavioural sweep takes 88 s per run.
+- **This is a feature that was not faster in the way that matters.** Its first pass was quick. Its cost sat in turning a prose claim into a guard that cannot be walked past.
+
+## Backlog id 30 — `web_component_tests` (phase 17): APPROVED, closing with id 29
+
+Its notes prescribe that it is verified when id 29 closes, and it closes now. Both bullets have been met since id 29's round 1:
+- component coverage of the timeline, the place-order form, and the stock and billing tables;
+- the SSE hook tested with a fake `EventSource`, plus the stream client tested against a real local SSE server with a forced mid-stream disconnect and `Last-Event-ID` resume.
+
+Fix round 3 added `gateway-relay.test.ts` and `providers.test.ts`, which are component-level.
+
+**Effort record:** **no separate implementer or review sessions.** These tests were written inside id 29's loop, and they are counted in id 29's figures above. This matches #7, where the same feature also "closed as a byproduct of feature 29" (#7 `progress/history.md:1126`). #7 did spend ≈14 min of dedicated test-honesty work; #8's equivalent is inside id 29's fix rounds.
+
+## Backlog id 98 — `expired_session_on_a_finished_order_shows_connection_lost` (phase 16): APPROVED
+
+This entry came from advisory A1 of id 29's review round 4, and it was fixed as soon as it was found.
+- **The defect:** on a terminal order, a stream refused because the session expired left the page on "Connection lost". Its Retry button only reopened the stream.
+- **The fix:** when the stream gives up, the page re-reads the order through the query client, so a 401 reaches `redirectOnSignedOut` and the user lands on `/login`. Retry re-checks the same way and reopens only on success.
+- **Test seam:** `setSignedOutNavigation` in `providers.tsx`. It has no production caller, and the default path is still guarded by `providers.test.ts`.
+
+**Ledger:** #8 is now stronger than #7. #7 has the same gap: `[id].vue:94-97` retries blindly, the session is checked only in `auth.global.ts:10-21` on navigation, and `plugins/vue-query.ts` has no 401 handler. This is worth inheriting for #9.
+
+**Verification:**
+- Review: 5 arms, all killed. They cover deletion, an ignored re-check result, an unstable `refetch` (the loop probe, which produced 471 navigations and was caught), and a no-op default navigation.
+- `QUALITY_ONLY=web ./quality.sh` exited 0, with Vitest 20 files / 267 passed and integration 7/7.
+- Verdict in `progress/review_expired_session_on_a_finished_order_shows_connection_lost.md`.
+
+**Effort record:**
+
+| Pass | Wall-clock | Notes |
+|---|---|---|
+| Implementer, single pass | 2026-09-17 ≈00:33 → 00:43 (≈10 min), from the filesystem | The record says "00:55 → 01:30", which is impossible: its own file was last saved at 00:43:24 and the review read the clock at 00:49 (review advisory A1). Its reading was already in context from id 29 |
+| Review round 1 | ≈00:44 → ≈00:53 (≈10 min) | APPROVED |
+
+**Totals:** **1 implementer session, 1 review, 0 rejections**, about 20 minutes altogether.
+
+**Against #7's baseline:** there is **no #7 counterpart**. The defect is still present in #7, unfixed, so there is no #7 effort to compare against. This is one of the cheap ones, because the id 29 loop that found it had already paid for the reading.
+
+
 ## Shared amendment SA-5 (raised here, applied to #7 in the same session) — 2026-09-17
 
 **What changed.** `specs/shared/openapi.yaml`, the Money section of `info.description`, one sentence. It read *"Formatting for humans happens in the client, from `currency.decimalPoints`."* It now reads *"Formatting for humans happens in the client, from the currency's ISO 4217 minor-unit exponent (EUR, GBP and USD are 2; JPY is 0; BHD is 3). No response carries that exponent: it is a property of the currency code itself (SA-5)."* Prose only — no schema, path or wire shape.
@@ -2808,3 +2930,137 @@ The same comparison surfaced a second #7 defect: a contracts test **writes into 
 **Consumers re-checked:** #7 `pnpm contracts:check` OK (generated types unchanged); #8 `apps/web` `types:check` OK (generated types unchanged); #8 `Gateway.UnitTests` 245/245, including `OpenApiContractTests` against the rebuilt embedded spec served at `/docs`.
 
 **Code alignment:** #8 already conformed (`apps/web/src/lib/money.ts` reads the exponent through `Intl`). #7's three formatting functions assumed an exponent of 2 and are aligned under backlog id 97 of the order-to-cash-dotnet assessment.
+
+
+## Id 99 `web_apps_name_their_stack` — both web apps name their stack — closed 2026-09-17
+
+**What.** #8's web app shows `#8 · .NET / Next.js` and #7's shows `#7 · NestJS / Nuxt` in the signed-in header, on the login page and in the browser-tab title. Each app has one definition (`apps/web/src/lib/stack-label.ts` in #8, `apps/web/app/lib/stack-label.ts` in #7). #8's guard is `apps/web/src/app/stack-label.test.tsx` (11 cases, page population from the filesystem, public set as a literal). #7's is `apps/web/app/stack-label.spec.ts` (4 cases). The reviewer re-armed both apps (changed label text; deleted the header usage), and each run failed by name. Verdict: `progress/review_sa5_and_stack_label.md`.
+
+**Effort record.** 2 implementer sessions run in parallel, one per repository, sharing a dispatch with id 97's #7 half. Transcript timestamps: #8 half 02:50:36Z → 03:00:15Z, #7 half (shared with id 97) 02:50:29Z → 03:00:52Z. 1 review, 03:03:48Z → about 03:15Z, 0 rejections. Wall-clock from dispatch to close: about 25 minutes.
+
+**Against #7's baseline:** there is no #7 counterpart. This is a new maintainer request in both repositories. #7's half is recorded here because #7 has no open backlog.
+
+
+## Id 97 `sa5_money_formatting_names_a_field_no_response_carries` — SA-5 applied, #7's money formatting aligned — closed 2026-09-17
+
+**What.** SA-5 (recorded in its own section above) names the ISO 4217 minor-unit exponent as the source for formatting money. #8 already conformed; its guard is `apps/web/src/lib/money.test.ts`. #7's `apps/web/app/lib/money.ts` now reads the exponent through `Intl` instead of dividing by 100. Parsing works digit by digit and stays exact for every safe integer. Every call site passes the currency, and the amount inputs' `step` follows it. #7's guards are `app/lib/money.spec.ts` (49 cases, JPY/EUR/BHD) and `app/pages/currency-exponent.spec.ts` (2 cases, one per page). #7 web suite: 18 files / 129 tests. Verdict: `progress/review_sa5_and_stack_label.md`.
+
+**Effort record.** The spec amendment was applied by the leader in the same session (see the SA-5 section). Then 1 implementer session in #7, shared with id 99's #7 half (02:50:29Z → 03:00:52Z). Then 1 review, 03:03:48Z → 03:11Z, **1 rejection**: the line-discount input's `step` had no test, and the record gave a wrong reason for leaving it (`step` drives native constraint validation, not only display). Then 1 fix-round implementer, 03:12:49Z → 03:15:18Z, and 1 re-review, about 03:16Z → 03:22Z. Totals: **2 implementer sessions, 2 reviews, 1 rejection**. About 32 minutes of wall-clock from dispatch to close, not counting the gate time spent on SA-5.
+
+**Against #7's baseline:** there is no #7 counterpart. #7 never fixed this; it hard-coded a 2-decimal exponent and left a comment. This one was **not free**: the rejection came from a site the implementer classified as display-only without checking what `step` does. The arming table already covered the two sibling `step` sites.
+
+## Maintainer request — web port 3010 and root command shortcuts — 2026-09-17
+
+- **Web port.** The maintainer asked for `WEB_PORT` to default to 3010, because port 3000 is normally held by another project on their machine. #7 also defaulted to 3000. The two stacks share every other host port, so they never run together, and both now default to 3010.
+  - #8, changed by the leader: `.env.example` and `scripts/dev-stack.sh`.
+  - #8, changed by an implementer: `apps/web/package.json`.
+  - #7, changed by an implementer: `.env.example`, `nuxt.config.ts`, the Playwright config, the apps compose file, the web Dockerfile healthcheck, the capture scripts and the README.
+  - The implementer also reworded #7's Grafana comment to say dev servers "default to 3010", which is false. The leader corrected it: Grafana's host port is 3030 because Grafana's own port, 3000, is also the Nuxt and Next.js default.
+  - Suites unchanged: #8 web 21 files / 278 tests; #7 web 18 / 129, with lint and typecheck passing. Record: `progress/impl_web_port_3010.md`.
+- **Root `package.json`.** Added by the leader: command shortcuts only, modelled on #7's scripts, following the airline-transaction-monitor precedent. It has no dependencies; `apps/web` keeps its own package.json and lockfile.
+  - The services run in the foreground through a new `scripts/dev-stack.sh env <command>`, which loads `.env.example`, then `.env`, then the caller's shell.
+  - pnpm auto-created an empty root `pnpm-lock.yaml`. A `next build` afterwards printed no workspace-root warning.
+  - Checked live:
+    - `saga:watch` read 12 orders from MS-SQL;
+    - `contracts:check` passed;
+    - `db:migrate:orders` reported "already up to date";
+    - the `test:unit` filter selected no tests in `Seed.IntegrationTests` (exit 0) and 44 in `Seed.UnitTests`.
+  - #7 shortcuts with no #8 counterpart yet are listed in the README's new "Running it" section, which replaces the phase-8 walkthrough.
+
+## Id 100 `timeline_money_reads_as_minor_units`: timeline, seed and notification money scaled by the ISO 4217 exponent, both repositories. Closed 2026-09-17
+
+**What.** Server-written human text that shows money now renders it with the currency's ISO 4217 minor-unit exponent.
+- One formatter per repository: #8 `src/SharedKernel/{CurrencyExponent,MoneyText}.cs`; #7 `packages/shared-kernel/src/domain/{currency-exponent,money-text}.ts`.
+- It is used by the Projector's timeline summaries, the Seed's timeline fixtures and the Notifications templates.
+- Both repositories carry the same literal 26-row table of non-2 exponents, including `UYI`.
+- #8's `SeededOracleParityTests` no longer excludes the `credit.*` summaries.
+- Review: `progress/review_timeline_money_and_stock_names.md`.
+
+**Effort record.**
+- 1 implementer session covering both repositories, 04:47:32Z → 05:21:18Z.
+- 1 review, 05:21:51Z → about 05:34Z. It gave **1 rejection**, for five defects:
+  - #7 took the exponent from `Intl`, which gives CLDR display digits, not ISO 4217;
+  - #7's floating-point arm survived all 538 tests;
+  - 20 of the table's 25 rows had no test;
+  - the record claimed a #7 file did not exist when it does;
+  - a code comment cited a wrong #7 path.
+- 1 fix-round implementer session, 05:40:52Z → 06:16:46Z.
+- 1 re-review, about 06:32Z → about 06:46Z.
+- Totals: **2 implementer sessions, 2 reviews, 1 rejection.** About 2 hours from dispatch to close.
+
+**Against #7's baseline:** there is no #7 counterpart. #7 rendered the same unscaled text and never fixed it. This one was **not cheap**. The rejection came from a ported premise that nobody checked: that `Intl`'s digits are the ISO exponent. The implementer stated it, and the #8 ledger then rejected the .NET equivalent for exactly that reason.
+
+**Re-review follow-ups** (carried by id 103's fix round, which reopens the same table file):
+- `src/SharedKernel/CurrencyExponent.cs:106` still says the fallback "mirrors #7's `Intl`-rejects-it fallback".
+- The record's D4 correction cites #7's PR16 at `:98`; it is at `:109`.
+
+## Id 101 `stock_page_repeats_the_product_code`: Stock page shows the catalog product name, both web apps. Closed 2026-09-17
+
+**What.** Each stock row now shows `productName`, falling back to the catalog name and then to the code, never the code twice.
+- A catalog failure shows a separate banner and never hides the table.
+- #8's behavioural error sweep now includes `GET /api/catalog/products` on `/stock`.
+- Changed files:
+  - #8: `apps/web/src/features/stock/stock-view.tsx` and `apps/web/src/app/error-text-sweep.test.tsx`;
+  - #7: `apps/web/app/pages/stock/index.vue`.
+- Review: `progress/review_timeline_money_and_stock_names.md`.
+
+**Effort record.**
+- 1 implementer session covering both repositories, 04:47:34Z → 05:09:33Z, in parallel with id 100.
+- 1 review, 05:21:51Z → about 05:34Z, shared with id 100. **0 rejections.**
+- The status could not be closed then: the permission classifier refused the reviewer's one-line `feature_list.json` edit. It was closed in the re-review, about 06:45Z.
+- About 2 hours from dispatch to close. About 70 minutes of that was the blocked backlog edit, not work.
+
+**Against #7's baseline:** there is no #7 counterpart. The defect existed in both web apps and was fixed in both here.
+
+## Id 102 `problem_detail_money_reads_as_minor_units`: money in problem `detail` text scaled by the ISO 4217 exponent, both repositories. Closed 2026-09-17
+
+**What.** Every Billing and Orders error whose message reaches the Gateway's problem `detail` now formats amounts with the shared money formatter.
+- Scope: 10 sites in #8, 7 in #7.
+- The `code` field and the structured amount fields are unchanged.
+- Messages that echo a malformed wire value back to the client are deliberately left raw: the web form cannot produce them, and only the saga reaches the invoice validator.
+- Tests now cover each layer:
+  - the domain message;
+  - the service mapper, one test per site, passing a real error through the real mapper;
+  - the Gateway pass-through.
+- Review: `progress/review_timeline_money_and_stock_names.md`.
+
+**Effort record.**
+- 1 implementer session, 05:40:52Z → 06:16:46Z. It was shared with id 100's fix round.
+- 1 review, about 06:32Z → 06:46Z. It gave **1 rejection**: nothing tested the service error-mapper step. Making either repository's mapper put raw minor units back on the wire left every test green.
+- 1 fix-round implementer session, 06:46:21Z → 07:01:05Z.
+- 1 re-review, about 07:04Z → 07:12Z.
+- Totals: **2 implementer sessions, 2 reviews, 1 rejection.** About 1 h 30 min from dispatch to close.
+
+**Against #7's baseline:** there is no #7 counterpart. The defect existed in both repositories and was filed from id 100's review. The rejection is the ledger-rule shape recorded from feature 19: the Gateway test built the message itself instead of running the real mapper.
+
+## Id 103 `web_currency_exponent_is_cldr_not_iso4217`: both web apps take the currency exponent from the ISO 4217 table. Closed 2026-09-17
+
+**What.** Both web apps now format and parse amounts with the ISO 4217 exponent. Before, they used `Intl`'s display digits.
+- #7's web imports `currencyExponent` from `@otc/shared-kernel`. Its Docker image now builds that package first.
+- #8's web imports a committed `apps/web/src/lib/currency-exponents.json`. A .NET test, `CurrencyExponentWebParityTests`, compares that file with the compiled `CurrencyExponent.NonDefaultExponents` in both directions.
+- #8's `payment-amount-mismatch-422.json` fixture was re-captured from a live stack.
+- Review: `progress/review_timeline_money_and_stock_names.md`.
+
+**Effort record.**
+- 1 implementer session, 05:40:54Z → 06:31:31Z.
+  - Its first write to #7 was refused by the permission classifier; a retry later in the same session succeeded.
+  - It included the live-stack fixture recapture.
+- 1 review, about 06:32Z → 06:46Z. It gave **1 rejection**, for two defects:
+  - the parity test read C# source as text, and a block comment, an `#if false` region, or two rows on one line all got past it;
+  - #7's web Dockerfile did not build `@otc/shared-kernel`.
+- 1 fix-round implementer session, 06:46:22Z → 07:04:02Z. It included a real `docker compose … build web`.
+- 1 re-review, about 07:04Z → 07:12Z.
+- Totals: **2 implementer sessions, 2 reviews, 1 rejection.** About 1 h 30 min from dispatch to close.
+
+**Against #7's baseline:** there is no #7 counterpart. The defect came from id 97, which aligned #7's web with `Intl`. This one was **not cheap**, because the first guard parsed source text. It repeated id 68's lesson: once text parsing lost, the instrument was switched to comparing the compiled table, and every shape that had beaten it was caught.
+
+## Phase-16 wrap-up: the quality gate found a test that depended on the developer's Kafka — 2026-09-17
+
+- `./quality.sh` failed on `SagaEndToEndVerificationTests.Criterion1_HappyPath_ReachesCompleted`: the order never left "pending" within 90 s. It reproduced twice with the developer infrastructure down.
+- **Cause:** the fleet's Projector host set `Kafka.BootstrapServers` but not its separate dead-letter producer, which defaulted to `localhost:9092`. Criterion 4's poison was dead-lettered there, and that stalled the Projector's consumer. In phase 15 a developer Kafka was listening on that port, so the test passed while its dead letters leaked to the developer broker. Today's changes did not cause it.
+- **Fixed during the wrap-up, as two mechanical test changes** (test_maintainer):
+  - `StartProjectorAsync` sets `DeadLetter.BootstrapServers`.
+  - Criterion 4's helper selects the DLQ record by `x-failed-consumer`, because both the saga and the Projector now dead-letter to the container. It also asserts that the Projector's record arrives.
+- **Result:** the saga class passes 5/5 with the infrastructure down. Removing the setting fails Criterion 4 with `Assert.NotNull() Failure: Value is null`; the file was restored and checked with `cmp`.
+- **The wider class is filed as backlog id 104 for phase 18:** about twenty test hosts leave the dead-letter default. The maintainer asked that the wrap-up come first.
+- Also fixed during the gate: an IDE1006 field name in `CurrencyExponentWebParityTests.cs` (id 103's round), found by `dotnet format`.

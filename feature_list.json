@@ -437,13 +437,20 @@
       "phase": 16,
       "title": "Next.js App Router web app: shadcn/ui, TanStack Query, Tailwind v4, live SSE saga timeline",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
-        "types imported from packages/contracts",
-        "live SSE timeline with reconnect",
-        "Register payment button works",
-        "honest waiting-for-projection state"
-      ]
+        "types generated from specs/shared/openapi.yaml into apps/web (ORIGINAL BULLET, copied verbatim from #7, read 'types imported from packages/contracts' — #8 has no packages/ workspace; #7's @otc/contracts generated its OpenAPI types from this same file, so this is the faithful translation). The generated file is the ONLY place any page, hook or route handler takes a wire shape from, and a drift check FAILS when the generated types are stale against openapi.yaml — #7 got that property from packages/contracts/scripts/check.mts, and without an equivalent #8 would supply it with nothing (the same ported-idiom row as backlog id 93)",
+        "live SSE timeline with reconnect: the browser resumes with Last-Event-ID after a dropped connection and neither loses nor duplicates a frame; order.updated and timeline.appended are de-duplicated SEPARATELY, never through one shared set keyed on eventId (#7 review_web_app.md Pass 3, Finding 1: the projector legitimately gives both frame types the same eventId, and a shared set silently dropped one — a stuck timeline)",
+        "Register payment button works: a decimal typed by the user reaches the wire as exact integer minor units with no floating-point arithmetic ('19.99' -> 1999), and an accepted payment is rendered distinctly from a duplicate (R47/R48)",
+        "honest waiting-for-projection state: GET /orders/{id} answering 202 (with Retry-After) renders a named waiting state that retries — never an error, never a 404, never an endless spinner (R55)",
+        "every error shown to a user is THAT error's own text, read from the RFC 9457 problem document's detail (falling back to title) — never a generic message. Proven against a REAL Gateway response, not only against a mock: #7's closure review records that every page's error text was silently generic from the day its app was built, because the field each page read was always undefined, and four review passes walked past it because every mock encoded the same wrong shape",
+        "the JWT never reaches the browser: it is held server-side behind an httpOnly session cookie and every Gateway call is made from a Next.js route handler, including the SSE stream, which is proxied with Last-Event-ID forwarded and the upstream request aborted when the client disconnects",
+        "no control is disabled or hidden waiting for hydration in a way a user can get stuck on (#7 Pass 2a and Pass 4: a submit button shipped permanently disabled from first render)",
+        "apps/web is wired into ./quality.sh — lint, typecheck, test and build — and each gate is proven to FAIL on a planted violation: #7's review found its web lint script exiting 0 while linting zero component files, with a real bug present",
+        "pages: login, orders list, place order (retailer/company/product/currency selection, quantity, unit-price override), order detail with live timeline and causal links, stock (list + replenish), billing (invoices with Register payment, credits); a 409 StockUnavailableProblem renders its shortages",
+        "loading-state tests hold the request on an UNRESOLVED promise and assert the loading UI — a loading test that passes with the request already resolved is vacuous (#7 Pass 7 concern 1)"
+      ],
+      "notes": "REWORKED 2026-09-16 by the leader before dispatch. #7 built its web app in NUXT 4 + shadcn-vue; #8's is Next.js + shadcn/ui BY DESIGN — the trilogy varies the frontend (#9 is Angular) — so this is a genuine rewrite with #7's app as the BEHAVIOURAL specification, never code to copy. The original acceptance was #7's four bullets copied verbatim, one of which ('types imported from packages/contracts') cannot be satisfied in a repository with no packages/ workspace. It is replaced by its faithful translation, and SIX bullets are added from #7's own record of what went wrong: #7's web_app was the most-reviewed feature in that assessment — 14 implementer passes and 7 review passes, 2 REJECTED — and every added bullet names a defect #7 actually shipped or nearly shipped and a review actually caught. They are in the contract, not only in a brief, so that a reviewer must hold them. || ORIGINAL NOTES: "
     },
     {
       "id": 30,
@@ -451,11 +458,12 @@
       "phase": 17,
       "title": "Web component tests: Vitest + React Testing Library (no Jest)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "timeline, place-order form, stock and billing tables covered",
-        "SSE composable tested with a fake EventSource"
-      ]
+        "SSE HOOK tested with a fake EventSource (ORIGINAL BULLET said 'SSE composable' — Vue terminology copied from #7; the plan document's own phase-17 row already says 'the SSE hook'), and in addition the stream client exercised against a REAL local SSE server with a forced mid-stream disconnect, asserting the Last-Event-ID resume — #7's strongest test of this behaviour, which the closure review called stronger than the literal criterion"
+      ],
+      "notes": "REWORKED 2026-09-16: in #7 this phase closed as a byproduct of the web app, because each web_app pass shipped its own component tests. #8 does the same — these tests are written inside id 29's loop, and this entry is verified when id 29 closes. || ORIGINAL NOTES: "
     },
     {
       "id": 31,
@@ -1385,7 +1393,7 @@
         "decide and record whether these move to src/Contracts/Rpc (making them wire contract) or stay deliberately separate — this is a DESIGN decision about what Contracts owns, not a mechanical dedup, and it is the maintainer's call, not the implementer's",
         "the wire cannot move: whichever way it is decided, the golden-envelope and BC23 parsed-from-the-spec tests plus the Gateway's own HTTP payload tests are RUN and named with their counts, byte-identity asserted rather than assumed",
         "armed by substitution and by addition, not deletion alone: an undeclared property on a unified record must fail a named test naming the property, and a record name substituted for a real sibling must fail a named test naming what was broken",
-        "PORTED-IDIOM LEDGER ROW, verified by id 84's reviewer and the reason this entry is worth keeping for #9: #7 has NO such duplication because its payload types are GENERATED into packages/contracts/src/generated/ and drift-checked by packages/contracts/scripts/check.mjs and check.spec.ts — consumed directly at apps/fulfillment/src/application/ports/stock-read.port.ts:3 and apps/gateway/src/application/queries/list-stock.query.ts:9. #8 hand-writes its contract types, so the property #7 gets from code generation is supplied here by nothing, and duplication is the observable consequence. Carry this row wherever the entry lands"
+        "PORTED-IDIOM LEDGER ROW, verified by id 84's reviewer and the reason this entry is worth keeping for #9: #7 has NO such duplication because its payload types are GENERATED into packages/contracts/src/generated/ and drift-checked by packages/contracts/scripts/check.mts and check.spec.ts — consumed directly at apps/fulfillment/src/application/ports/stock-read.port.ts:3 and apps/gateway/src/application/queries/list-stock.query.ts:9. #8 hand-writes its contract types, so the property #7 gets from code generation is supplied here by nothing, and duplication is the observable consequence. Carry this row wherever the entry lands"
       ],
       "notes": "Filed by the leader on 2026-09-13 from batch D1: the implementer asked for it and id 84's reviewer asked again, both correctly, since neither may write backlog entries. **DELIBERATELY FILED AS PHASE 15, NOT PHASE 14.** The maintainer froze phase 14 at 13 items after an audit phase that filed findings faster than it closed them, and 'finish an item, discover a consequence, grow the phase' is the exact pattern the freeze exists to stop. Phase 14's count is unchanged by this entry and its completion check is unaffected. NOT A DEFECT: nothing shipped is wrong, the duplication is a maintenance cost, and id 84's review confirmed both OrdersCancelReplyPayload definitions are now guarded. The valuable half is the ledger row in acceptance bullet 5 — a genuine engine-supplied property (#7's code generation) that #8 replaces with hand-writing, which is exactly the ported-idiom class CLAUDE.md says nothing else in this harness can see, and it is the half #9 should inherit. || DESIGN DECISION MADE 2026-09-15 by leader: move to src/Contracts/Rpc, following id 84's exact precedent (Contracts owns the wire shape; a record with no counterpart gets one created rather than staying duplicated). Not treated as open — user directed immediate fixes over deferral. || CLOSED 2026-09-15 by leader (Sonnet 5 session): moved 10 Gateway-only orders.*/catalog.* records into new src/Contracts/Rpc/OrdersRpcPayloads.cs and CatalogRpcPayloads.cs, following id 84 precedent. Deleted 3 now-empty Orders Presentation/Rpc files, retargeted callers in both Orders and Gateway. Wire tests run green: Contracts 24/24, Orders.UnitTests 500/500, Gateway.UnitTests 237/237, Gateway HTTP payload 11/11, Architecture 50/50, Orders acceptance 24/24. Armed (undeclared property + sibling substitution), both named and restored. Ledger row written. Leader verified independently: full solution build 0 warnings/0 errors, 11 unit-tier projects green (~1467 tests, 0 failed). progress/impl_phase15_batch2_payload_unification_and_offset_guards.md"
     },
@@ -1420,6 +1428,150 @@
         "enumerate the CLASS, not this instance, as a search result with bin and obj excluded BY PATH: every test that issues concurrent NATS requests over a connection it has not explicitly established, one classification line per hit. This site is where the class was NOTICED, never where it ends — and id 81's own scope stopped at the Gateway, which is why this entry exists"
       ],
       "notes": "Filed by the leader on 2026-09-13 from batch D3. The implementer found it while diagnosing id 81 and DELIBERATELY did not fix it, because it sits outside id 81's stated scope — the correct call, and it reported the site with the one-line fix attached rather than silently widening its own brief. **DELIBERATELY FILED AS PHASE 15, NOT PHASE 14.** The maintainer froze phase 14 at 13 items; phase 14's count and completion check are unaffected by this entry. WHY IT MATTERS MORE THAN A FLAKE: id 81's diagnosis disproved its OWN entry's premise. The failure is not a too-tight budget — one round lost a reply under a 120000 ms budget on an idle machine, and the losing call's simultaneous twin completed in 2-8 ms while the responder had received both requests. No amount of machine contention produces that. So raising a timeout at this site would hide it forever, which is precisely what id 81 bullet 5 forbade. Related: id 81 (the Gateway instance, fixed) and CLAUDE.md's rule that a retry budget counted in attempts assumes each attempt costs time. || CLOSED 2026-09-15 by leader (Sonnet 5 session, verified directly given phase-15 budget pressure — targeted test re-run green, class enumeration checked, no src/ change): ported id 81's ConnectAsync()+precondition fix; armed and verified; enumerated class repo-wide, no other live instance found. progress/impl_id95_orders_cold_nats_connection.md"
+    },
+    {
+      "id": 96,
+      "name": "gateway_ignores_gateway_port",
+      "phase": 16,
+      "title": "The Gateway never reads GATEWAY_PORT: .env.example declares it (3001), #7's Gateway reads it (apps/gateway/src/main.ts:30), and #8's binds Kestrel's default instead — found by phase 16's live verification, which had to bind it through ASPNETCORE_URLS",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "GatewayProgramConfiguration reads GATEWAY_PORT, defaulting to 3001 exactly as #7 does (apps/gateway/src/main.ts:30: Number(process.env.GATEWAY_PORT ?? 3001)), and the host listens on it",
+        "guarded the way the five sibling *ProgramConfigurationTests already guard their own ports: a default test, and a SUBSTITUTION test that sets GATEWAY_PORT and its sibling port variables to distinct non-default values and fails, naming the key, if the Gateway reads the wrong one — the mutation family CLAUDE.md says a sibling-named variable requires",
+        "no in-process test host collides on the real port: every existing Gateway integration suite and tests/Gateway.IntegrationTests/SagaEndToEndVerificationTests.cs still passes, run and counted",
+        "scripts/dev-stack.sh no longer needs the ASPNETCORE_URLS workaround, and its comment saying the Gateway does not read GATEWAY_PORT is removed rather than left stale",
+        "armed: deleting the read, and substituting a sibling key, each fail a named test with a message naming the variable",
+        "the class was enumerated before filing: every variable .env.example declares was matched against every file that reads it, and GATEWAY_PORT is the ONLY service setting read by no src/*.cs file — the others read only by compose, the MS-SQL/Kafka entrypoints or the n8n workflows are legitimately consumed there. Phase 13's env-read guards could not see this, because they guard variables that ARE read; a declared variable that nothing reads is invisible to them"
+      ],
+      "notes": "Filed and dispatched for an immediate fix on 2026-09-16 by the leader, from the phase-16 web-app implementer's live verification. Filed for the record, not deferred: the maintainer's standing direction is that a detected issue is fixed on detection. A ported-idiom miss from phase 13 — #7's Gateway read its port from the environment and #8's Gateway silently did not, so the declared setting had no effect and nothing failed."
+    },
+    {
+      "id": 97,
+      "name": "sa5_money_formatting_names_a_field_no_response_carries",
+      "phase": 16,
+      "title": "specs/shared/openapi.yaml says clients format money 'from currency.decimalPoints', but every currency on the REST wire is a bare ISO 4217 code and decimalPoints travels only on the internal NATS catalog.reference.list reply — the shared specification names a source no client can reach",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "HUMAN-GATED: specs/shared/ is read-only without a spec amendment, applied byte-identically to #7 and #8, committed on its own, with its history section and README registry row. Nothing below is applied before the maintainer approves SA-5",
+        "PROPOSED SA-5 TEXT — openapi.yaml info.description, the Money section, line 56 today reads 'Formatting for humans happens in the client, from `currency.decimalPoints`.' Replace it with: 'Formatting for humans happens in the client, from the currency's ISO 4217 minor-unit exponent (EUR, GBP and USD are 2; JPY is 0; BHD is 3). No response carries that exponent: it is a property of the currency code itself.' No schema, no path and no wire shape changes",
+        "after applying, each repository's own contract-type regeneration and drift check run and are named with their result — a description change may or may not reach generated type comments, and neither #7's packages/contracts check nor #8's apps/web types:check may be assumed unaffected",
+        "#8 conformance is ALREADY met: apps/web/src/lib/money.ts reads the exponent from ISO 4217 via Intl and never assumes 2 — cite the guard that proves a non-2-decimal currency formats and parses correctly",
+        "#7 alignment: #7's apps/web/app/lib/money.ts divides by 100 (a hard-coded 2-decimal exponent). It produces no wrong output today, because #7 seeds only EUR, GBP and USD (all 2-decimal), but under SA-5 it is non-conforming for any other currency. Align it and guard it with a 0- and a 3-decimal case, tracked here as ids 75 and 79 tracked earlier #7 alignments"
+      ],
+      "notes": "SA-5 APPROVED by the maintainer on 2026-09-17 and APPLIED by the leader the same day: specs/shared/openapi.yaml byte-identical in #7 and #8 (md5 fa261d4cf12aa3b373cb777aaa79b2e1), both parse, #8 init.sh parity OK; #7 contracts:check OK and #8 apps/web types:check OK (generated types unchanged); #8 Gateway.UnitTests 245/245 incl. OpenApiContractTests; README registry row and a history section in BOTH repositories written. Acceptance bullets 1-4 are therefore met; bullet 5 (#7's money.ts alignment) is the remaining work, dispatched. || Filed by the leader on 2026-09-16 from phase 16: the web-app implementer found it, and the phase-16 review asked for it to be routed as a numbered entry and a written proposal rather than left in prose — CLAUDE.md's rule for any disclosure whose root cause is specs/shared/. Verified before filing: openapi.yaml:56 names currency.decimalPoints; the REST schemas carry currency only as $ref CurrencyCode; decimalPoints exists in #8 only on CurrencyViewPayload (src/Contracts/Rpc/CatalogRpcPayloads.cs:51), an internal RPC shape; #7's money.ts comment acknowledges the same gap and divides by 100; both repositories seed only EUR, GBP and USD, so no wrong output exists today. Checked whether #7 solved it without an amendment, as CLAUDE.md requires before proposing one: it did not — it hard-coded the common case. The leader's recommendation is the smallest amendment: one sentence of prose, naming the source that actually exists (ISO 4217), with no wire change. The alternative — exposing decimalPoints on the REST wire — changes the contract in both repositories to carry a value the currency code already determines. AWAITING THE MAINTAINER'S DECISION on SA-5."
+    },
+    {
+      "id": 98,
+      "name": "expired_session_on_a_finished_order_shows_connection_lost",
+      "phase": 16,
+      "title": "On a finished order's page an expired session shows 'Connection lost' with a Retry button that loops on the refusal, instead of sending the user to sign in",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "an expired session on the order-detail page of a TERMINAL order ends at /login — the same outcome a 401 produces everywhere else in the app (src/app/providers.tsx redirectOnSignedOut) — rather than at a 'Connection lost' state",
+        "the 'Retry connection' action never loops on a refusal: when the stream is refused, what the user is shown and offered names the actual state",
+        "the non-terminal case is unchanged and still covered, and the existing reconnect guarantees (Last-Event-ID resume, per-type de-duplication, one stream per page, stream closed on leave) all still pass",
+        "tested with the refusal held deterministically in the test, not by timing; armed by removing the fix, with a failure message naming the terminal order and the missing redirect",
+        "no generic text is introduced: whatever the page shows passes the behavioural sweep's reviewed-label check"
+      ],
+      "notes": "Filed and dispatched for an immediate fix on 2026-09-17 by the leader, from advisory A1 of id 29's review round 4, which carried it to phase 19 as a disclosed limit and left filing to the leader. The maintainer's standing direction is that a detected defect is fixed on detection, and this is a live defect in today's code, not a coverage shape with no instance. Mechanism, as the review traced it: order-stream-client.ts:105-111 turns a refused stream into gave-up; order-detail-view.tsx:23,101-104 then shows 'Connection lost' with a Retry button that only reopens the stream (use-order-stream.ts:78); the detail query polls only while the order is non-terminal (use-order-detail.ts:59-70), so on a terminal order no query fails with 401 and nothing redirects. EventSource exposes no response body or status, so the stream alone cannot tell a refusal from a network drop — the fix has to ask something that can."
+    },
+    {
+      "id": 99,
+      "name": "web_apps_name_their_stack",
+      "phase": 16,
+      "title": "Neither web app says which assessment it is: #7 (NestJS + Nuxt) and #8 (.NET + Next.js) look alike in a browser and both default to port 3000, so a user cannot tell which stack answered",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "#8's web app shows the label '#8 · .NET / Next.js' in the header of every signed-in page and on the login page, and its browser-tab title names the stack",
+        "#7's web app shows '#7 · NestJS / Nuxt' in the same three places — tracked here because #7 is a completed assessment with no open backlog of its own, as ids 75, 79 and 91 were",
+        "the label is one definition per app, not text repeated in several files, so it cannot drift within an app",
+        "a test in each app fails if the label is missing from the signed-in header, the login page or the tab title; armed by removing it",
+        "in #8, the label passes the behavioural error sweep's reviewed-label check and changes no error text"
+      ],
+      "notes": "Requested by the maintainer on 2026-09-17: 'is it easy to know when we are in the web if we are in the #7 or in the #8? If it is not, could we add a label like NestJS/Nuxt and .NET/Next'. It is not easy: both apps default to port 3000 and share page structure. Work in both repositories runs in parallel with id 97's #7 alignment, because the two repositories share no build; the status stays pending while it runs only because init.sh allows one in_progress entry."
+    },
+    {
+      "id": 100,
+      "name": "timeline_money_reads_as_minor_units",
+      "phase": 16,
+      "title": "The order timeline shows money as raw minor units — 'Credit hold of 9 245 EUR approved' for a €92.45 order — so a human reads a hundred times the real amount; #7 renders it the same way, and the seed writes '16130 EUR' ungrouped",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "the Projector's summary builders render every amount with its currency's ISO 4217 minor-unit exponent: 9245 EUR → '92.45 EUR', 5000 JPY → '5 000 JPY' (exponent 0), 12345 BHD → '12.345 BHD' (exponent 3); integer arithmetic only, no floating point, no decimal in domain code, no culture-dependent separators, thousands still grouped by a single ASCII space",
+        "the seed's timeline fixtures render amounts with the same rule, so a seeded order and a projected order read alike (the design's recorded 'seed writes 16130 EUR' difference is closed rather than carried)",
+        "the same change in #7 (apps/projector and its seed), tracked here as ids 75, 79, 91 and 97 were",
+        "PR16's test asserts whole strings for EUR, a 0-exponent and a 3-exponent currency, and a negative and a large value; armed by forcing the exponent to 0 and to 2, and by replacing the integer split with a floating-point division",
+        "specs/projector_read_model/design.md's summary table and PR16 note are updated in both repositories; specs/shared/ is not touched (PR16's own text already requires integer minor units and no conversion, which the new rendering keeps)"
+      ],
+      "notes": "Found by the maintainer on 2026-09-17 in a phase-16 screenshot of ORD-000025's timeline. Both stacks render it this way deliberately (#7 apps/projector/src/domain/money-format.ts:11-16; #8 src/Projector/Domain/MoneyFormat.cs), but PR16 requires only integer minor units and no conversion, not an unscaled display. SA-5 now says human formatting uses the ISO 4217 exponent, so this is the same rule applied to server-written human text. Fixed at once, per the maintainer's standing instruction. Existing read-model documents keep their old text until re-projected or re-seeded."
+    },
+    {
+      "id": 101,
+      "name": "stock_page_repeats_the_product_code",
+      "phase": 16,
+      "title": "The Stock page shows 'PRD-0001 (PRD-0001)' on every row: productName is optional in StockItem and no backend fills it, so both web apps fall back to the code and then repeat it",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "each stock row shows the product's name from the catalog the app already reads (GET /catalog/products), with the code beside it; a product with no known name shows its code once, never twice",
+        "a StockItem.productName, if a backend ever sends one, still wins over the catalog",
+        "a catalog failure does not hide the stock table: rows fall back to the code alone, and #8's behavioural error sweep still passes, or is extended if the new request joins the stock page's population",
+        "the same change in #7's stock page",
+        "tests in each app cover name-from-catalog, the code-only fallback with no duplicate, and productName precedence; each is armed"
+      ],
+      "notes": "Found by the maintainer on 2026-09-17 in a phase-16 screenshot. specs/shared/openapi.yaml StockItem.productName is optional (not in required), and neither #8's src/ nor #7's backend apps populate it: Fulfillment owns stock by product code only. #8 apps/web/src/features/stock/stock-view.tsx:127 and #7 apps/web/app/pages/stock/index.vue:186 render `productName ?? productCode` followed by `(productCode)`. Fixed at once, per the maintainer's standing instruction."
+    },
+    {
+      "id": 102,
+      "name": "problem_detail_money_reads_as_minor_units",
+      "phase": 16,
+      "title": "A problem document's human-readable detail can carry money in raw minor units — INVOICE_PAYMENT_AMOUNT_MISMATCH says 'Payment amount 9245 does not equal the invoice's totalAmount …' and the web app shows that detail verbatim; both repositories",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "every domain or RPC error whose message can reach a problem document's `detail` and names an amount renders it with the shared money-text formatter (id 100): '92.45 EUR', never '9245'",
+        "the class is enumerated first, in both repositories, as a search result: every error message with an amount, each classified as reaching a human (fix it) or not (state the path that stops it)",
+        "machine-readable fields are unchanged: `code`, and any structured amount field, stay integer minor units",
+        "a test per fixed site asserts the whole detail string through the path a user sees (at least RPC error → Gateway problem document in #8), and each is armed",
+        "the same change in #7 (apps/billing/src/domain/invoice-errors.ts:71 and any sibling), tracked here as ids 97 and 100 were"
+      ],
+      "notes": "Filed from review_timeline_money_and_stock_names.md D6 (2026-09-17): src/Billing/Domain/Errors/InvoicePaymentAmountMismatchError.cs:7 → src/Billing/Presentation/Rpc/BillingErrorMapper.cs:95-98 → src/Gateway/Presentation/Problem/ProblemJsonMiddleware.cs:95 → apps/web/src/lib/problem.ts:23. Same class as id 100 (human-facing money text), fixed in the same round under the stopping rule recorded in progress/current.md."
+    },
+    {
+      "id": 103,
+      "name": "web_currency_exponent_is_cldr_not_iso4217",
+      "phase": 16,
+      "title": "Both web apps take the currency exponent from Intl (CLDR display digits), not ISO 4217 — for HUF, IDR, COP, IQD and others they disagree with the backends' ISO table, so the web formats and PARSES those amounts with the wrong number of decimals",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "#8 apps/web/src/lib/money.ts and #7 apps/web/app/lib/money.ts take the exponent from the same ISO 4217 table the backends use (id 100): the non-2 set is identical everywhere, including UYI = 0",
+        "the table is written once per repository where the build allows it (#7's web may import @otc/shared-kernel); where it cannot (#8's web cannot import .NET), a test reads the backend table and fails on any difference",
+        "parsing and formatting both follow the table: 12345 HUF formats as '123.45'-style with 2 decimals, and a HUF input accepts 2 decimals, and the input step follows it",
+        "tests assert HUF, IQD, JPY, BHD and EUR through format, parse and the input step, each armed; the whole-table parity guard is armed with a one-row corruption on each side",
+        "SA-5's text ('ISO 4217 minor-unit exponent') is unchanged and now true of every client"
+      ],
+      "notes": "Filed from review_timeline_money_and_stock_names.md D7 (2026-09-17). Predates id 100: #8's web used Intl since phase 16 (id 29), and id 97 aligned #7's web to Intl. Intl's maximumFractionDigits is CLDR's display precision, which differs from ISO 4217 for about 15 codes (IQD 0 vs 3; HUF, IDR, COP 0 vs 2). Same class as id 100, fixed in the same round."
+    },
+    {
+      "id": 104,
+      "name": "dead_letter_producer_defaults_to_localhost",
+      "phase": 18,
+      "title": "Each service's dead-letter producer has its own bootstrap default ('localhost:9092'), independent of Kafka.BootstrapServers, so an in-process test host that points Kafka at a container still dead-letters to whatever broker is on localhost:9092",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "DeadLetterKafkaOptions.BootstrapServers in Orders, Notifications and Projector falls back to the service's own Kafka.BootstrapServers when not set explicitly, so configuring Kafka once configures both clients; production configuration (the *ProgramConfiguration files) is unchanged in effect",
+        "a test per service proves the fallback: a host configured with only Kafka.BootstrapServers dead-letters to that broker; armed by restoring the independent localhost default",
+        "the test hosts enumerated on 2026-09-17 (about twenty files under tests/ that call *Host.CreateBuilder without setting DeadLetter.BootstrapServers) are re-checked against the enumeration command, and any explicit workaround made redundant is left or removed deliberately, with the reason recorded",
+        "the same question is asked of #7, citing its checkout either way"
+      ],
+      "notes": "Found by the phase-16 wrap-up's quality gate on 2026-09-17. SagaEndToEndVerificationTests.Criterion1 failed twice with the developer's infrastructure down: the fleet's Projector dead-lettered Criterion4's poison to localhost:9092 (connection refused), which stalled its consumer. The test had passed in phase 15 only because a developer Kafka was listening there, so dead letters silently went to the developer broker. The wrap-up fixed that one test (StartProjectorAsync now sets DeadLetter.BootstrapServers; Criterion4 now selects each consumer's DLQ record and asserts that the Projector's also arrives, armed by removing the setting). Disposition: fix in phase 18. The class is latent: the other hosts that leave the default never dead-letter in their tests. It is not worked during the wrap-up, per the maintainer's instruction that the wrap-up comes first."
     }
   ]
 }
