@@ -49,6 +49,20 @@ public static class NotificationsServiceCollectionExtensions
         // singletons: FactRetryDispatcher holds no scoped state of its own,
         // matching Orders' own registration shape.
         services.AddSingleton<IOptions<FactRetryOptions>>(Options.Create(options.FactRetry));
+
+        // Backlog id 104 — DeadLetter.BootstrapServers falls back to
+        // Notifications' OWN Kafka.BootstrapServers when not set explicitly,
+        // so a caller that configures Kafka once (most test hosts) also
+        // configures the dead-letter producer, rather than silently
+        // defaulting to localhost:9092 regardless of which broker is under
+        // test. NotificationsProgramConfiguration.Configure still sets
+        // DeadLetter.BootstrapServers explicitly, so production behaviour is
+        // unchanged in effect.
+        if (string.IsNullOrEmpty(options.DeadLetter.BootstrapServers))
+        {
+            options.DeadLetter.BootstrapServers = options.Kafka.BootstrapServers;
+        }
+
         services.AddSingleton<IOptions<DeadLetterKafkaOptions>>(Options.Create(options.DeadLetter));
         services.AddSingleton<IFactRetryDelay, TaskDelayFactRetryDelay>();
         services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();

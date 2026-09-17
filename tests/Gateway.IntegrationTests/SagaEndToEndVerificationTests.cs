@@ -840,13 +840,16 @@ internal sealed class SagaFleet : IAsyncDisposable
                 o.Kafka.BootstrapServers = kafka.BootstrapServers;
                 o.Kafka.PollTimeoutMs = 200;
                 // OrdersSagaOptions.DeadLetter is a SEPARATE, dedicated
-                // producer connection (design.md §3.3) that defaults to
-                // "localhost:9092" — found live: leaving it unset here
-                // pointed the DLQ publisher at a broker that does not
-                // exist at that address (this fixture's Kafka container
-                // uses a Docker-assigned ephemeral port), so criterion 4's
-                // poisoned fact was retried and "dead-lettered" against a
-                // producer that could never actually deliver it.
+                // producer connection (design.md §3.3). Left EXPLICIT here
+                // even though AddOrdersSaga now falls back to
+                // Kafka.BootstrapServers when this is unset (backlog id
+                // 104) — found live before that fallback existed: leaving
+                // it unset pointed the DLQ publisher at the default
+                // "localhost:9092", a broker that does not exist at that
+                // address (this fixture's Kafka container uses a
+                // Docker-assigned ephemeral port), so criterion 4's poisoned
+                // fact was retried and "dead-lettered" against a producer
+                // that could never actually deliver it.
                 o.DeadLetter.BootstrapServers = kafka.BootstrapServers;
             });
 
@@ -960,7 +963,13 @@ internal sealed class SagaFleet : IAsyncDisposable
                 options.Kafka.BootstrapServers = kafka.BootstrapServers;
                 options.Kafka.PollTimeoutMs = 200;
                 // ProjectorFacts' DeadLetter is a SEPARATE, dedicated
-                // producer connection that defaults to "localhost:9092".
+                // producer connection. Left EXPLICIT even though
+                // AddProjector now falls back to Kafka.BootstrapServers when
+                // this is unset (backlog id 104) — this is the exact call
+                // site the phase-16 wrap-up fixed live (Criterion4 dead-
+                // lettered to localhost:9092 with the developer's
+                // infrastructure down); redundant with the fallback now,
+                // kept deliberately as belt and braces.
                 options.DeadLetter.BootstrapServers = kafka.BootstrapServers;
                 options.Nats.Url = nats.Url;
                 options.Mongo.ConnectionUri = mongo.ConnectionString;

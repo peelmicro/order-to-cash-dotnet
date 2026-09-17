@@ -101,6 +101,20 @@ public static class OrdersSagaServiceCollectionExtensions
         // own registration below (a singleton BackgroundService may not
         // directly depend on a scoped service).
         services.AddSingleton<IOptions<FactRetryOptions>>(Options.Create(options.FactRetry));
+
+        // Backlog id 104 — DeadLetter.BootstrapServers falls back to the
+        // saga's OWN Kafka.BootstrapServers when not set explicitly, so a
+        // caller that configures Kafka once (most test hosts) also
+        // configures the dead-letter producer, rather than silently
+        // defaulting to localhost:9092 regardless of which broker is under
+        // test. OrdersProgramConfiguration.ConfigureSaga still sets
+        // DeadLetter.BootstrapServers explicitly, so production behaviour is
+        // unchanged in effect.
+        if (string.IsNullOrEmpty(options.DeadLetter.BootstrapServers))
+        {
+            options.DeadLetter.BootstrapServers = options.Kafka.BootstrapServers;
+        }
+
         services.AddSingleton<IOptions<DeadLetterKafkaOptions>>(Options.Create(options.DeadLetter));
         services.AddSingleton<IFactRetryDelay, TaskDelayFactRetryDelay>();
         services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();

@@ -69,14 +69,19 @@ internal static class SagaIntegrationTestSupport
                 options.Sweeper.PendingGraceMs = 300;
                 options.Sweeper.ParkRetryCapMs = 5_000;
                 options.Sweeper.BatchSize = 20;
-                // OR1's DLQ producer — DEFAULTS to localhost:9092, which on
-                // a developer machine running docker-compose.infra.yml's own
-                // persistent Kafka is a REAL, DIFFERENT broker than this
-                // ephemeral Testcontainers one. Left unset, a dead-letter
-                // publish silently succeeds against the wrong broker and
-                // every SagaDeadLetterTests assertion against a real DLQ
-                // message times out despite the committed-offset assertion
-                // passing (PublishAsync never throws).
+                // OR1's DLQ producer — a SEPARATE connection from
+                // options.Kafka above. Left EXPLICIT here even though
+                // AddOrdersSaga now falls back to Kafka.BootstrapServers when
+                // this is unset (backlog id 104): on a developer machine
+                // running docker-compose.infra.yml's own persistent Kafka,
+                // an unset value used to be a REAL, DIFFERENT broker than
+                // this ephemeral Testcontainers one, and a dead-letter
+                // publish would silently succeed against the wrong broker
+                // while every SagaDeadLetterTests assertion against a real
+                // DLQ message timed out despite the committed-offset
+                // assertion passing (PublishAsync never throws). Redundant
+                // with the fallback now, kept for the same reason belt and
+                // braces is kept elsewhere in this codebase.
                 options.DeadLetter.BootstrapServers = kafka.BootstrapServers;
                 configureSaga?.Invoke(options);
             });
