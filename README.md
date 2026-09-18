@@ -112,7 +112,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 20 | n8n demo workflows, reused unchanged | ✅ **complete, 1 of 1.** The four workflow JSONs were already copied byte-identically from #7 during the harness phase; this phase verified them live rather than porting anything. Auto-import proven idempotent from a cold `docker compose --profile n8n up`; the burst workflow fired through a real webhook, reached the Gateway on the host (via a `host.docker.internal`/`extra_hosts` bridge, since `scripts/dev-stack.sh` runs the .NET services outside Docker until phase 23's compose exists) and placed a real order, confirmed end to end and state restored afterward; removing the `n8n` profile left 12 other services healthy and an order still reaching `completed` with n8n never started. `n8n:import`/`n8n:export` root shortcuts ported from #7 |
 | 21 | Quality gates (analyzers, format, coverage) | ✅ **complete, 2 of 2.** `quality.sh`'s coverage gate now fails the build below 80% domain / 60% overall, merging every coverlet report by line-hit union so a sibling test project's coverage isn't undercounted; proven to fail with two artifact-corruption arms and a real coverlet exclude-filter run. SonarQube's optional profile now runs a real scan to completion (`sonar-scan.properties`, renamed from the ported `sonar-project.properties` — that exact filename makes `dotnet-sonarscanner end` fail). A pre-existing backlog entry from feature 45's review (`EfCoreOrderNumberAllocator` scanning the whole `orders` table on every allocation, not just the first) was also closed here: a cheap fast-path check now skips that scan once the sequence row exists, with feature 45's own concurrency guarantee left untouched and re-armed to prove it |
 | 22 | Prometheus, Grafana, Jaeger verification | ✅ **complete, 1 of 1.** All five panels of the reused Grafana dashboard (saga duration, per-service latency, consumer lag, outbox lag, DLQ depth) verified against real orders placed through the real stack; 4 of 5 were empty until a real bug was found and fixed — the dashboard queried Prometheus metric names with a `_milliseconds`/`_ratio` suffix .NET's OTel SDK never produces, unlike #7's JS SDK. One distributed trace captured spanning the whole saga: 42 spans, 6 services, depth 26, with continuity confirmed at the database level, not just Jaeger's UI grouping (#7: 22 spans, depth 11 — #8 spans three extra layers per hop) |
-| 23 | Full Docker Compose | ⬜ |
+| 23 | Full Docker Compose | ✅ **complete, 2 of 2.** `docker-compose.apps.yml`, layered on `docker-compose.infra.yml` (never duplicating it), brings all 18 containers to healthy in 91.8s with images already built (a true from-scratch build+start is ~167s, disclosed as its own number rather than folded in). One shared `infra/docker/service/Dockerfile`, parameterised by a build arg, builds all six .NET services; a web Dockerfile builds `apps/web` as its own standalone pnpm project. Closed a real gap with zero `src/` changes: all four MS-SQL-backed services now get their own migrate-then-run container pair, where before only three were migrated automatically. Found and fixed a genuine Docker Compose footgun (`external: true` redeclared across a multi-file merge fails a first-ever cold start outright) while proving the timing claim. A real order placed through the composed Gateway reached `completed` and survived a full container restart |
 | 24 | Documentation, demo recording, **#7 vs #8 benchmark** | ⬜ |
 | 25 | Final checkpoint | ⬜ |
 
@@ -132,6 +132,8 @@ pnpm stack:stop
 
 The web app listens on **3010** (`WEB_PORT`), not Next.js's usual 3000, which is often taken by another app. #7 uses the same port, and the two stacks never run together because they share every other host port. A value set in your shell wins over both env files, e.g. `WEB_PORT=3020 pnpm stack:start`.
 
+**All-Docker alternative** (phase 23): `pnpm dc:up:apps` builds and brings up all 18 containers, no host `dotnet`/`node` process needed — cold start reaches every container healthy in under two minutes with images already built. Seeding still runs from the CLI (`pnpm seed`) against the composed stack's host-published ports. `pnpm dc:down:apps` tears it down.
+
 To work on one service in the foreground instead, run each in its own terminal: `pnpm seed`, then `pnpm dev:orders`, `dev:fulfillment`, `dev:billing`, `dev:notifications`, `dev:projector`, `dev:gateway` and `dev:web`. Each loads `.env.example`, then `.env`, then your shell (`scripts/dev-stack.sh env`).
 
 | Group | Shortcuts |
@@ -140,12 +142,12 @@ To work on one service in the foreground instead, run each in its own terminal: 
 | Contracts | `contracts:generate`, `contracts:check` (the web app's OpenAPI types against `specs/shared/openapi.yaml`) |
 | Database | `db:migrate:orders`, `db:migrate:fulfillment`, `db:migrate:billing`, `db:migrate:notifications`, `seed` (the seed also applies every migration) |
 | Web app | `web:install`, `web:build`, `web:start`, `web:lint`, `web:typecheck`, `web:test`, `web:test:coverage`, `web:test:integration` |
-| Infrastructure | `dc:up:infra`, `dc:up:infra:no-n8n`, `dc:down:infra`, `dc:ps:infra`, `dc:clean:infra`, `kafka:topics`, `dc:logs:infra`, `dc:logs:<service>`, `n8n:import`, `n8n:export`, `dc:up:sonar`, `dc:down:sonar` |
+| Infrastructure | `dc:up:infra`, `dc:up:infra:no-n8n`, `dc:down:infra`, `dc:ps:infra`, `dc:clean:infra`, `kafka:topics`, `dc:logs:infra`, `dc:logs:<service>`, `n8n:import`, `n8n:export`, `dc:up:sonar`, `dc:down:sonar`, `sonar:scan` |
+| Full stack (Docker only, phase 23) | `dc:up:apps`, `dc:down:apps`, `dc:ps:apps`, `dc:logs:apps`, `dc:build:apps` — brings up all 18 containers (infra + six services + web); seeding still runs from the CLI (`pnpm seed`), by design — #8 has no seed container |
 | Demo | `saga:watch` (every order's status and the saga command table, read from MS-SQL) |
 
-#7 shortcuts with no #8 counterpart yet:
-- `dc:*:apps` and `dc:seed` wait for the full Docker Compose (phase 23);
-- `sonar:scan` waits for phase 21;
+#7 shortcuts with no #8 counterpart:
+- `dc:seed` — #8 runs the seed job from the CLI (`pnpm seed`) rather than as its own container, a deliberate choice recorded in `progress/impl_full_docker_compose.md`;
 - `order:place` and `invoice:pay` are Node scripts built on NestJS's NATS client, so they do not carry over as they are.
 
 ## Licence

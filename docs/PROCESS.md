@@ -250,6 +250,12 @@ Every process artifact in this repository: what it is for, and where it came fro
 - #7 is touched only for spec amendments or on request.
 - Each phase runs in a fresh session.
 
+**Position: Phase 23 COMPLETE, 1 of 1 entry closed, 101 of 108 features done.** Counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → `108 101`, on 2026-09-18.
+
+Id 36, full Docker Compose: LIGHT-but-large, one implementer, no separate review — genuine construction (nothing existed before this phase), so the leader's own check scaled up with it: both Dockerfiles and the compose file read in full, two of its claims independently reproduced. All 18 containers healthy from cold in 91.8s with images built; a true from-scratch run (~167s) is disclosed as its own number rather than folded into the headline claim. Closed a real migration gap with zero `src/` changes, and found a genuine Compose multi-file merge footgun while proving the timing claim.
+
+> The paragraph below this note describes phase 22's position and is kept as history.
+
 **Position: Phase 22 COMPLETE, 1 of 1 entry closed, 100 of 108 features done.** Counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → `108 100`, on 2026-09-18.
 
 Id 35, observability dashboards: LIGHT, one implementer, no separate review. All five Grafana panels and a whole-saga Jaeger trace verified against real orders on a real stack. Four of five panels were empty on arrival — the dashboard's Prometheus queries carried a metric-name suffix .NET's OTel SDK never emits without an explicit `unit:` — fixed in the dashboard, with the deeper `src/` question (should the instruments gain a `unit:` instead) filed rather than decided unilaterally. Trace continuity was checked at the database, not trusted from a UI, because this repository has a real history of a fast-path trace-context gap.
