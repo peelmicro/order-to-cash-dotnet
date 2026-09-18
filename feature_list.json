@@ -648,7 +648,7 @@
       "phase": 21,
       "title": "EfCoreOrderNumberAllocator: the atomic seed scans dbo.orders on every allocation, not only when seeding",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "the MAX(order_reference) scan over dbo.orders is evaluated only when the sequence row does not yet exist, not on every allocation",
         "the seeding branch stays atomic — whatever shape is chosen must still make two concurrent first-ever allocations safe, and feature 45's deterministic two-session guard must still pass",
@@ -1600,6 +1600,20 @@
         "getByLabel('Product') / getByRole('combobox', { name: 'Product' }) resolve correctly once fixed; apps/web/e2e/happy-path.spec.ts and compensation.spec.ts may then be simplified back from the structural locator (getByTestId('order-line').locator('select')) they were written to use instead, if the leader judges that worthwhile at the time"
       ],
       "notes": "Found by id 32's implementer while porting the Playwright suite (2026-09-17), confirmed live twice against a running dev-stack.sh: for=\"product-6\"/id=\"product-2\" on one load, for=\"product-7\"/id=\"product-2\" on the next. apps/web/src/features/orders/place-order-form.tsx:32-35, let nextLineKey = 1; incremented by emptyLine(). Does not block id 32's acceptance bullets (a mouse-driven operator is unaffected; the e2e tests route around it with a structural locator) and breaks label-click-to-focus and real assistive technology independent of Playwright. LIGHT change under CLAUDE.md Cost discipline (a component-local id-generation fix): one implementer, leader checks the diff and re-runs the affected Vitest/Playwright tests. Re-open trigger named in acceptance: any test that starts relying on getByLabel/getByRole name matching for a per-line field."
+    },
+    {
+      "id": 107,
+      "name": "dotnet_sonarscanner_has_no_local_tool_manifest",
+      "phase": 21,
+      "title": "dotnet-sonarscanner is a global machine-level dotnet tool with no .config/dotnet-tools.json manifest pinning its version in this repository, so `pnpm run sonar:scan` fails with 'command not found' on a machine that has not separately installed it",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "a `.config/dotnet-tools.json` local tool manifest pins dotnet-sonarscanner to a specific version",
+        "`dotnet tool restore` installs it locally without a prior global install, and `sonar:scan` (or its README instructions) says to run that first",
+        "the pinned version is confirmed compatible with the SonarQube server version this repository already runs (2.36.2's image, or whatever docker-compose.infra.yml pins by the time this is worked)"
+      ],
+      "notes": "Found during id 34's work (2026-09-18): SonarQube is optional infrastructure, so this is not blocking, but a fresh checkout's `sonar:scan` currently depends on an undocumented global tool install. LIGHT change under CLAUDE.md Cost discipline (build tooling config, no saga/money/security touch). Disposition: fix in a future session; not required to close phase 21."
     }
   ]
 }

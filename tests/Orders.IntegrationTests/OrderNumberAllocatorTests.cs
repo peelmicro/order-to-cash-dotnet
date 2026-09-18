@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using OrderToCash.Orders.Infrastructure.Persistence;
 using OrderToCash.Orders.Infrastructure.Persistence.Entities;
 using Xunit;
@@ -11,7 +13,7 @@ namespace OrderToCash.Orders.IntegrationTests;
 /// <c>progress/review_orders_acceptance.md</c>) — <see cref="EfCoreOrderNumberAllocator"/>
 /// had no direct test: neither its <c>WITH (UPDLOCK, ROWLOCK)</c>
 /// concurrency claim nor its self-seeding branch over a NON-EMPTY
-/// <c>orders</c> table. Test-only — the allocator itself is not touched.
+/// <c>orders</c> table.
 /// </summary>
 [Collection(MsSqlCollection.Name)]
 public sealed class OrderNumberAllocatorTests(MsSqlContainerFixture mssql)
@@ -31,8 +33,8 @@ public sealed class OrderNumberAllocatorTests(MsSqlContainerFixture mssql)
         // deployment in before any concurrent placement ever happens. This
         // isolates the ROW-LEVEL claim under test here from the SEPARATE,
         // narrower self-seeding race documented and reproduced by
-        // <see cref="AllocateNextAsync_ConcurrentFirstEverAllocations_CanRaceTheSelfSeedInsertAndFail"/>
-        // below (an A11 finding for feature 15, not fixed here).
+        // <see cref="AllocateNextAsync_ConcurrentFirstEverAllocations_TheSecondCallerBlocksOnTheSeedLockInsteadOfRacingIt"/>
+        // below (an A11 finding for feature 15, fixed by feature 45's concurrency guard).
         await using (var seedDb = mssql.CreateDbContext(connectionString))
         {
             var seedAllocator = new EfCoreOrderNumberAllocator(seedDb);
@@ -259,6 +261,59 @@ public sealed class OrderNumberAllocatorTests(MsSqlContainerFixture mssql)
                 await db.DisposeAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// Feature 47 (review of feature 45, advisory A1): the atomic seed
+    /// statement scans <c>dbo.orders</c> in full to build its
+    /// <c>MAX(order_reference)</c> candidate, unconditionally, on EVERY
+    /// call — even once the sequence row already exists, when that scan's
+    /// result is thrown away by the <c>WHERE NOT EXISTS</c> filter around
+    /// it. This is the acceptance bullet's own claim, proved directly
+    /// rather than inferred from timing: once a first call has seeded the
+    /// row, a second call's SQL is captured verbatim (EF Core's own
+    /// <c>DbCommand</c> log, not a mock), and NONE of it may reference
+    /// <c>dbo.orders</c> — the fast pre-check must have skipped the seed
+    /// statement (and its scan) entirely, leaving only the pre-check itself
+    /// and the unrelated claiming <c>SELECT</c>/<c>UPDATE</c> pair feature
+    /// 15 already shipped.
+    /// </summary>
+    [Fact]
+    public async Task AllocateNextAsync_OnceTheSequenceRowAlreadyExists_TheSecondCallNeverReadsOrders()
+    {
+        var connectionString = await mssql.CreateFreshDatabaseAsync($"otc_orders_allocator_fastpath_{Guid.NewGuid():N}");
+        await using (var migrateDb = mssql.CreateDbContext(connectionString))
+        {
+            await migrateDb.Database.MigrateAsync();
+        }
+
+        // First call: cold start (no orders rows, no sequence row) — seeds
+        // the counter via the unmodified atomic statement. Discarded value.
+        await using (var seedDb = mssql.CreateDbContext(connectionString))
+        {
+            var seedAllocator = new EfCoreOrderNumberAllocator(seedDb);
+            await seedAllocator.AllocateNextAsync(CancellationToken.None);
+        }
+
+        // Second call: steady state. Capture every SQL statement EF Core
+        // actually sends over the wire and assert none of them touch
+        // dbo.orders — the real claim id 47 exists to prove, distinct from
+        // feature 45's two-session race guarantee above.
+        var executedCommandTexts = new List<string>();
+        var loggingOptions = new DbContextOptionsBuilder<OrdersDbContext>()
+            .UseSqlServer(connectionString)
+            .LogTo(executedCommandTexts.Add, [RelationalEventId.CommandExecuted], LogLevel.Information)
+            .Options;
+
+        await using (var db = new OrdersDbContext(loggingOptions))
+        {
+            var allocator = new EfCoreOrderNumberAllocator(db);
+            var allocated = await allocator.AllocateNextAsync(CancellationToken.None);
+            Assert.Equal("ORD-000002", allocated.Value);
+        }
+
+        Assert.True(executedCommandTexts.Count > 0, "No DbCommand was logged — the logging hookup itself is broken, not the claim under test.");
+        Assert.DoesNotContain(executedCommandTexts, text => text.Contains("orders", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

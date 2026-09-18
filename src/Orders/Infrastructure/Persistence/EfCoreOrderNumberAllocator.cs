@@ -104,19 +104,46 @@ public sealed class EfCoreOrderNumberAllocator(OrdersDbContext db) : IOrderNumbe
 {
     public async Task<OrderNumber> AllocateNextAsync(CancellationToken cancellationToken)
     {
-        await db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-             INSERT INTO dbo.order_number_sequences (id, next_value)
-             SELECT 1, seed.next_value
-             FROM (
-                 SELECT ISNULL(MAX(CAST(SUBSTRING(order_reference, {OrderNumber.Prefix.Length + 1}, LEN(order_reference) - {OrderNumber.Prefix.Length}) AS int)), 0) + 1 AS next_value
-                 FROM dbo.orders
-             ) AS seed
-             WHERE NOT EXISTS (
-                 SELECT 1 FROM dbo.order_number_sequences WITH (UPDLOCK, HOLDLOCK) WHERE id = 1
-             )
-             """,
-            cancellationToken).ConfigureAwait(false);
+        // Feature 47 (review of feature 45, advisory A1): the atomic seed
+        // statement below is O(rows in dbo.orders) on EVERY call, because
+        // the MAX(...) aggregate has to be evaluated to build the one-row
+        // derived table the WHERE NOT EXISTS filters, regardless of whether
+        // the filter ends up keeping that row. A cheap, UNLOCKED existence
+        // check in front of it skips the scan once the sequence row exists
+        // — the steady state for every allocation after the very first.
+        // This is purely an optimisation, not a new correctness dependency:
+        // a false negative here (the row exists but this unlocked read
+        // raced and missed it, e.g. it ran concurrently with another
+        // caller's still-uncommitted seed) just falls through to the exact
+        // atomic statement that ran unconditionally before this feature,
+        // completely unmodified below — so two concurrent first-ever
+        // callers are exactly as safe as they were (feature 45's guard).
+        // No ambient transaction is needed for this read: it is advisory,
+        // never the sole gate on the insert, so it shares OrdersDbContext's
+        // ambient connection (and IUnitOfWork's ambient transaction, when
+        // one is open) rather than opening a new one — a second transaction
+        // here would be pure overhead for a value this method is willing to
+        // throw away on any race.
+        var sequenceRowAlreadyExists = await db.OrderNumberSequences
+            .AsNoTracking()
+            .AnyAsync(s => s.Id == 1, cancellationToken).ConfigureAwait(false);
+
+        if (!sequenceRowAlreadyExists)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                 INSERT INTO dbo.order_number_sequences (id, next_value)
+                 SELECT 1, seed.next_value
+                 FROM (
+                     SELECT ISNULL(MAX(CAST(SUBSTRING(order_reference, {OrderNumber.Prefix.Length + 1}, LEN(order_reference) - {OrderNumber.Prefix.Length}) AS int)), 0) + 1 AS next_value
+                     FROM dbo.orders
+                 ) AS seed
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM dbo.order_number_sequences WITH (UPDLOCK, HOLDLOCK) WHERE id = 1
+                 )
+                 """,
+                cancellationToken).ConfigureAwait(false);
+        }
 
         var sequenceRow = await db.OrderNumberSequences
             .FromSqlRaw("SELECT * FROM dbo.order_number_sequences WITH (UPDLOCK, ROWLOCK) WHERE id = 1")
