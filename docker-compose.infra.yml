@@ -436,7 +436,18 @@ services:
       # The workflows speak ONLY the Gateway's REST API — never a database,
       # never a broker. That is why the same JSON files serve #7, #8 and #9
       # with nothing but this base URL changing.
-      OTC_GATEWAY_URL: "http://gateway:${GATEWAY_PORT:-3001}"
+      #
+      # Default is "http://gateway:${GATEWAY_PORT}" — the hostname a real
+      # `gateway` service would have on this network once docker-compose.apps.yml
+      # exists (phase 23). Until then, scripts/dev-stack.sh runs the Gateway as
+      # a HOST process (not a container), so that hostname does not resolve
+      # from inside this container. `OTC_GATEWAY_URL` is therefore overridable
+      # (phase 20 verification did this: `OTC_GATEWAY_URL=http://host.docker.internal:${GATEWAY_PORT}
+      # docker compose ... up -d n8n`), reaching the host process via the
+      # `extra_hosts` entry below — Docker's standard host-gateway mechanism on
+      # Linux, since `host.docker.internal` is not built in the way it is on
+      # Docker Desktop. See progress/impl_n8n_workflows.md for the live proof.
+      OTC_GATEWAY_URL: ${OTC_GATEWAY_URL:-http://gateway:${GATEWAY_PORT:-3001}}
       OTC_REQUEST_TIMEOUT_MS: ${OTC_REQUEST_TIMEOUT_MS:-10000}
       GATEWAY_OPERATOR_USERNAME: ${GATEWAY_OPERATOR_USERNAME:-operator}
       GATEWAY_OPERATOR_PASSWORD: ${GATEWAY_OPERATOR_PASSWORD:-otc_operator_dev_password_change_me}
@@ -481,6 +492,15 @@ services:
       - ./n8n/workflows:/home/node/workflows
     networks:
       - otcnet-net
+    # Lets this container resolve `host.docker.internal` to the Docker host,
+    # even on Linux (where that name is not built in the way it is on Docker
+    # Desktop) — needed while scripts/dev-stack.sh runs the Gateway as a host
+    # process rather than a container; see the OTC_GATEWAY_URL comment above.
+    # Harmless once docker-compose.apps.yml (phase 23) makes `gateway` a real
+    # container hostname on this network — OTC_GATEWAY_URL simply stops being
+    # overridden and this mapping goes unused.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz/readiness"]
       interval: 5s

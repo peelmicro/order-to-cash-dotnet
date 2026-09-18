@@ -74,6 +74,8 @@
     "dc:logs:prometheus": "docker compose -f docker-compose.infra.yml logs -f prometheus",
     "dc:logs:grafana": "docker compose -f docker-compose.infra.yml logs -f grafana",
     "dc:logs:n8n": "docker compose -f docker-compose.infra.yml --profile n8n logs -f n8n",
+    "n8n:import": "bash scripts/import-n8n-workflows.sh",
+    "n8n:export": "bash scripts/export-n8n-workflows.sh",
     "dc:up:sonar": "docker compose -f docker-compose.infra.yml --profile sonar up -d sonarqube",
     "dc:down:sonar": "docker compose -f docker-compose.infra.yml --profile sonar stop sonarqube",
     "dc:logs:sonarqube": "docker compose -f docker-compose.infra.yml --profile sonar logs -f sonarqube",
