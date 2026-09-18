@@ -1,8 +1,26 @@
 # Current session
 
-**Feature:** **id 37 `documentation_demo` — `done`** (phase 24 COMPLETE, mixed shape — README/docs written leader-direct, one scoped LIGHT implementer session for the demo-GIF capture, 0 reviews, 0 rejections). **Not yet committed or pushed** — awaiting the maintainer's "full wrap-up". 102 of 108 backlog features are done.
+**Feature:** **id 38 `final_checkpoint` — `done`** (phase 25 COMPLETE — the trilogy's last phase for assessment #8). **110 of 110 backlog features are done.** **Not yet committed or pushed** — awaiting the maintainer's "full wrap-up".
 
-## Phase 24 closure summary
+## #8 is complete — no next phase
+
+`feature_list.json` has no entry past phase 25. Assessment #8 (`order-to-cash-dotnet`) is finished: every backlog entry `done`, `CHECKPOINTS.md` C1–C7 walked and every finding it raised dispositioned, all five spec amendments back-ported to #7, the README's benchmark section honest and verified against its primary sources. **The next work on this repository, if any, is maintenance or a request from the maintainer — not a scheduled phase.**
+
+## Phase 25 closure summary
+
+`CHECKPOINTS.md`'s own first walk (Opus reviewer, `progress/review_final_checkpoint.md`) correctly refused to close: 7 of 40 boxes empty, verdict "NOT YET SATISFIED." Every finding was worked, not smoothed over — full detail in `progress/history.md`'s "Id 38 `final_checkpoint`" entry:
+- Two malformed/stale spots in `specs/shared/test-matrix.md` fixed directly (an unescaped `|` breaking a table row; a stale present-tense sentence).
+- Seven `done` features with no `progress/history.md` effort record — all nine (including two lacking their own dedicated entry) now have one, four investigated fresh by a dispatched implementer, five written by the leader from this session's own facts.
+- Five of six rows in README's "Where reuse cost more, not less" table were citing the wrong phase's real figures — corrected against each phase's own primary total in `progress/history.md`. The real phase-14 gap (`observability_reliability`, ≈3.1×) is the build's largest and had gone missing from the table entirely; it's in now.
+- Only 1 of 4 n8n workflows had ever actually been fired against the real Gateway — the other three were fired for real this close-out (a real order, two real paid invoices, a real stock top-up), not deferred to a backlog entry.
+- A git-history ordering gap (spec commits not always preceding implementation commits, unlike #7) accepted with evidence; one paragraph added to `docs/lessons.md` for #9.
+- Six pre-existing pending backlog entries found at the very start of this phase (52, 106, 107, 108, 109, plus two more — 110, 111 — that id 52's own audit surfaced) all disposed: two real code fixes (106, 110), three leader-direct root-config edits/dispositions (107, 108, 109), one audit (52), one accept-with-evidence after a genuine investigation that found #8 already safer than #7 (111).
+
+**The leader's own check, on top of the dispatched reviewer:** independently re-verified the corrected `test-matrix.md` arithmetic (63/0/0) and the corrected README benchmark figures against their primary `progress/history.md` sources before writing them — not trusted from the review's paraphrase. `feature_list.json`'s single-writer discipline held throughout a session that ran up to five concurrent subagents (verified via `git diff` at every step, no collision, no double-write).
+
+**A "full wrap-up" has not happened since phase 23** (`276344f`) — phases 24 and 25's combined work is all still uncommitted on disk. When the maintainer says the words, commit both phases (one commit per feature, per `CLAUDE.md`'s own discipline — or ask the maintainer how they want phases 24/25's many small entries batched, since this phase alone closed 8 backlog ids) — never assume which without asking, and never ask whether to commit. Full wrap-up also authorises: pushing, updating `README.md`/`docs/PROCESS.md` (already updated), the three external documents (already updated this session — Plan, Solution Documents, Stack Comparison), and regenerating both DotNet quizzes (already regenerated this session, but should be re-run again after this final round of edits since the source `.md` files changed again since the last regeneration).
+
+## OLD — Phase 24 closure summary [superseded, phase 24 closed before this session's phase-25 work]
 
 All four of id 37's acceptance bullets verified satisfied by the leader directly before closing (README section headers checked live with `grep -n "^## " README.md`; id 37's acceptance array re-read from `feature_list.json` and matched against the sections present):
 - README: `## Architecture` (service diagram, Kafka-vs-NATS decision matrix, three saga state diagrams including SA-4's compensation path), `## Trade-offs` (16 rows), `## Assumptions, and what I would do differently`, `## Production extensions` — all leader-direct, no `src/`/`apps/web/` touch.
@@ -15,7 +33,7 @@ Two factual errors caught and corrected by the leader before shipping, both by r
 
 Full effort record: `progress/history.md`, "Id 37 `documentation_demo`" entry. `feature_list.json` id 37 set to `done` (single-writer discipline confirmed: `git diff feature_list.json` against HEAD shows exactly one status line changed, `pending` → `done`).
 
-## Next phase — Phase 25: Final checkpoint (last phase)
+## OLD — Next phase — Phase 25: Final checkpoint (last phase) [superseded, executed and closed above — see "Phase 25 closure summary"]
 
 **Brief for the next session.** Start it in a FRESH session, and apply CLAUDE.md's "Cost discipline". **Population check done, live, before writing this brief** (`python3` over `feature_list.json`, not a sample): 108 total, 102 `done`, 6 `pending` — id 38 (phase 25, the only entry with that phase number), plus **five pre-existing backlog entries filed but not required for their own phase to close**: id 52 (phase 10), id 106 (phase 19), id 107 and id 108 (phase 21), id 109 (phase 22). Re-run this count live at the start of the next session rather than trusting this number — it is a snapshot from this close.
 - Read `feature_list.json`'s id 38 (phase 25) and its acceptance bullets before writing anything else — this brief does not presume its shape.

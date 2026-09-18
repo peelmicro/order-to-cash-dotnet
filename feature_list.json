@@ -563,14 +563,15 @@
       "phase": 25,
       "title": "Final checkpoint: backlog all done, every EARS R# traced, amendments back-ported",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "feature_list.json all done",
         "every EARS requirement traced to a green xUnit/Vitest/Playwright test",
         "CHECKPOINTS.md C1-C7 fully walked",
         "spec amendments back-ported to #7 or deferred with a reason",
         "stack-comparison document fully promoted from pre-resolved to confirmed"
-      ]
+      ],
+      "notes": "CLOSED 2026-09-18 (phase 25, the trilogy final checkpoint). All five acceptance bullets satisfied: (1) feature_list.json all done -- 110/110, this entry included; (2) every EARS requirement traced to a green test -- specs/shared/test-matrix.md Coverage summary corrected to 63/0/0 (two stale rows, R48 and R56, were already proven by shipped tests but never had their Status cells updated -- caught and fixed at this checkpoint); (3) CHECKPOINTS.md C1-C7 walked by an Opus reviewer, 40 boxes, 7 initially empty (D1-D7), all seven dispositioned -- two mechanical text fixes, seven missing progress/history.md effort records written, a mislabeled README benchmark table corrected against each phase real total (the real phase-14 gap, ~3.1x, was the builds largest and had gone missing from the table entirely), a git-history ordering gap accepted with evidence and one line added to docs/lessons.md for #9, and the three previously-untested n8n workflows fired for real against the live Gateway; (4) all five spec amendments (SA-1 through SA-5) confirmed back-ported to #7 by commit, done at phase 24; (5) the external Stack Comparison study document promoted from pre-resolved to confirmed, section 9 closed to a single legitimately #9-gated item. Also resolved at this same close-out, ahead of the checkpoint walk: the six pre-existing pending backlog entries found at phase 24s own close (ids 52, 106, 107, 108, 109, plus two new ones the id-52 audit surfaced, 110 and 111) -- all disposed with a fix, an acceptance-with-evidence, or a leader-direct config edit. Full record: progress/history.md, Id 38 entry."
     },
     {
       "id": 40,
@@ -718,7 +719,7 @@
       "phase": 10,
       "title": "Retroactive ported-idiom ledger for the value-crossing boundaries in services ported before the ledger was adopted",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "every value-crossing boundary in the pre-ledger services is walked: each NATS RPC client reply decode, each RPC responder request decode, the Kafka consumer envelope decode, the outbox relay's payload read-and-republish, and the Mongo projector's read path",
         "for each boundary, #7's counterpart is read and one question answered in one line: what did #7's version guarantee here, and what supplies that in #8",
@@ -726,7 +727,7 @@
         "NOTHING is fixed in place — a fix inside a sweep is a change nobody reviewed against a spec",
         "the read is time-boxed; a boundary taking more than ten minutes to compare is itself recorded as a finding"
       ],
-      "notes": "Recommended by feature 46's review, which produced the evidence that decides it. Feature 46 was dispatched specifically to port a missing guard from #7's stock-availability adapter; the implementer read that file; and a SECOND missing guard from the same thirty-line method (#7's malformed-JSON catch) went unported until the fix round closed it in-feature — advisory A1. Two unported guards in one method, one still unported after a dedicated repair pass, says the class is denser than its four known instances and that reading a file for one gap does not surface the next. The class has a cheap signature: every instance so far sits at a boundary where a value crosses into or out of the process, and those sites are enumerable rather than open-ended — roughly eight in the shipped services. The ledger protects new translations only; four services were ported before it existed."
+      "notes": "Recommended by feature 46's review, which produced the evidence that decides it. Feature 46 was dispatched specifically to port a missing guard from #7's stock-availability adapter; the implementer read that file; and a SECOND missing guard from the same thirty-line method (#7's malformed-JSON catch) went unported until the fix round closed it in-feature — advisory A1. Two unported guards in one method, one still unported after a dedicated repair pass, says the class is denser than its four known instances and that reading a file for one gap does not surface the next. The class has a cheap signature: every instance so far sits at a boundary where a value crosses into or out of the process, and those sites are enumerable rather than open-ended — roughly eight in the shipped services. The ledger protects new translations only; four services were ported before it existed. AUDIT COMPLETE 2026-09-18 (phase 25 close-out): the notes field speculating \"four services\" was wrong -- only Orders (all five phase-8 features) predates the ledger convention; Fulfillment/Billing/Notifications/Projector/Gateway already carry one from their original port. Five value-crossing boundaries walked for Orders; retroactive ledger rows appended to progress/impl_orders_acceptance.md, progress/impl_order_saga_orchestrator.md, progress/impl_outbox_and_idempotency.md. Two gaps surfaced, filed separately as ids 110 and 111 rather than fixed in place, per this entry's own acceptance bullet 4. Full record: progress/impl_retroactive_ported_idiom_ledger_decode_boundaries.md."
     },
     {
       "id": 53,
@@ -1592,14 +1593,14 @@
       "phase": 19,
       "title": "The order-line label htmlFor and its <select> id can disagree, because both derive from a module-scope mutable counter (nextLineKey) that free-runs across every SSR render a long-lived next start process serves, while the browser recomputes it from 1 on every hard navigation",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "the per-line product select's id and its label's htmlFor always agree, on the FIRST render after any number of prior server-side renders in the same process, not only on a freshly restarted process",
         "the key is derived from something request- or render-scoped (e.g. React's useId()) rather than a module-level free-running counter, so it cannot leak state across unrelated requests in the same long-lived server process",
         "a test proves it survives repeated renders: render the form N times in the same module instance (or otherwise force multiple SSR passes without a process restart) and assert the label/select ids still match on each one",
         "getByLabel('Product') / getByRole('combobox', { name: 'Product' }) resolve correctly once fixed; apps/web/e2e/happy-path.spec.ts and compensation.spec.ts may then be simplified back from the structural locator (getByTestId('order-line').locator('select')) they were written to use instead, if the leader judges that worthwhile at the time"
       ],
-      "notes": "Found by id 32's implementer while porting the Playwright suite (2026-09-17), confirmed live twice against a running dev-stack.sh: for=\"product-6\"/id=\"product-2\" on one load, for=\"product-7\"/id=\"product-2\" on the next. apps/web/src/features/orders/place-order-form.tsx:32-35, let nextLineKey = 1; incremented by emptyLine(). Does not block id 32's acceptance bullets (a mouse-driven operator is unaffected; the e2e tests route around it with a structural locator) and breaks label-click-to-focus and real assistive technology independent of Playwright. LIGHT change under CLAUDE.md Cost discipline (a component-local id-generation fix): one implementer, leader checks the diff and re-runs the affected Vitest/Playwright tests. Re-open trigger named in acceptance: any test that starts relying on getByLabel/getByRole name matching for a per-line field."
+      "notes": "Found by id 32's implementer while porting the Playwright suite (2026-09-17), confirmed live twice against a running dev-stack.sh: for=\"product-6\"/id=\"product-2\" on one load, for=\"product-7\"/id=\"product-2\" on the next. apps/web/src/features/orders/place-order-form.tsx:32-35, let nextLineKey = 1; incremented by emptyLine(). Does not block id 32's acceptance bullets (a mouse-driven operator is unaffected; the e2e tests route around it with a structural locator) and breaks label-click-to-focus and real assistive technology independent of Playwright. LIGHT change under CLAUDE.md Cost discipline (a component-local id-generation fix): one implementer, leader checks the diff and re-runs the affected Vitest/Playwright tests. Re-open trigger named in acceptance: any test that starts relying on getByLabel/getByRole name matching for a per-line field. FIXED 2026-09-18 (phase 25 close-out): the per-line id pair now derives from React useId() inside a new OrderLineRow subcomponent, request/render-scoped rather than a module-scope free-running counter; the reconciliation key moved to a useRef. Armed: reverted to the old counter, the new hydration-boundary Vitest test failed naming the missing combobox, restored and reconfirmed green. 18/18 file tests, 287/287 full web suite, typecheck and eslint clean. e2e locators left as structural (compensation.spec.ts already was; happy-path.spec.ts kept, only its stale comment corrected) -- reverting them needs a real docker-stack run, judged disproportionate to this LIGHT fix. Leader independently re-ran the file-level Vitest suite: 18/18. Full record: progress/impl_place_order_line_key_is_module_scope_mutable_state.md."
     },
     {
       "id": 107,
@@ -1607,13 +1608,13 @@
       "phase": 21,
       "title": "dotnet-sonarscanner is a global machine-level dotnet tool with no .config/dotnet-tools.json manifest pinning its version in this repository, so `pnpm run sonar:scan` fails with 'command not found' on a machine that has not separately installed it",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "a `.config/dotnet-tools.json` local tool manifest pins dotnet-sonarscanner to a specific version",
         "`dotnet tool restore` installs it locally without a prior global install, and `sonar:scan` (or its README instructions) says to run that first",
         "the pinned version is confirmed compatible with the SonarQube server version this repository already runs (2.36.2's image, or whatever docker-compose.infra.yml pins by the time this is worked)"
       ],
-      "notes": "Found during id 34's work (2026-09-18): SonarQube is optional infrastructure, so this is not blocking, but a fresh checkout's `sonar:scan` currently depends on an undocumented global tool install. LIGHT change under CLAUDE.md Cost discipline (build tooling config, no saga/money/security touch). Disposition: fix in a future session; not required to close phase 21."
+      "notes": "Found during id 34's work (2026-09-18): SonarQube is optional infrastructure, so this is not blocking, but a fresh checkout's `sonar:scan` currently depends on an undocumented global tool install. LIGHT change under CLAUDE.md Cost discipline (build tooling config, no saga/money/security touch). Disposition: fix in a future session; not required to close phase 21. FIXED 2026-09-18 (phase 25 close-out, leader-direct root-config edit): .config/dotnet-tools.json created, pinning dotnet-sonarscanner to 11.2.1 (the version already proven live against SonarQube 26.8.0 in id 34s work). dotnet tool restore confirmed live to install locally; dotnet dotnet-sonarscanner confirmed live to resolve the pinned local version without relying on this machines pre-existing global install. package.jsons sonar:scan script updated to run dotnet tool restore first and invoke via dotnet dotnet-sonarscanner (SDK local-tool dispatch) instead of the bare global command."
     },
     {
       "id": 108,
@@ -1621,13 +1622,13 @@
       "phase": 21,
       "title": ".editorconfig declares csharp_style_var_elsewhere = false (\"explicit types make domain code read like the spec\") at severity :suggestion, so it is never a build warning or error and dotnet format --verify-no-changes ignores it -- the convention is stated but not enforced, and the codebase violates it ~1,900 times (373 in src/, 1,529 in tests/, 147 in Domain/ folders alone, across 6 files, measured in Phase 8)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "one of two honest exits is taken, not a partial fix: (a) csharp_style_var_elsewhere = true:silent, adjusting the stated convention to match what the code already does, or (b) the convention is kept but scoped to where its own stated argument holds -- a [src/*/Domain/**.cs] section at :warning, with all Domain/ violations (147 sites measured in Phase 8, re-measure before fixing -- the count may have moved) actually fixed and the resulting rule proven to fail the build on a new violation",
         "if (b) is chosen: armed -- introduce one new `var` use in a Domain/ file where the type is not apparent, confirm `dotnet build` fails, restore, confirm green",
         "whichever choice is taken, .editorconfig's own comment describing the rule is corrected to match reality"
       ],
-      "notes": "Deferred in Phase 8 (see the external Plan doc's Phase 21 section, 'Quality Gates', which named this as a Phase 21 item) but never turned into a feature_list.json entry, so it silently fell out of scope when phase 21 (ids 34, 47) closed on 2026-09-18. Caught by the leader re-reading the Plan doc's own phase-21 checklist before updating it, rather than assuming the checklist and feature_list.json agreed. LIGHT change under CLAUDE.md Cost discipline (analyzer config, no saga/money/security touch) if option (a) is chosen; option (b) is closer to FULL scope (147 real code-site fixes across src/*/Domain/) and should be classified based on the actual count at the time it is worked, not assumed light because the config change itself is small."
+      "notes": "Deferred in Phase 8 (see the external Plan doc's Phase 21 section, 'Quality Gates', which named this as a Phase 21 item) but never turned into a feature_list.json entry, so it silently fell out of scope when phase 21 (ids 34, 47) closed on 2026-09-18. Caught by the leader re-reading the Plan doc's own phase-21 checklist before updating it, rather than assuming the checklist and feature_list.json agreed. LIGHT change under CLAUDE.md Cost discipline (analyzer config, no saga/money/security touch) if option (a) is chosen; option (b) is closer to FULL scope (147 real code-site fixes across src/*/Domain/) and should be classified based on the actual count at the time it is worked, not assumed light because the config change itself is small. DISPOSED 2026-09-18 (phase 25 close-out, leader-direct root-config edit): option (a) taken. Re-measured the violation count live before deciding -- 209 real var declarations at line-start alone across 20 Domain/ files (undercount; excludes inline/foreach forms), up from Phase 8s 147, confirming the convention had only grown further unenforced, not shrunk. csharp_style_var_elsewhere flipped to true:silent (was false:suggestion, never above :suggestion severity so never actually enforced either way) and the .editorconfig comment corrected to state the real history and the decision, per the entrys own honest-exit (a). Option (b) (147+ real code-site fixes) judged disproportionate this late in the trilogy for a rule with no build-time guard behind either reading."
     },
     {
       "id": 109,
@@ -1635,13 +1636,41 @@
       "phase": 22,
       "title": "None of #8's OTel Meter.CreateHistogram/CreateGauge calls (otc_saga_completion_ms, otc_outbox_lag_ms, otc_request_latency_ms, otc_fact_processing_latency_ms, otc_dlq_depth) pass a `unit:` parameter, so the Prometheus exporter never appends the unit suffix (_milliseconds, _ratio) #7's JS SDK calls produce -- the Grafana dashboard originally shipped querying names with the suffix and returned empty panels until fixed to match the real (suffix-less) names",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "a decision is made and recorded: either add `unit:` to every affected CreateHistogram/CreateGauge call so #8's exported metric names match #7's convention byte-for-byte (and the dashboard queries are reverted to the suffixed form), or the dashboard's current suffix-less queries are declared the correct, permanent shape and #7's convention is explicitly not followed here -- not left as an undocumented mismatch either way",
         "if `unit:` is added: every dashboard panel that queries the affected metrics is re-verified against real, non-empty data after the rename, the same way id 35 verified them",
         "the ported-idiom ledger (ADR or progress/impl_ note, per CLAUDE.md) gets one line: #7 relied on the JS OTel SDK auto-appending a unit suffix; in #8 that property is supplied by nothing, because CreateHistogram/CreateGauge's `unit:` parameter was never set"
       ],
-      "notes": "Found by id 35's implementer while verifying the observability dashboard (2026-09-18): 4 of 5 panels were empty because the shipped dashboard queried metric names with a _milliseconds/_ratio suffix that .NET's OTel SDK never produces without an explicit unit: parameter. Fixed the dashboard's queries to match reality (infra/grafana/dashboards/order-to-cash-overview.json) -- confirmed live, all five panels non-empty. This entry is the other direction: whether the src/ instrumentation should change to match #7's naming instead, which the LIGHT verification pass correctly declined to decide on its own. Not blocking; the dashboard fix alone satisfies id 35's three acceptance bullets."
+      "notes": "Found by id 35's implementer while verifying the observability dashboard (2026-09-18): 4 of 5 panels were empty because the shipped dashboard queried metric names with a _milliseconds/_ratio suffix that .NET's OTel SDK never produces without an explicit unit: parameter. Fixed the dashboard's queries to match reality (infra/grafana/dashboards/order-to-cash-overview.json) -- confirmed live, all five panels non-empty. This entry is the other direction: whether the src/ instrumentation should change to match #7's naming instead, which the LIGHT verification pass correctly declined to decide on its own. Not blocking; the dashboard fix alone satisfies id 35's three acceptance bullets. DISPOSED 2026-09-18 (phase 25 close-out, leader-direct): the dashboards current suffix-less metric names declared the correct, permanent shape; src/ instruments NOT changed to add unit:, #7s naming convention NOT followed. All five dashboard panels already non-empty against real data (id 35); changing src/ would require reverting id 35s own fix for no functional benefit. Ported-idiom ledger line written per this entrys acceptance bullet 3. Full record: progress/impl_otel_instruments_never_declare_a_unit.md."
+    },
+    {
+      "id": 110,
+      "name": "orders_saga_commands_adapter_reply_decode_guard",
+      "phase": 25,
+      "title": "NatsSagaCommandsAdapter.SendAsync has no try/catch(JsonException) around its reply decode, unlike its sibling NatsStockAvailabilityChecker (fixed by feature 46 Advisory A1) and unlike #7 nats-saga-commands.adapter.ts:170-178 -- a malformed reply body throws a bare JsonException instead of the classified SagaCommandTransportError the saga retry/terminal-classification logic expects",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "a malformed (non-JSON) reply body on any saga-command subject (stock.reserve, credit.hold, despatch.create, invoice.issue, stock.release, credit.release) raises SagaCommandTransportError, never a bare JsonException",
+        "proved by an integration test over a real broker with a stand-in responder answering non-JSON bytes, mirroring NatsStockAvailabilityCheckerTests' equivalent malformed-reply case",
+        "armed: the added guard is removed and the test is confirmed to fail naming the unguarded JsonException, then restored and reconfirmed green"
+      ],
+      "notes": "Found by backlog id 52's retroactive ported-idiom ledger audit (2026-09-18, phase 25 close-out), boundary RL5. Confirmed gap, not a hypothesis: src/Orders/Infrastructure/Messaging/NatsSagaCommandsAdapter.cs:131-143 has no catch around RpcJson.IsErrorBody/RpcJson.Deserialize<TReply>. LIGHT change under CLAUDE.md Cost discipline (a bounded exception-handling port, same shape as feature 46's already-shipped fix on the sibling class) -- one implementer, leader checks the diff and the new test. Full detail: progress/impl_order_saga_orchestrator.md, section \"Retroactive ported-idiom ledger (backlog id 52)\", row RL5. FIXED 2026-09-18 (phase 25 close-out): SendAsync now wraps its reply-decode in try/catch(JsonException), throwing SagaCommandTransportError, matching the sibling NatsStockAvailabilityChecker guard exactly. Armed: catch removed, rebuilt --no-incremental, the new integration test failed with the real runtime JsonReaderException at the unguarded call site (not a stand-in assertion); restored and reconfirmed via git diff against tracked HEAD (equivalent to cmp, since the arming backup was taken pre-fix rather than post-fix -- disclosed transparently in the implementer report). Orders.UnitTests 503/503, Orders.IntegrationTests 157/157 (12 min, real MS-SQL/Kafka/NATS), init.sh green, no regressions. Leader independently reviewed the diff. Full record: progress/impl_orders_saga_commands_adapter_reply_decode_guard.md."
+    },
+    {
+      "id": 111,
+      "name": "outbox_relay_poison_payload_retry_loop_unverified",
+      "phase": 25,
+      "title": "Whether a corrupted outbox.payload row retries unboundedly through OutboxRelay.RunOnceAsync's READPAST claim on every poll, with no poison-row circuit-breaker, and whether #7 shares the identical exposure, was not established within backlog id 52's audit time-box",
+      "sdd": false,
+      "status": "done",
+      "acceptance": [
+        "read #7's outbox-relay.service.ts caller of runOnce() (not reached in id 52's audit) and determine whether #7 has the same poison-row exposure",
+        "EITHER a test demonstrating the row is skipped/parked after N failed publish cycles (a fix, if #8 genuinely lacks what #7 has), OR a recorded, cited comparison establishing genuine #7 parity, disposed as ACCEPTED NOT FIXED with the citation -- the ledger's \"None owed\" conclusion is only sound once the sibling half is actually checked, not assumed",
+        "if fixed: armed with a corrupted-payload row and a bounded retry count, proving the circuit-breaker actually stops the loop rather than merely asserting it should"
+      ],
+      "notes": "Found by backlog id 52's retroactive ported-idiom ledger audit (2026-09-18, phase 25 close-out), boundary RL4 -- exceeded the audit's own 10-minute per-boundary budget and was recorded as a finding per the entry's acceptance bullet 5 rather than pushed through. No #7-vs-#8 asymmetry confirmed yet either way (both let a payload-decode failure escape the graceful publish-rollback path uncaught, both are one layer up caught by a poll-loop-level catch-and-retry) -- what is unverified is whether that composes into an unbounded retry, and whether #7 shares it. LIGHT-or-FULL depending which exit is taken (a parity citation is LIGHT; a real circuit-breaker touching the outbox relay -- shared across Orders/Fulfillment/Billing per OutboxRelayParityTests -- is closer to FULL). Full detail: progress/impl_outbox_and_idempotency.md, section \"Retroactive ported-idiom ledger (backlog id 52)\", row RL4. DISPOSED 2026-09-18 (phase 25 close-out): leader read outbox-relay.service.ts directly. NOT parity -- an asymmetry in #8s favour: #7s poll loop has no catch around runOnce(), only finally, so an unhandled promise rejection (e.g. a payload-decode failure outside the inner publish try-block) would crash the whole service process on first occurrence, with no unhandledRejection handler anywhere in apps/*/src/main.ts. #8s OutboxRelayBackgroundService.cs already catches every non-cancellation exception and retries paced on the next tick, never crashing. Neither repo has a poison-row circuit-breaker, but #8 does not lack what #7 supplies -- the reverse. ACCEPTED, NOT FIXED, re-open trigger: a real corrupted outbox.payload row observed in a real environment. Full record: progress/impl_outbox_relay_poison_payload_retry_loop_unverified.md."
     }
   ]
 }

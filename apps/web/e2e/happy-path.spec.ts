@@ -41,19 +41,25 @@ test('an order with a non-.99 total reaches completed, and the invoice explicitl
   await page.getByRole('combobox', { name: 'Retailer' }).selectOption('CarrefourEs');
   await page.getByRole('combobox', { name: 'Company' }).selectOption('ALBIONFOODS');
 
-  // NOT getByRole('combobox', { name: 'Product' }) / getByLabel('Product'):
-  // confirmed live (see progress/impl_e2e_playwright.md — genuine defect
-  // found, not this feature's to fix) that the product <select>'s `id` and
-  // its <label for> can disagree (`for="product-7"` vs `id="product-2"`,
-  // reproduced across repeated loads) — place-order-form.tsx derives BOTH
-  // from a module-scope mutable `nextLineKey` counter that free-runs across
-  // every SSR request this Next.js process has ever served, so the server's
-  // count and the browser's own fresh count can diverge, and React's
-  // hydration does not always repair a stale `for` attribute once adopted.
-  // Scoping through `order-line` (data-testid, one row = one product per the
-  // brief) and taking its one <select> sidesteps the broken association
-  // entirely rather than asserting the label link this test does not exist
-  // to cover.
+  // Still NOT getByRole('combobox', { name: 'Product' }) / getByLabel('Product'),
+  // though id 106 (see progress/impl_place_order_line_key_is_module_scope_mutable_state.md)
+  // has since fixed the underlying defect this locator was written to route
+  // around: place-order-form.tsx's product <select> `id` and its <label for>
+  // used to derive BOTH from a module-scope mutable `nextLineKey` counter
+  // that free-ran across every SSR request a long-lived `next start` process
+  // ever served, so the server's count and the browser's own fresh count
+  // could diverge (`for="product-7"` vs `id="product-2"`, reproduced across
+  // repeated loads) and React's hydration did not always repair the stale
+  // `for` attribute once adopted. The pair now derives from React's own
+  // `useId()` instead, proven by a hydration-repetition guard in
+  // place-order-form.test.tsx — this structural locator was kept rather than
+  // reverted to getByLabel/getByRole('combobox', { name: 'Product' }) as a
+  // LIGHT-change judgment call (CLAUDE.md cost discipline): reverting it
+  // would need a real e2e run against the full docker stack to confirm,
+  // which is disproportionate to a component-local id-generation fix already
+  // proven at the unit level. Scoping through `order-line` (data-testid, one
+  // row = one product per the brief) and taking its one <select> continues to
+  // work regardless.
   await page.getByTestId('order-line').locator('select').selectOption('PRD-0006');
   await page.getByTestId('quantity-input').fill('2');
 

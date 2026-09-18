@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
 using OrderToCash.Contracts.Rpc;
@@ -128,19 +129,36 @@ public sealed class NatsSagaCommandsAdapter : ISagaCommands
             throw new SagaCommandTimeoutError(subject, timeoutMs);
         }
 
-        if (RpcJson.IsErrorBody(reply.Data))
+        try
         {
-            var error = RpcJson.Deserialize<RpcErrorPayload>(reply.Data);
-
-            if (IsTerminalRpcErrorCode(error.Code))
+            if (RpcJson.IsErrorBody(reply.Data))
             {
-                throw new SagaCommandBusinessRejectionError(subject, error.Code, error.Message);
+                var error = RpcJson.Deserialize<RpcErrorPayload>(reply.Data);
+
+                if (IsTerminalRpcErrorCode(error.Code))
+                {
+                    throw new SagaCommandBusinessRejectionError(subject, error.Code, error.Message);
+                }
+
+                throw new SagaCommandTransportError(subject, $"{error.Code}: {error.Message}");
             }
 
-            throw new SagaCommandTransportError(subject, $"{error.Code}: {error.Message}");
+            return RpcJson.Deserialize<TReply>(reply.Data);
         }
-
-        return RpcJson.Deserialize<TReply>(reply.Data);
+        catch (JsonException)
+        {
+            // Backlog id 110 (retroactive ported-idiom ledger, boundary RL5):
+            // a reply body that is not valid JSON at all — RpcJson.IsErrorBody's
+            // own JsonDocument.Parse, or either typed Deserialize call above,
+            // throws JsonException on a garbled body. Sibling fix:
+            // NatsStockAvailabilityChecker.CheckAsync (feature 46 Advisory
+            // A1), guarding the identical seam. #7's
+            // nats-saga-commands.adapter.ts:170-178 guards this exact seam
+            // ("reply payload was not valid JSON") rather than letting the
+            // raw parse exception reach the caller as a bare JsonException
+            // the saga retry/terminal-classification logic cannot interpret.
+            throw new SagaCommandTransportError(subject, "reply payload was not valid JSON.");
+        }
     }
 
     /// <summary>

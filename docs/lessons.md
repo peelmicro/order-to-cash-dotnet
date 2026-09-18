@@ -407,6 +407,8 @@ Packages installed:
 
 Never install a package without it appearing in that phase's commit message. The git history is process evidence: for this repository it must show **harness first, spec copy second, code after**.
 
+**A gate that genuinely happened can still be invisible to git, and the fix belongs at the commit boundary, not in the record.** CHECKPOINTS.md C6 requires the spec commit to *precede* the implementation commit in history — a check the final-checkpoint review (phase 25) found true for only 1 of 8 `sdd: true` features here, against #7's clean record on every one of its equivalents (`e18b467`, `e5641b3`, `ed5f343`, ...). The spec-then-code human gate genuinely ran every time (`progress/spec_*.md` × 6, cited in `progress/history.md`) — this project batched a feature's spec and implementation into the same commit far more often than #7 did, so the *ordering* the gate enforced left no trace in git even though the gate itself was real. Accepted with evidence here rather than rewritten after the fact (rewriting git history to manufacture an ordering that didn't literally happen would be worse than the gap it hides). **For #9: commit the spec on its own, before starting the implementer, every time — not because the gate needs it, but because C6's box needs to be checkable from git alone, without having to cite a side-channel record to prove a real thing happened.**
+
 ## Environment notes
 
 - The .NET SDK is pinned in `global.json` (`10.0.111`, `rollForward: latestPatch`). A pin that cannot be satisfied makes `dotnet` fail outright rather than silently pick another SDK — `init.sh` surfaces this.

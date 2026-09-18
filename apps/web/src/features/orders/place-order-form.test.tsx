@@ -1,13 +1,16 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextRequest } from 'next/server';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POST as placeOrderRoute } from '@/app/api/orders/route';
 import type { PlaceOrderRequest } from '@/lib/api-types';
 import { setApiFetch } from '@/lib/api-client';
 import { FakeGateway, sendRaw } from '@/test/fake-gateway';
 import { fixtureDetail, fixtureResponse, gatewayFixture } from '@/test/gateway-fixtures';
-import { deferred, json, renderWithQuery, routeApi, type ApiCall, type RouteHandler } from '@/test/render';
+import { deferred, json, renderWithQuery, routeApi, testQueryClient, type ApiCall, type RouteHandler } from '@/test/render';
 import { PlaceOrderForm } from './place-order-form';
 
 // Sealing a session cookie needs Node's own Uint8Array realm, which jsdom
@@ -208,6 +211,53 @@ describe('PlaceOrderForm', () => {
     expect(screen.getAllByTestId('order-line')).toHaveLength(2);
     await userEvent.click(screen.getByRole('button', { name: 'Remove line 2' }));
     expect(screen.getAllByTestId('order-line')).toHaveLength(1);
+  });
+
+  it('the product select id still agrees with its own label htmlFor after HYDRATING a server render, even after several PRIOR renders already ran in the SAME module instance (id 106)', async () => {
+    catalogRoutes();
+    const queryClient = testQueryClient();
+    const ui = () => (
+      <QueryClientProvider client={queryClient}>
+        <PlaceOrderForm />
+      </QueryClientProvider>
+    );
+
+    // id 106's regression: a long-lived `next start` process serves many
+    // requests without restarting, and the OLD id-generation counter was
+    // module-scope, free-running across every one of them. Simulate five
+    // PRIOR requests' worth of server rendering in this SAME module instance
+    // BEFORE the render under test — the old counter would already be well
+    // past where a freshly-loaded browser bundle's own copy starts.
+    for (let i = 0; i < 5; i++) renderToString(ui());
+
+    // The render under test: one more server pass, as if for THIS request...
+    const serverHtml = renderToString(ui());
+    const container = document.createElement('div');
+    container.innerHTML = serverHtml;
+    document.body.appendChild(container);
+
+    // ...hydrated by what stands in for the browser's own module instance
+    // (a fresh element tree reconciled against the server markup above).
+    let root: ReturnType<typeof hydrateRoot>;
+    try {
+      await act(async () => {
+        root = hydrateRoot(container, ui());
+      });
+
+      // getByRole with `name` resolves the accessible name through the real
+      // for/id relationship (dom-accessibility-api) — it does not read
+      // line.key back to itself, so a genuinely desynced pair fails this,
+      // rather than trivially agreeing by construction.
+      const productSelect = await within(container).findByRole('combobox', { name: 'Product' });
+      expect(productSelect).toBeInTheDocument();
+
+      const label = within(container).getByText('Product');
+      expect(label.tagName).toBe('LABEL');
+      expect(label).toHaveAttribute('for', productSelect.id);
+    } finally {
+      root!.unmount();
+      container.remove();
+    }
   });
 
   it('a Gateway 503 is shown in its own words (real captured body)', async () => {

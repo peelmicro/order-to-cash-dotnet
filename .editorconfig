@@ -45,10 +45,15 @@ csharp_using_directive_placement = outside_namespace:warning
 # --- file-scoped namespaces (one level of nesting saved in every file) ---
 csharp_style_namespace_declarations = file_scoped:warning
 
-# --- var: explicit types make domain code read like the spec ---
+# --- var: explicit types were the stated goal for domain code, but the
+# codebase never followed it (measured ~147 Domain/ violations in Phase 8,
+# ~209 by Phase 25 -- growing, not shrinking) and the rule was never above
+# :suggestion severity, so nothing ever enforced it. id 108 (phase 25):
+# retired to match what the code actually does, rather than re-fighting a
+# convention this late with no build-time guard behind it either way.
 csharp_style_var_for_built_in_types = false:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
-csharp_style_var_elsewhere = false:suggestion
+csharp_style_var_elsewhere = true:silent
 
 # --- expression-bodied members ---
 csharp_style_expression_bodied_methods = when_on_single_line:suggestion

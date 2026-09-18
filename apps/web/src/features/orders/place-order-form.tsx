@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ErrorMessage } from '@/components/error-message';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Separator } from '@/components/ui/separator';
 import { useCompanies, useProducts, useRetailers } from '@/hooks/use-catalog';
 import { usePlaceOrder } from '@/hooks/use-orders';
-import type { PlaceOrderLine, PlaceOrderRequest, PlaceOrderResponse } from '@/lib/api-types';
+import type { PlaceOrderLine, PlaceOrderRequest, PlaceOrderResponse, Product } from '@/lib/api-types';
 import { currencyExponent, draftLineTotal, formatMinorUnits, parseDecimalToMinorUnits, toDecimalString } from '@/lib/money';
 import { describeError, stockShortages } from '@/lib/problem';
 
@@ -27,12 +27,6 @@ interface DraftLine {
   quantityInput: string;
   unitPriceInput: string;
   lineDiscountInput: string;
-}
-
-let nextLineKey = 1;
-function emptyLine(): DraftLine {
-  nextLineKey += 1;
-  return { key: nextLineKey, productCode: '', quantityInput: '1', unitPriceInput: '', lineDiscountInput: '' };
 }
 
 /** The R42 demo: one line whose total ends in .99, which the credit simulator refuses → the saga compensates. */
@@ -60,11 +54,29 @@ export function PlaceOrderForm() {
   const products = useProducts();
   const placeOrder = usePlaceOrder();
 
+  // id 106: `DraftLine.key` used to come from a module-scope `let`, free-running
+  // across every SSR render a long-lived `next start` process ever serves, and
+  // recomputed from 1 in the browser — the two could disagree on the very
+  // first render after any prior pass. A ref is per COMPONENT INSTANCE: a
+  // fresh one is created for every render tree (every request server-side,
+  // every mount client-side), so it starts at 1 every time, never leaking
+  // state across unrelated requests. Refs may not be READ during render
+  // (react-hooks/refs), so this one is only ever touched from event handlers
+  // — the initial line below is a plain literal, not `emptyLine()`. The
+  // label/select id pair itself is derived separately, from React's own
+  // request/render-scoped `useId()` in OrderLineRow below — this ref only
+  // keeps line identity for reconciliation and for `updateLine`/remove.
+  const nextLineKeyRef = useRef(1);
+  function emptyLine(): DraftLine {
+    nextLineKeyRef.current += 1;
+    return { key: nextLineKeyRef.current, productCode: '', quantityInput: '1', unitPriceInput: '', lineDiscountInput: '' };
+  }
+
   const [retailerCode, setRetailerCode] = useState('');
   const [companyCode, setCompanyCode] = useState('');
   const [currency, setCurrency] = useState('EUR');
   const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
+  const [lines, setLines] = useState<DraftLine[]>(() => [{ key: 1, productCode: '', quantityInput: '1', unitPriceInput: '', lineDiscountInput: '' }]);
   const [showProblems, setShowProblems] = useState(false);
   const [accepted, setAccepted] = useState<PlaceOrderResponse | null>(null);
 
@@ -260,68 +272,21 @@ export function PlaceOrderForm() {
                   Add line
                 </Button>
               </div>
-              {lines.map((line, index) => {
-                const problems = showProblems ? lineProblems(line) : {};
-                const catalogPrice = priceByCode.get(line.productCode);
-                return (
-                  <div key={line.key} className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_6rem_minmax(0,1fr)_minmax(0,1fr)_auto]" data-testid="order-line">
-                    <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2 lg:col-span-1">
-                      <Label htmlFor={`product-${line.key}`}>Product</Label>
-                      {productsUsable ? (
-                        <NativeSelect id={`product-${line.key}`} wrapperClassName="w-full min-w-0" value={line.productCode} onChange={(event) => updateLine(line.key, { productCode: event.target.value })}>
-                          <NativeSelectOption value="">Select a product</NativeSelectOption>
-                          {(products.data ?? []).map((product) => (
-                            <NativeSelectOption key={product.code} value={product.code}>
-                              {product.name} ({product.code}) — {formatMinorUnits(product.price, product.currency)}
-                            </NativeSelectOption>
-                          ))}
-                        </NativeSelect>
-                      ) : (
-                        <Input id={`product-${line.key}`} value={line.productCode} onChange={(event) => updateLine(line.key, { productCode: event.target.value })} placeholder="e.g. PRD-0001" />
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`quantity-${line.key}`}>Quantity</Label>
-                      <Input id={`quantity-${line.key}`} inputMode="numeric" value={line.quantityInput} aria-invalid={problems.quantity ? true : undefined} onChange={(event) => updateLine(line.key, { quantityInput: event.target.value })} data-testid="quantity-input" />
-                      {problems.quantity ? <span className="text-xs text-destructive">{problems.quantity}</span> : null}
-                    </div>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`unit-price-${line.key}`}>Unit price override</Label>
-                      <Input
-                        id={`unit-price-${line.key}`}
-                        inputMode="decimal"
-                        placeholder={catalogPrice !== undefined ? toDecimalString(catalogPrice, currency) : 'catalogue'}
-                        value={line.unitPriceInput}
-                        aria-invalid={problems.unitPrice ? true : undefined}
-                        onChange={(event) => updateLine(line.key, { unitPriceInput: event.target.value })}
-                        data-testid="unit-price-input"
-                      />
-                      {problems.unitPrice ? <span className="text-xs text-destructive">{problems.unitPrice}</span> : null}
-                    </div>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`line-discount-${line.key}`}>Line discount</Label>
-                      <Input
-                        id={`line-discount-${line.key}`}
-                        inputMode="decimal"
-                        placeholder={toDecimalString(0, currency)}
-                        value={line.lineDiscountInput}
-                        aria-invalid={problems.lineDiscount ? true : undefined}
-                        onChange={(event) => updateLine(line.key, { lineDiscountInput: event.target.value })}
-                        data-testid="line-discount-input"
-                      />
-                      {problems.lineDiscount ? <span className="text-xs text-destructive">{problems.lineDiscount}</span> : null}
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <span className="hidden text-sm leading-none select-none lg:invisible lg:block" aria-hidden="true">
-                        &nbsp;
-                      </span>
-                      <Button type="button" variant="ghost" size="sm" disabled={lines.length <= 1} onClick={() => setLines((current) => current.filter((l) => l.key !== line.key))} aria-label={`Remove line ${index + 1}`}>
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+              {lines.map((line, index) => (
+                <OrderLineRow
+                  key={line.key}
+                  line={line}
+                  index={index}
+                  problems={showProblems ? lineProblems(line) : {}}
+                  catalogPrice={priceByCode.get(line.productCode)}
+                  currency={currency}
+                  productsUsable={productsUsable}
+                  products={products.data}
+                  canRemove={lines.length > 1}
+                  onUpdate={(patch) => updateLine(line.key, patch)}
+                  onRemove={() => setLines((current) => current.filter((l) => l.key !== line.key))}
+                />
+              ))}
             </div>
 
             <Separator />
@@ -377,6 +342,93 @@ export function PlaceOrderForm() {
           </form>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+interface OrderLineRowProps {
+  line: DraftLine;
+  index: number;
+  problems: LineProblems;
+  catalogPrice: number | undefined;
+  currency: string;
+  productsUsable: boolean;
+  products: Product[] | undefined;
+  canRemove: boolean;
+  onUpdate: (patch: Partial<DraftLine>) => void;
+  onRemove: () => void;
+}
+
+/**
+ * id 106: the label/select id pair for one order line comes from `useId()`,
+ * not from `line.key` — `useId()` is React's own request/render-scoped
+ * generator (a fresh, stable id per component INSTANCE, matching between an
+ * SSR pass and its hydration), so the pair cannot desync across the many
+ * renders a long-lived `next start` process serves in the same module
+ * instance, the way the old module-scope `nextLineKey` counter did.
+ */
+function OrderLineRow({ line, index, problems, catalogPrice, currency, productsUsable, products, canRemove, onUpdate, onRemove }: OrderLineRowProps) {
+  const uid = useId();
+  const productId = `${uid}-product`;
+  const quantityId = `${uid}-quantity`;
+  const unitPriceId = `${uid}-unit-price`;
+  const lineDiscountId = `${uid}-line-discount`;
+  return (
+    <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_6rem_minmax(0,1fr)_minmax(0,1fr)_auto]" data-testid="order-line">
+      <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2 lg:col-span-1">
+        <Label htmlFor={productId}>Product</Label>
+        {productsUsable ? (
+          <NativeSelect id={productId} wrapperClassName="w-full min-w-0" value={line.productCode} onChange={(event) => onUpdate({ productCode: event.target.value })}>
+            <NativeSelectOption value="">Select a product</NativeSelectOption>
+            {(products ?? []).map((product) => (
+              <NativeSelectOption key={product.code} value={product.code}>
+                {product.name} ({product.code}) — {formatMinorUnits(product.price, product.currency)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        ) : (
+          <Input id={productId} value={line.productCode} onChange={(event) => onUpdate({ productCode: event.target.value })} placeholder="e.g. PRD-0001" />
+        )}
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <Label htmlFor={quantityId}>Quantity</Label>
+        <Input id={quantityId} inputMode="numeric" value={line.quantityInput} aria-invalid={problems.quantity ? true : undefined} onChange={(event) => onUpdate({ quantityInput: event.target.value })} data-testid="quantity-input" />
+        {problems.quantity ? <span className="text-xs text-destructive">{problems.quantity}</span> : null}
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <Label htmlFor={unitPriceId}>Unit price override</Label>
+        <Input
+          id={unitPriceId}
+          inputMode="decimal"
+          placeholder={catalogPrice !== undefined ? toDecimalString(catalogPrice, currency) : 'catalogue'}
+          value={line.unitPriceInput}
+          aria-invalid={problems.unitPrice ? true : undefined}
+          onChange={(event) => onUpdate({ unitPriceInput: event.target.value })}
+          data-testid="unit-price-input"
+        />
+        {problems.unitPrice ? <span className="text-xs text-destructive">{problems.unitPrice}</span> : null}
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <Label htmlFor={lineDiscountId}>Line discount</Label>
+        <Input
+          id={lineDiscountId}
+          inputMode="decimal"
+          placeholder={toDecimalString(0, currency)}
+          value={line.lineDiscountInput}
+          aria-invalid={problems.lineDiscount ? true : undefined}
+          onChange={(event) => onUpdate({ lineDiscountInput: event.target.value })}
+          data-testid="line-discount-input"
+        />
+        {problems.lineDiscount ? <span className="text-xs text-destructive">{problems.lineDiscount}</span> : null}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <span className="hidden text-sm leading-none select-none lg:invisible lg:block" aria-hidden="true">
+          &nbsp;
+        </span>
+        <Button type="button" variant="ghost" size="sm" disabled={!canRemove} onClick={onRemove} aria-label={`Remove line ${index + 1}`}>
+          Remove
+        </Button>
+      </div>
     </div>
   );
 }
