@@ -250,6 +250,12 @@ Every process artifact in this repository: what it is for, and where it came fro
 - #7 is touched only for spec amendments or on request.
 - Each phase runs in a fresh session.
 
+**Position: Phase 22 COMPLETE, 1 of 1 entry closed, 100 of 108 features done.** Counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → `108 100`, on 2026-09-18.
+
+Id 35, observability dashboards: LIGHT, one implementer, no separate review. All five Grafana panels and a whole-saga Jaeger trace verified against real orders on a real stack. Four of five panels were empty on arrival — the dashboard's Prometheus queries carried a metric-name suffix .NET's OTel SDK never emits without an explicit `unit:` — fixed in the dashboard, with the deeper `src/` question (should the instruments gain a `unit:` instead) filed rather than decided unilaterally. Trace continuity was checked at the database, not trusted from a UI, because this repository has a real history of a fast-path trace-context gap.
+
+> The paragraph below this note describes phase 21's position and is kept as history.
+
 **Position: Phase 21 COMPLETE, 2 of 2 entries closed, 99 of 106 features done.** Counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → `106 99`, on 2026-09-18.
 
 Id 34, quality gates: LIGHT, one implementer, no separate review — the coverage gate is now armed and proven to fail when breached, and a real SonarQube scan runs to completion. Id 47, order-number allocator scan cost: FULL (persistence/concurrency), one implementer, one Opus review, approved on the first round with one binding pre-commit condition (a shipped guard could be defeated by bracket-quoted SQL) discharged mechanically before the commit.
