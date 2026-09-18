@@ -524,7 +524,7 @@
       "phase": 22,
       "title": "Observability verification: the REUSED Grafana dashboard shows live data; one Jaeger trace spans the whole saga",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "panels: saga duration, per-service latency, consumer lag, outbox lag, DLQ depth",
         "dashboard auto-provisioned",
@@ -1628,6 +1628,20 @@
         "whichever choice is taken, .editorconfig's own comment describing the rule is corrected to match reality"
       ],
       "notes": "Deferred in Phase 8 (see the external Plan doc's Phase 21 section, 'Quality Gates', which named this as a Phase 21 item) but never turned into a feature_list.json entry, so it silently fell out of scope when phase 21 (ids 34, 47) closed on 2026-09-18. Caught by the leader re-reading the Plan doc's own phase-21 checklist before updating it, rather than assuming the checklist and feature_list.json agreed. LIGHT change under CLAUDE.md Cost discipline (analyzer config, no saga/money/security touch) if option (a) is chosen; option (b) is closer to FULL scope (147 real code-site fixes across src/*/Domain/) and should be classified based on the actual count at the time it is worked, not assumed light because the config change itself is small."
+    },
+    {
+      "id": 109,
+      "name": "otel_instruments_never_declare_a_unit",
+      "phase": 22,
+      "title": "None of #8's OTel Meter.CreateHistogram/CreateGauge calls (otc_saga_completion_ms, otc_outbox_lag_ms, otc_request_latency_ms, otc_fact_processing_latency_ms, otc_dlq_depth) pass a `unit:` parameter, so the Prometheus exporter never appends the unit suffix (_milliseconds, _ratio) #7's JS SDK calls produce -- the Grafana dashboard originally shipped querying names with the suffix and returned empty panels until fixed to match the real (suffix-less) names",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "a decision is made and recorded: either add `unit:` to every affected CreateHistogram/CreateGauge call so #8's exported metric names match #7's convention byte-for-byte (and the dashboard queries are reverted to the suffixed form), or the dashboard's current suffix-less queries are declared the correct, permanent shape and #7's convention is explicitly not followed here -- not left as an undocumented mismatch either way",
+        "if `unit:` is added: every dashboard panel that queries the affected metrics is re-verified against real, non-empty data after the rename, the same way id 35 verified them",
+        "the ported-idiom ledger (ADR or progress/impl_ note, per CLAUDE.md) gets one line: #7 relied on the JS OTel SDK auto-appending a unit suffix; in #8 that property is supplied by nothing, because CreateHistogram/CreateGauge's `unit:` parameter was never set"
+      ],
+      "notes": "Found by id 35's implementer while verifying the observability dashboard (2026-09-18): 4 of 5 panels were empty because the shipped dashboard queried metric names with a _milliseconds/_ratio suffix that .NET's OTel SDK never produces without an explicit unit: parameter. Fixed the dashboard's queries to match reality (infra/grafana/dashboards/order-to-cash-overview.json) -- confirmed live, all five panels non-empty. This entry is the other direction: whether the src/ instrumentation should change to match #7's naming instead, which the LIGHT verification pass correctly declined to decide on its own. Not blocking; the dashboard fix alone satisfies id 35's three acceptance bullets."
     }
   ]
 }
