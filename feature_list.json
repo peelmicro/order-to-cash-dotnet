@@ -537,7 +537,7 @@
       "phase": 23,
       "title": "Full stack compose (~18 containers) with healthcheck-gated dependencies",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "cold start reaches a demoable state within ~2 minutes",
         "infra-only mode still works with apps run from the CLI"

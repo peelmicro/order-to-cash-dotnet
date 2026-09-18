@@ -1,0 +1,388 @@
+# Order-To-Cash (.NET) — application containers (phase 23).
+#
+# Adds the six backend services (Orders, Fulfillment, Billing, Notifications,
+# Projector, Gateway) + the Next.js web app + four one-shot EF Core migration
+# jobs on top of docker-compose.infra.yml, which brings up ONLY infrastructure
+# (MS-SQL, MongoDB, Kafka, NATS, observability) and explicitly defers
+# application containers to this file (see its own header comment: "NO
+# application containers here — those arrive in phase 23
+# (docker-compose.apps.yml)").
+#
+# Always run together with the infra file — this file's `otcnet-net` network
+# is declared `external: true` on purpose, so starting this file alone fails
+# loudly ("network otcnet-net not found") instead of silently creating a
+# second, disconnected network:
+#
+#   pnpm dc:up:apps    # docker compose -f docker-compose.infra.yml -f docker-compose.apps.yml up -d
+#
+# Every image is built locally (`pull_policy: build`, same discipline as
+# docker-compose.infra.yml's otel-collector/kafka-init). Build context for
+# the six .NET services is the REPO ROOT (`context: .`) — project references
+# reach across src/SharedKernel, src/Contracts, src/Cqrs and the target
+# service; `apps/web` is its OWN standalone pnpm project (no root
+# pnpm-workspace.yaml — see infra/docker/web/Dockerfile's header comment) so
+# its context is `apps/web` alone. See infra/docker/service/Dockerfile and
+# infra/docker/web/Dockerfile for the full build-shape rationale, including
+# why the SDK build stage installs the pinned 10.0.111 SDK by hand rather
+# than using an MCR `dotnet/sdk` image tag (none currently published matches
+# global.json's pin — checked, documented there).
+#
+# Networking overrides below exist ONLY because every service's own
+# configuration defaults to `localhost`/host-network values on purpose, for
+# a host process run via scripts/dev-stack.sh (see .env.example) — inside
+# this compose stack, each service reaches its dependencies by
+# container/service name instead. Everything else (DB credentials, JWT
+# secret, SMTP creds, saga retry tuning, gateway operator identity, ...) is
+# read straight from `.env` via `env_file:`, never hardcoded here, never
+# duplicated — same discipline #7's own docker-compose.apps.yml documents.
+#
+# ── #8's migration shape, and why all four MS-SQL-backed services get a
+#    migrate-then-run container pair (unlike a first glance at src/Seed
+#    might suggest) ───────────────────────────────────────────────────────
+# src/Seed's own SeedRunner.cs migrates only THREE of #8's four MS-SQL-backed
+# services (its own log line: "applying migrations (orders, fulfillment,
+# billing)..." — Seed.csproj references only Orders/Fulfillment/Billing).
+# Notifications' EF Core migrations
+# (src/Notifications/Infrastructure/Persistence/Migrations/) had no
+# automatic path in a cold compose stack before this file, only the manual
+# `pnpm db:migrate:notifications`. Rather than extend SeedRunner.cs (a
+# src/Seed code change, and a new ProjectReference besides), every one of
+# the four services gets its OWN migrate-then-run container pair here,
+# exactly like #7's shape for its four MySQL-backed services — see
+# infra/docker/service/Dockerfile's `migrate` stage comment for the full
+# reasoning. No src/ file is touched by this feature.
+
+services:
+  # ── orders — MS-SQL (otc_orders), Kafka (outbox relay + saga consumer),
+  #    NATS (orders.create responder + fulfillment.stock.check caller) ─────
+  orders-migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: migrate
+      args:
+        SERVICE: Orders
+    image: otcnet-orders-migrate:local
+    pull_policy: build
+    container_name: otcnet-orders-migrate
+    restart: "no"
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+    networks:
+      - otcnet-net
+    depends_on:
+      mssql:
+        condition: service_healthy
+
+  orders:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: runtime
+      args:
+        SERVICE: Orders
+        PORT_ENV_VAR: ORDERS_HEALTH_PORT
+        DEFAULT_PORT: "3002"
+    image: otcnet-orders:local
+    pull_policy: build
+    container_name: otcnet-orders
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    networks:
+      - otcnet-net
+    depends_on:
+      orders-migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+
+  # ── fulfillment — MS-SQL (otc_fulfillment), Kafka (outbox relay), NATS
+  #    (fulfillment.stock.* responders) ─────────────────────────────────────
+  fulfillment-migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: migrate
+      args:
+        SERVICE: Fulfillment
+    image: otcnet-fulfillment-migrate:local
+    pull_policy: build
+    container_name: otcnet-fulfillment-migrate
+    restart: "no"
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+    networks:
+      - otcnet-net
+    depends_on:
+      mssql:
+        condition: service_healthy
+
+  fulfillment:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: runtime
+      args:
+        SERVICE: Fulfillment
+        PORT_ENV_VAR: FULFILLMENT_HEALTH_PORT
+        DEFAULT_PORT: "3003"
+    image: otcnet-fulfillment:local
+    pull_policy: build
+    container_name: otcnet-fulfillment
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    networks:
+      - otcnet-net
+    depends_on:
+      fulfillment-migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+
+  # ── billing — MS-SQL (otc_billing), Kafka (outbox relay), NATS
+  #    (billing.credit.* responders) ────────────────────────────────────────
+  billing-migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: migrate
+      args:
+        SERVICE: Billing
+    image: otcnet-billing-migrate:local
+    pull_policy: build
+    container_name: otcnet-billing-migrate
+    restart: "no"
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+    networks:
+      - otcnet-net
+    depends_on:
+      mssql:
+        condition: service_healthy
+
+  billing:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: runtime
+      args:
+        SERVICE: Billing
+        PORT_ENV_VAR: BILLING_HEALTH_PORT
+        DEFAULT_PORT: "3004"
+    image: otcnet-billing:local
+    pull_policy: build
+    container_name: otcnet-billing
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    networks:
+      - otcnet-net
+    depends_on:
+      billing-migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+
+  # ── notifications — MS-SQL (otc_notifications, durable processed-events
+  #    ledger), Kafka consumer only (3 fact topics) — NO NATS transport
+  #    (this service answers no RPC). Always sends real SMTP mail against
+  #    Mailpit (NotificationsProgramConfiguration.cs: "The real host always
+  #    sends real mail — Mailpit locally"). ──────────────────────────────────
+  notifications-migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: migrate
+      args:
+        SERVICE: Notifications
+    image: otcnet-notifications-migrate:local
+    pull_policy: build
+    container_name: otcnet-notifications-migrate
+    restart: "no"
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+    networks:
+      - otcnet-net
+    depends_on:
+      mssql:
+        condition: service_healthy
+
+  notifications:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: runtime
+      args:
+        SERVICE: Notifications
+        PORT_ENV_VAR: NOTIFICATIONS_HEALTH_PORT
+        DEFAULT_PORT: "3005"
+    image: otcnet-notifications:local
+    pull_policy: build
+    container_name: otcnet-notifications
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      MSSQL_HOST: mssql
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      # In-network Mailpit address — overrides .env's host-oriented
+      # NOTIFICATIONS_SMTP_HOST=localhost default (same "outside vs inside
+      # compose" split as MSSQL_HOST/KAFKA_BOOTSTRAP_SERVERS above). The
+      # port stays 1025 — Mailpit's own IN-NETWORK SMTP port, never the host
+      # publish port (${MAILPIT_SMTP_HOST_PORT}), which is a different
+      # number space. See docker-compose.infra.yml's `mailpit` service.
+      NOTIFICATIONS_SMTP_HOST: mailpit
+      NOTIFICATIONS_SMTP_PORT: "1025"
+    networks:
+      - otcnet-net
+    depends_on:
+      notifications-migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+
+  # ── projector — MongoDB read model, Kafka consumer, outbound NATS
+  #    (publish-only stream-update signal). Bootstraps its OWN Mongo
+  #    indexes on every boot (ReadModelCollection) — NO migration job, same
+  #    as #7's projector. ──────────────────────────────────────────────────
+  projector:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: runtime
+      args:
+        SERVICE: Projector
+        PORT_ENV_VAR: PROJECTOR_HEALTH_PORT
+        DEFAULT_PORT: "3006"
+    image: otcnet-projector:local
+    pull_policy: build
+    container_name: otcnet-projector
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      MONGO_HOST: mongodb
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    networks:
+      - otcnet-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+
+  # ── gateway — MongoDB (read-only order_timeline), NATS (RPC client + SSE
+  #    stream-signal subscriber). NO MS-SQL (owns no database). The ONLY
+  #    service in this file that is an HTTP surface (Sdk.Web) — its own
+  #    /health/ready doubles as the container's HEALTHCHECK target AND the
+  #    one port published to the host that a demo actually calls directly. ─
+  gateway:
+    build:
+      context: .
+      dockerfile: infra/docker/service/Dockerfile
+      target: runtime
+      args:
+        SERVICE: Gateway
+        PORT_ENV_VAR: GATEWAY_PORT
+        DEFAULT_PORT: "3001"
+    image: otcnet-gateway:local
+    pull_policy: build
+    container_name: otcnet-gateway
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      MONGO_HOST: mongodb
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports:
+      - "${GATEWAY_PORT:-3001}:${GATEWAY_PORT:-3001}"
+    networks:
+      - otcnet-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  # ── web — Next.js BFF. Talks ONLY to the Gateway (never to a database or
+  #    broker directly). ─────────────────────────────────────────────────────
+  web:
+    build:
+      context: apps/web
+      dockerfile: ../../infra/docker/web/Dockerfile
+    image: otcnet-web:local
+    pull_policy: build
+    container_name: otcnet-web
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      WEB_PORT: "${WEB_PORT:-3010}"
+      # apps/web/src/server/config.ts: an explicit GATEWAY_BASE_URL always
+      # wins; unset, it derives `http://localhost:${GATEWAY_PORT}`, which
+      # does not resolve from inside this container — the Gateway's own
+      # compose service name (`gateway`) does. Same override reasoning as
+      # every MSSQL_HOST/MONGO_HOST/NATS_URL override above.
+      GATEWAY_BASE_URL: "http://gateway:${GATEWAY_PORT:-3001}"
+      WEB_SESSION_PASSWORD: "${WEB_SESSION_PASSWORD:-otc_dev_web_session_password_change_me_32}"
+    ports:
+      - "${WEB_PORT:-3010}:${WEB_PORT:-3010}"
+    networks:
+      - otcnet-net
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+# No top-level `networks:` block here on purpose — see the finding recorded
+# in progress/impl_full_docker_compose.md. `docker-compose.infra.yml`
+# already declares `otcnet-net` fully (name + `driver: bridge`), and every
+# service above already joins it by name (`networks: [otcnet-net]`); Compose
+# resolves that reference against the FULLY MERGED config from every `-f`
+# file in one `up` invocation (this file is never meant to run alone — see
+# below), so nothing here needs to repeat it.
+#
+# An earlier version of this file DID redeclare `otcnet-net: external: true`
+# here, mirroring #7's own docker-compose.apps.yml. That is a real Compose
+# footgun, reproduced live on a genuinely cold stack (no network pre-created
+# by any prior `up`): once ANY constituent file in a multi-`-f` merge marks
+# a network `external: true`, the MERGED network is external as a whole —
+# even though this exact command also passes `docker-compose.infra.yml`,
+# which would otherwise create it — so `docker compose -f
+# docker-compose.infra.yml -f docker-compose.apps.yml up -d` failed outright
+# on a first-ever run with "network otcnet-net declared as external, but
+# could not be found". Confirmed the "run docker-compose.apps.yml alone"
+# protection this was meant to give does not depend on that flag at all:
+# every service in this file already `depends_on:` an infra-only service
+# (mssql/kafka-init/nats/mongodb/mailpit) that does not exist when this file
+# is passed alone, so Compose already refuses the project outright
+# ("service ... depends on undefined service ...: invalid compose project")
+# before network resolution is ever reached — reproduced live, see
+# progress/impl_full_docker_compose.md.

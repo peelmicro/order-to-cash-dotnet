@@ -1,0 +1,38 @@
+# Order-To-Cash (.NET) — build-context excludes for every image built by
+# docker-compose.apps.yml (phase 23). Build context for the six .NET service
+# images and the web image is the REPO ROOT (project references and
+# apps/web's own workspace both need more than one directory) — without this
+# file that context would drag in ~1.4 GB of local bin/obj output, two
+# node_modules trees, .git and every prior test run's artifacts on every
+# single-line Dockerfile edit.
+#
+# Nothing here excludes a FILE a Dockerfile's own COPY instructions actually
+# need — checked by building every image (see progress/impl_full_docker_compose.md).
+
+# .NET build output — every image rebuilds these from source inside its own
+# stage; the host's own bin/obj must never leak into a container (different
+# RID/config, and it would defeat Docker's own layer caching regardless).
+**/bin/
+**/obj/
+TestResults/
+**/TestResults/
+
+# Node — apps/web installs its own inside the image; the host's copy is
+# ~646 MB and irrelevant (different platform/arch in general).
+**/node_modules/
+apps/web/.next/
+apps/web/coverage/
+apps/web/test-results/
+apps/web/tsconfig.tsbuildinfo
+
+# VCS and editor/OS noise.
+.git/
+.vscode/
+.idea/
+**/.DS_Store
+
+# Nothing under these ever needs to reach a build context: logs are runtime
+# output, and infra/* config is bind-mounted by docker-compose.infra.yml, not
+# copied into an image.
+logs/
+n8n/

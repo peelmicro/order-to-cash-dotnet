@@ -1,0 +1,15 @@
+# apps/web's own Docker build context (docker-compose.apps.yml's `web`
+# service: `context: apps/web`) — excludes what the `deps`/`build`/`runtime`
+# stages in infra/docker/web/Dockerfile never need, so a `web` image rebuild
+# does not drag in the host's own ~646 MB node_modules, coverage output or
+# prior Playwright artefacts. Nothing here excludes a file the Dockerfile's
+# own COPY instructions read (checked: this feature's Dockerfile builds
+# clean with this file in place, see progress/impl_full_docker_compose.md).
+node_modules/
+.next/
+coverage/
+test-results/
+tests-integration/
+e2e/
+tsconfig.tsbuildinfo
+.git/
