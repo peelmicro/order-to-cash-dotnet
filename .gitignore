@@ -12,6 +12,11 @@ artifacts/
 TestResults/
 coverage/
 coverage.*.json
+
+# SonarScanner for .NET's working directory (created by `dotnet-sonarscanner
+# begin`, normally removed by a successful `end` — left behind on a failed
+# begin/end, e.g. a scan that dies mid-run). Found stray during id 34's work.
+.sonarqube/
 coverage.*.xml
 coverage.*.info
 *.coverage

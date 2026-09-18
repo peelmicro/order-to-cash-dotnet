@@ -511,7 +511,7 @@
       "phase": 21,
       "title": "Quality gates: analyzers as errors, dotnet format, coverlet thresholds, SonarQube optional profile",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "coverage gate proven to FAIL when breached, not merely configured",
         "dotnet format clean at solution level",
