@@ -250,6 +250,12 @@ Every process artifact in this repository: what it is for, and where it came fro
 - #7 is touched only for spec amendments or on request.
 - Each phase runs in a fresh session.
 
+**Position: Phase 20 COMPLETE, 1 of 1 entry closed, 97 of 105 features done.** Counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → `105 97`, on 2026-09-18.
+
+Id 33, n8n demo workflows: LIGHT, one implementer, no separate reviewer. The four workflow JSONs needed no porting — they were already byte-identical to #7's from the harness phase — so this phase verified the deployment mechanism instead: idempotent auto-import from a cold container start, a real order placed through a live webhook run reaching the host's Gateway from inside the n8n container (`host.docker.internal`, since #8 has no full Docker Compose until phase 23), and the stack proven to run without n8n at all. The leader closed it directly after reading the diff and independently re-checking two of the record's claims, per the light-process rule.
+
+> The paragraph below this note describes phase 19's position and is kept as history.
+
 **Position: Phase 19 COMPLETE, 1 of 1 entry closed, 96 of 105 features done.** Counted from `feature_list.json` on 2026-09-17.
 
 Id 32, Playwright end-to-end: full process, one Sonnet implementer, one Opus review. Approved on the first round, with two pre-commit corrections to the ported-idiom ledger — a false claim about a #7 locator, and a missing row for a property #8 already supplies. Both were record corrections, not behavioural defects; the reviewer verified the acceptance bullets and the assertions' teeth independently, from a stack it started and tore down itself, with mutation probes of its own design.

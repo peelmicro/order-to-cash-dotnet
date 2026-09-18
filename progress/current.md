@@ -1,23 +1,26 @@
 # Current session
 
-**Feature:** none in progress. **Phase 19 COMPLETE (2026-09-17)**: id 32 `e2e_playwright` (full process, approved on Opus's first review with two pre-commit record corrections, both discharged) is done. 96 of 106 backlog features are done (id 106, a light frontend defect found during id 32, is filed and pending — the `place-order-form.tsx` per-line `id`/`htmlFor` mismatch). Not yet committed or pushed: id 32's work and its corrections, id 106's filing, and this session's use of Sonnet 5 as the session model with Opus still used explicitly for the full-process review.
+**Feature:** none in progress. **Phase 20 COMPLETE (2026-09-18)**: id 33 `n8n_workflows` (LIGHT, one implementer, no separate review — closed by the leader after reading the diff and independently re-verifying two of its claims) is done. 97 of 105 backlog features are done (counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → 105 97). Not yet committed or pushed: id 33's work, the README fix it surfaced, and the phase 21 brief below.
 
-## Next phase — Phase 20: n8n demo workflows (id 33)
+## Next phase — Phase 21: quality gates (id 34)
 
 **Brief for the next session.** Start it in a FRESH session, and apply CLAUDE.md's "Cost discipline".
-- **Id 33 `n8n_workflows`** (sdd: false). Its acceptance bullets:
-  - order generator, bank robot, stock replenishment, burst;
-  - auto-imported on container startup;
-  - removing n8n does not break the stack.
-- **Classification: LIGHT** (infra/config verification, no saga/money/contract/security touch). One implementer; the leader checks the diff and re-runs the affected checks. Re-classify to full only if evidence during the work says otherwise.
-- **The leader already checked three premises that change this phase's shape — do not re-derive them, but DO verify them live:**
-  1. `n8n/workflows/{1-order-generator,2-payment-robot,3-stock-replenishment,4-burst}.json` are already present and **byte-identical** to #7's (`diff -rq n8n/workflows ../order-to-cash-nestjs/n8n/workflows` — exit 0, no output), copied during the harness phase before any #8 code existed. There is nothing to "port" here.
-  2. `docker-compose.infra.yml` already has an `n8n-init` one-shot service (`n8n-init`, profile `n8n`) that runs `infra/n8n/import-workflows-on-startup.sh` — also reused byte-identically from #7, gated by `N8N_WORKFLOWS_ENABLED` per `specs/shared/n8n-workflows.md` §7.1. This has never been run against #8's stack and needs live verification: does `docker compose -f docker-compose.infra.yml --profile n8n up` actually import all four workflows, idempotently, on repeat runs?
-  3. **The four workflow JSONs' HTTP nodes point at `http://gateway:3001`** (the `GATEWAY_URL` variable, container-network hostname) — that hostname only resolves inside a composed stack with a `gateway` service, i.e. `docker-compose.apps.yml`, which **does not exist in #8 until phase 23**. So the workflows cannot be exercised end-to-end (actually triggered, actually hitting the Gateway) against `scripts/dev-stack.sh`'s in-process services today. **Open question, genuinely unresolved — the implementer answers it with evidence, not the leader:** can this phase's acceptance be met by (a) verifying the import mechanism only, deferring live execution to phase 23, (b) overriding `GATEWAY_URL` at import/run time to point at the host's `localhost:3001` so the workflows really run today, or (c) something else? Check `specs/shared/n8n-workflows.md` and #7's own phase history for how #7 sequenced this before deciding.
-- **The `n8n:import`/`n8n:export` root package.json shortcuts** (`README.md` lists them as waiting on this phase) port `scripts/import-n8n-workflows.sh` from #7 — read its header comment (cited by `infra/n8n/import-workflows-on-startup.sh`'s own header) for why the manual and auto-import paths differ (the manual one has no `N8N_WORKFLOWS_ENABLED` gate).
-- **"Removing n8n does not break the stack"**: check that no other `docker-compose.infra.yml` service has `depends_on: n8n` or `n8n-init`, and that `pnpm dc:up:infra:no-n8n` (already in the root `package.json`) genuinely starts everything else.
-- **Environment:** the web app runs on 3010; for any image build, use a scratch `DOCKER_CONFIG`, never edit the maintainer's `~/.docker/config.json`.
-- **Stopping rule:** the phase closes id 33. Id 106 (found in phase 19, a frontend `id`/`htmlFor` mismatch, LIGHT, non-blocking) is a candidate for the same session if there's room, but is not required to close phase 20. Any new finding is filed with a disposition. If the maintainer asks for a full wrap-up, that comes first.
+- **Id 34 `sonarqube_quality_gates`** (sdd: false). Its acceptance bullets:
+  - coverage gate proven to FAIL when breached, not merely configured;
+  - `dotnet format` clean at solution level (already true today — `./quality.sh` section 1 already enforces this; confirm it stays true, do not weaken it to make the phase look done);
+  - SonarQube runs under its optional compose profile.
+- **Classification: LIGHT** (build/CI scripting and config, no saga/money/security touch), but note this is closer to genuine building than phase 20's pure verification — budget accordingly and re-classify to full only if evidence says otherwise.
+- **Verified live by the leader — the honest current state, do not assume more is built than this:**
+  - `quality.sh` section 4 (around line 90-97) currently only **reports** coverage (`info "coverage report: ... line coverage ${PCT}%"`); it does not fail the build when the threshold is missed. There is a literal `# TODO(feature 34 — sonarqube_quality_gates, phase 21): enforce >=80% domain / >=60% overall here ... and prove it fails when breached` comment already in the file, left by an earlier phase specifically for this feature. **`CLAUDE.md`'s "Testing conventions" table entry claiming coverage gates are "enforced ... and verified to fail when breached" describes the target convention, not yet this repository's current state** — do not read it as already true.
+  - `dc:up:sonar`/`dc:down:sonar`/`dc:logs:sonarqube` shortcuts and the `sonar` compose profile already exist (`package.json`, `docker-compose.infra.yml`), copied from the harness phase, never run against #8.
+  - `sonar-project.properties` does not exist in #8 yet; no `sonar:scan` shortcut exists yet either.
+- **Do, with evidence:**
+  1. Add a real coverage-threshold check to `quality.sh` (coverlet's own `/p:Threshold=` MSBuild integration, or a script step parsing the cobertura report and exiting non-zero below 80%/60% — your choice, justify it). **Arm it**: lower a test project's effective coverage below the threshold (comment out an assertion, or point coverlet at a narrower include set temporarily) and confirm `quality.sh` exits non-zero with a message naming the shortfall; then restore and confirm green again. This is the acceptance bullet's own words — "proven to FAIL when breached" is a countable claim per `CLAUDE.md`'s arming protocol.
+  2. Port `sonar-project.properties` and a `sonar:scan` shortcut from #7 (`../order-to-cash-nestjs/`), adapting only what genuinely differs (project keys, language-specific analyzer paths for .NET vs. TypeScript).
+  3. Bring up `dc:up:sonar` from cold, confirm SonarQube's own health/readiness, and record what a real scan against it produces (even a partial one — SonarQube itself needs no network egress once its image is pulled, but check whether analysis needs a token/login and record how a developer gets one).
+  4. Confirm the `sonar` profile is genuinely optional: `dc:up:infra` (no sonar profile) must not start it, and `quality.sh` must not depend on it being up.
+- **Environment:** for any image build or SonarQube container pull, use a scratch `DOCKER_CONFIG`, never edit the maintainer's `~/.docker/config.json`. Tear everything down cleanly; confirm with `docker ps`/`pgrep`.
+- **Stopping rule:** the phase closes id 34. Any new finding is filed with a disposition. If the maintainer asks for a full wrap-up, that comes first.
 
 ## FULL WRAP-UP DONE (user's word, 2026-09-11) — phase 14 checkpoint pushed; continuing with id 62
 

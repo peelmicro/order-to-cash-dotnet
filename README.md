@@ -109,7 +109,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 17 | Web component tests | ✅ **complete, 1 of 1.** Delivered inside phase 16: the Vitest + React Testing Library suite (id 30) was built alongside the web app it tests, 22 files / 286 tests |
 | 18 | API tests through the Gateway | ✅ **complete, 3 of 3.** `BlackBoxApiTests` ports #7's black-box script against a real Kestrel Gateway and the real service fleet, with the developer infrastructure down. It covers the happy path, with the completion triple checked structurally for causal order (R24); the compensation path; a duplicate `paymentReference` yielding one payment; and the R49 rejections, each checked against Billing's own database. Approved on the first review round, in one implementer session (#7 needed eight). Also: dead-letter producers now fall back to the service's own Kafka setting (id 104), and the causal-order check fails when it has checked no edges (id 105) |
 | 19 | Playwright end-to-end tests | ✅ **complete, 1 of 1.** `apps/web/e2e/` ports #7's happy-path and `.99` compensation scenarios against a real Kestrel + Next.js stack (`scripts/dev-stack.sh`, since #8 has no full Docker Compose until phase 23). The compensation spec renders the timeline's causal link (`stock.released.v1` → `order.cancelled.v1`) in a real browser, on top of id 31/105's structural guard. Approved on Opus's first review round, with a ported-idiom ledger correction. Also found: a frontend accessibility defect (a per-line select's `id` can drift from its label's `htmlFor` under repeated server-side renders), filed as id 106 and not fixed in this phase |
-| 20 | n8n demo workflows, reused unchanged | ⬜ |
+| 20 | n8n demo workflows, reused unchanged | ✅ **complete, 1 of 1.** The four workflow JSONs were already copied byte-identically from #7 during the harness phase; this phase verified them live rather than porting anything. Auto-import proven idempotent from a cold `docker compose --profile n8n up`; the burst workflow fired through a real webhook, reached the Gateway on the host (via a `host.docker.internal`/`extra_hosts` bridge, since `scripts/dev-stack.sh` runs the .NET services outside Docker until phase 23's compose exists) and placed a real order, confirmed end to end and state restored afterward; removing the `n8n` profile left 12 other services healthy and an order still reaching `completed` with n8n never started. `n8n:import`/`n8n:export` root shortcuts ported from #7 |
 | 21 | Quality gates (analyzers, format, coverage) | ⬜ |
 | 22 | Prometheus, Grafana, Jaeger verification | ⬜ |
 | 23 | Full Docker Compose | ⬜ |
@@ -140,12 +140,11 @@ To work on one service in the foreground instead, run each in its own terminal: 
 | Contracts | `contracts:generate`, `contracts:check` (the web app's OpenAPI types against `specs/shared/openapi.yaml`) |
 | Database | `db:migrate:orders`, `db:migrate:fulfillment`, `db:migrate:billing`, `db:migrate:notifications`, `seed` (the seed also applies every migration) |
 | Web app | `web:install`, `web:build`, `web:start`, `web:lint`, `web:typecheck`, `web:test`, `web:test:coverage`, `web:test:integration` |
-| Infrastructure | `dc:up:infra`, `dc:up:infra:no-n8n`, `dc:down:infra`, `dc:ps:infra`, `dc:clean:infra`, `kafka:topics`, `dc:logs:infra`, `dc:logs:<service>`, `dc:up:sonar`, `dc:down:sonar` |
+| Infrastructure | `dc:up:infra`, `dc:up:infra:no-n8n`, `dc:down:infra`, `dc:ps:infra`, `dc:clean:infra`, `kafka:topics`, `dc:logs:infra`, `dc:logs:<service>`, `n8n:import`, `n8n:export`, `dc:up:sonar`, `dc:down:sonar` |
 | Demo | `saga:watch` (every order's status and the saga command table, read from MS-SQL) |
 
 #7 shortcuts with no #8 counterpart yet:
 - `dc:*:apps` and `dc:seed` wait for the full Docker Compose (phase 23);
-- `n8n:import`/`n8n:export` wait for phase 20;
 - `sonar:scan` waits for phase 21;
 - `order:place` and `invoice:pay` are Node scripts built on NestJS's NATS client, so they do not carry over as they are.
 
