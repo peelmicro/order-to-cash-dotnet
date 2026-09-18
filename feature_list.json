@@ -549,7 +549,7 @@
       "phase": 24,
       "title": "Documentation + demo + the #7 vs #8 BENCHMARK section",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "README per the Task, architecture and saga diagrams, Kafka-vs-NATS matrix, trade-offs",
         "AI-process section and the demo GIF (same script as #7)",
