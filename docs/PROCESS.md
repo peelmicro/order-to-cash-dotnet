@@ -250,6 +250,14 @@ Every process artifact in this repository: what it is for, and where it came fro
 - #7 is touched only for spec amendments or on request.
 - Each phase runs in a fresh session.
 
+**Position: Phase 21 COMPLETE, 2 of 2 entries closed, 99 of 106 features done.** Counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → `106 99`, on 2026-09-18.
+
+Id 34, quality gates: LIGHT, one implementer, no separate review — the coverage gate is now armed and proven to fail when breached, and a real SonarQube scan runs to completion. Id 47, order-number allocator scan cost: FULL (persistence/concurrency), one implementer, one Opus review, approved on the first round with one binding pre-commit condition (a shipped guard could be defeated by bracket-quoted SQL) discharged mechanically before the commit.
+
+**Process correction, recorded rather than smoothed over.** Phase 21 was scoped from a single premise check that found only id 34 assigned to the phase. Id 47 was a second, pre-existing entry also assigned to phase 21 (deferred there by an earlier review) and was missed until the leader caught it mid-close, before declaring the phase complete. The lesson: a phase's scope is every `feature_list.json` entry with that `phase` number, not just the one named in the last session's brief — check the population, not the sample.
+
+> The paragraph below this note describes phase 20's position and is kept as history.
+
 **Position: Phase 20 COMPLETE, 1 of 1 entry closed, 97 of 105 features done.** Counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → `105 97`, on 2026-09-18.
 
 Id 33, n8n demo workflows: LIGHT, one implementer, no separate reviewer. The four workflow JSONs needed no porting — they were already byte-identical to #7's from the harness phase — so this phase verified the deployment mechanism instead: idempotent auto-import from a cold container start, a real order placed through a live webhook run reaching the host's Gateway from inside the n8n container (`host.docker.internal`, since #8 has no full Docker Compose until phase 23), and the stack proven to run without n8n at all. The leader closed it directly after reading the diff and independently re-checking two of the record's claims, per the light-process rule.

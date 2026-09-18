@@ -1614,6 +1614,20 @@
         "the pinned version is confirmed compatible with the SonarQube server version this repository already runs (2.36.2's image, or whatever docker-compose.infra.yml pins by the time this is worked)"
       ],
       "notes": "Found during id 34's work (2026-09-18): SonarQube is optional infrastructure, so this is not blocking, but a fresh checkout's `sonar:scan` currently depends on an undocumented global tool install. LIGHT change under CLAUDE.md Cost discipline (build tooling config, no saga/money/security touch). Disposition: fix in a future session; not required to close phase 21."
+    },
+    {
+      "id": 108,
+      "name": "domain_editorconfig_var_rule_is_unenforced",
+      "phase": 21,
+      "title": ".editorconfig declares csharp_style_var_elsewhere = false (\"explicit types make domain code read like the spec\") at severity :suggestion, so it is never a build warning or error and dotnet format --verify-no-changes ignores it -- the convention is stated but not enforced, and the codebase violates it ~1,900 times (373 in src/, 1,529 in tests/, 147 in Domain/ folders alone, across 6 files, measured in Phase 8)",
+      "sdd": false,
+      "status": "pending",
+      "acceptance": [
+        "one of two honest exits is taken, not a partial fix: (a) csharp_style_var_elsewhere = true:silent, adjusting the stated convention to match what the code already does, or (b) the convention is kept but scoped to where its own stated argument holds -- a [src/*/Domain/**.cs] section at :warning, with all Domain/ violations (147 sites measured in Phase 8, re-measure before fixing -- the count may have moved) actually fixed and the resulting rule proven to fail the build on a new violation",
+        "if (b) is chosen: armed -- introduce one new `var` use in a Domain/ file where the type is not apparent, confirm `dotnet build` fails, restore, confirm green",
+        "whichever choice is taken, .editorconfig's own comment describing the rule is corrected to match reality"
+      ],
+      "notes": "Deferred in Phase 8 (see the external Plan doc's Phase 21 section, 'Quality Gates', which named this as a Phase 21 item) but never turned into a feature_list.json entry, so it silently fell out of scope when phase 21 (ids 34, 47) closed on 2026-09-18. Caught by the leader re-reading the Plan doc's own phase-21 checklist before updating it, rather than assuming the checklist and feature_list.json agreed. LIGHT change under CLAUDE.md Cost discipline (analyzer config, no saga/money/security touch) if option (a) is chosen; option (b) is closer to FULL scope (147 real code-site fixes across src/*/Domain/) and should be classified based on the actual count at the time it is worked, not assumed light because the config change itself is small."
     }
   ]
 }

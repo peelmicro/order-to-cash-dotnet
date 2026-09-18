@@ -1,26 +1,27 @@
 # Current session
 
-**Feature:** none in progress. **Phase 20 COMPLETE (2026-09-18)**: id 33 `n8n_workflows` (LIGHT, one implementer, no separate review — closed by the leader after reading the diff and independently re-verifying two of its claims) is done. 97 of 105 backlog features are done (counted: `python3 -c "import json;d=json.load(open('feature_list.json'));print(len(d['features']), sum(1 for f in d['features'] if f['status']=='done'))"` → 105 97). Not yet committed or pushed: id 33's work, the README fix it surfaced, and the phase 21 brief below.
+**Feature:** none in progress. **Phase 21 COMPLETE and PUSHED (2026-09-18)**: id 34 `sonarqube_quality_gates` (LIGHT) and id 47 `order_number_allocator_scan_cost` (FULL, Opus-approved with one condition, discharged) are both done. Commits: `285f503` (id 34), `a412b8e` (id 47), plus this docs commit. Also filed, not required to close phase 21: id 107 (light, `dotnet-sonarscanner` has no local tool manifest). 99 of 106 backlog features are done.
 
-## Next phase — Phase 21: quality gates (id 34)
+## Next phase — Phase 22: observability dashboards (id 35)
 
-**Brief for the next session.** Start it in a FRESH session, and apply CLAUDE.md's "Cost discipline".
-- **Id 34 `sonarqube_quality_gates`** (sdd: false). Its acceptance bullets:
-  - coverage gate proven to FAIL when breached, not merely configured;
-  - `dotnet format` clean at solution level (already true today — `./quality.sh` section 1 already enforces this; confirm it stays true, do not weaken it to make the phase look done);
-  - SonarQube runs under its optional compose profile.
-- **Classification: LIGHT** (build/CI scripting and config, no saga/money/security touch), but note this is closer to genuine building than phase 20's pure verification — budget accordingly and re-classify to full only if evidence says otherwise.
-- **Verified live by the leader — the honest current state, do not assume more is built than this:**
-  - `quality.sh` section 4 (around line 90-97) currently only **reports** coverage (`info "coverage report: ... line coverage ${PCT}%"`); it does not fail the build when the threshold is missed. There is a literal `# TODO(feature 34 — sonarqube_quality_gates, phase 21): enforce >=80% domain / >=60% overall here ... and prove it fails when breached` comment already in the file, left by an earlier phase specifically for this feature. **`CLAUDE.md`'s "Testing conventions" table entry claiming coverage gates are "enforced ... and verified to fail when breached" describes the target convention, not yet this repository's current state** — do not read it as already true.
-  - `dc:up:sonar`/`dc:down:sonar`/`dc:logs:sonarqube` shortcuts and the `sonar` compose profile already exist (`package.json`, `docker-compose.infra.yml`), copied from the harness phase, never run against #8.
-  - `sonar-project.properties` does not exist in #8 yet; no `sonar:scan` shortcut exists yet either.
+**Brief for the next session.** Start it in a FRESH session, and apply CLAUDE.md's "Cost discipline". **Population check done**: `feature_list.json` has exactly one entry with `"phase": 22` — id 35. (Phase 21 was scoped wrong mid-session because this check was skipped the first time; do not skip it again.)
+- **Id 35 `observability_dashboards`** (sdd: false). Its acceptance bullets:
+  - panels: saga duration, per-service latency, consumer lag, outbox lag, DLQ depth;
+  - dashboard auto-provisioned;
+  - single distributed trace screenshot captured.
+- **Classification: LIGHT** (infra/observability verification, no saga/money/security touch — the pattern matches phase 20's n8n work, not phase 21's id 47). Re-classify to full only if evidence says otherwise.
+- **Verified live by the leader — do not assume more work is needed than this:**
+  - `infra/grafana/dashboards/order-to-cash-overview.json` already exists, byte-copied from #7, and already has all five named panels: "Saga duration (order.placed → completed/cancelled)", "Per-service latency (Gateway request / Orders fact-consume)", "Kafka consumer lag (by consumer group / topic)", "Outbox lag (oldest unpublished fact)", "DLQ depth (by topic)". **Nothing to build here** — confirmed by reading the panel titles directly.
+  - `docker-compose.infra.yml` already mounts `./infra/grafana/dashboards` and `./infra/grafana/provisioning` into the `grafana` service (`jaeger` and `grafana` services both already exist, `jaegertracing/jaeger:2.20.0` and `grafana/grafana:13.2.0`).
+  - OpenTelemetry is already wired: `src/Gateway/GatewayProgramConfiguration.cs:47` reads `OTEL_EXPORTER_OTLP_ENDPOINT`, defaulting to `http://localhost:4317`. `docs/PROCESS.md`'s history records this was confirmed used by all six services as of phase 14.
+  - **This strongly suggests phase 22, like phase 20, is mostly LIVE VERIFICATION, not construction** — confirm this premise yourself before assuming it (read the actual panel queries, not just their titles, and confirm each one has a real Prometheus/Loki/whatever-datasource query behind it, not a placeholder).
 - **Do, with evidence:**
-  1. Add a real coverage-threshold check to `quality.sh` (coverlet's own `/p:Threshold=` MSBuild integration, or a script step parsing the cobertura report and exiting non-zero below 80%/60% — your choice, justify it). **Arm it**: lower a test project's effective coverage below the threshold (comment out an assertion, or point coverlet at a narrower include set temporarily) and confirm `quality.sh` exits non-zero with a message naming the shortfall; then restore and confirm green again. This is the acceptance bullet's own words — "proven to FAIL when breached" is a countable claim per `CLAUDE.md`'s arming protocol.
-  2. Port `sonar-project.properties` and a `sonar:scan` shortcut from #7 (`../order-to-cash-nestjs/`), adapting only what genuinely differs (project keys, language-specific analyzer paths for .NET vs. TypeScript).
-  3. Bring up `dc:up:sonar` from cold, confirm SonarQube's own health/readiness, and record what a real scan against it produces (even a partial one — SonarQube itself needs no network egress once its image is pulled, but check whether analysis needs a token/login and record how a developer gets one).
-  4. Confirm the `sonar` profile is genuinely optional: `dc:up:infra` (no sonar profile) must not start it, and `quality.sh` must not depend on it being up.
-- **Environment:** for any image build or SonarQube container pull, use a scratch `DOCKER_CONFIG`, never edit the maintainer's `~/.docker/config.json`. Tear everything down cleanly; confirm with `docker ps`/`pgrep`.
-- **Stopping rule:** the phase closes id 34. Any new finding is filed with a disposition. If the maintainer asks for a full wrap-up, that comes first.
+  1. Bring the stack up from cold (`scripts/dev-stack.sh start` plus infra), place and complete at least one real order through the saga.
+  2. Open Grafana (`localhost:${GRAFANA_HOST_PORT:-3030}` or whatever `docker-compose.infra.yml` actually binds — confirm the real port), confirm the dashboard is auto-provisioned (no manual import step) and that each of the five panels shows real, non-empty data — not just that the panel renders.
+  3. Open Jaeger's UI, find a single distributed trace that spans the WHOLE saga (order placed through to completed/cancelled, across however many services that touches), and capture a screenshot. Confirm trace context genuinely propagates across the Kafka/NATS hops — this repository has a known history of trace-context gaps in fast paths (see phase 15/16's history), so don't assume propagation "should" work; look at the actual trace. The external Plan doc's Phase 22 section names a comparison target: **#7's own trace had 22 spans, depth 11** — record #8's span count and depth against that, and state whether the shapes are comparable or why not (a different service count, a different fan-out, etc. would be a real, reportable difference, not a defect).
+  4. If any panel is empty or any hop is missing from the trace, that is a real finding — file it as a backlog entry rather than silently working around it or fixing it without stopping to report first (per CLAUDE.md's brief-scope rule).
+- **Environment:** for any image build, use a scratch `DOCKER_CONFIG`, never edit the maintainer's `~/.docker/config.json`. Tear everything down cleanly; confirm with `docker ps`/`pgrep`.
+- **Stopping rule:** the phase closes id 35. Any new finding is filed with a disposition. If the maintainer asks for a full wrap-up, that comes first.
 
 ## FULL WRAP-UP DONE (user's word, 2026-09-11) — phase 14 checkpoint pushed; continuing with id 62
 
