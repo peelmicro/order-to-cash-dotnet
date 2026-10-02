@@ -1,10 +1,20 @@
 # Current session
 
-**Feature:** **id 38 `final_checkpoint` — `done`** (phase 25 COMPLETE — the trilogy's last phase for assessment #8). **110 of 110 backlog features are done.** **Not yet committed or pushed** — awaiting the maintainer's "full wrap-up".
+**Feature:** none — **#8 is complete** (110 of 110 `feature_list.json` entries `done`, phase 25 closed). This session (2026-10-02) was a **post-completion documentation audit**, not a new phase: committed and pushed as `a3d1fa4`.
 
 ## #8 is complete — no next phase
 
 `feature_list.json` has no entry past phase 25. Assessment #8 (`order-to-cash-dotnet`) is finished: every backlog entry `done`, `CHECKPOINTS.md` C1–C7 walked and every finding it raised dispositioned, all five spec amendments back-ported to #7, the README's benchmark section honest and verified against its primary sources. **The next work on this repository, if any, is maintenance or a request from the maintainer — not a scheduled phase.**
+
+## Post-completion documentation audit (2026-10-02)
+
+The maintainer asked what the current state was and what wasn't implemented. Answering it live (re-counting `feature_list.json`, re-checking `git status`/`git log` rather than trusting the prior session's summary) surfaced a real defect: **README's own "under construction" banner and its Build-progress table's phase-25 row were still stale**, even though the backlog had been 110/110 since the last session. Asked to check the rest of the markdown population, a repo-wide grep for the same marker class (`🚧`, `⬜`, "under construction", etc.) found one more real one — **`docs/PROCESS.md` carries its own, separate build-progress table that had stopped updating at phase 14's mid-phase checkpoint (2026-09-11) and never caught up through phases 15–25**, even though the prose "position" section above it (§10) had been kept current every phase. Both fixed.
+
+The same population check extended to the three external documents turned up more: six items in `Order To Cash DotNet - Assessment.Plan.md`'s own per-phase checklists that were genuinely done but never ticked, two stray duplicate template lines, and a master "## Checklist" section that had sat unflipped since roughly the halfway mark of the whole build. All fixed with live evidence cited per item — **except three, left honestly open rather than ticked**: a real, still-live architecture-test gap (the no-MediatR guard checks 3 hardcoded project paths, not a glob, though nothing is broken today since no `.csproj` anywhere references MediatR); one Phase-10 commit (`dad02dd`) that genuinely bundled two features instead of one; and one item that is a pure attestation about the maintainer's own actions, which only the maintainer can tick.
+
+**Committed and pushed** as `a3d1fa4` (repo) on top of `561ce37` (phase 25). The Plan.md quiz was regenerated to pick up the external-document edits (Solution Documents and Stack Comparison needed no changes this round). No `feature_list.json` change — this was documentation maintenance after the backlog's own close, not a new phase or feature, so nothing new was filed for it.
+
+**Open, by design, for whoever picks this up next:** the no-MediatR glob gap (`tests/Cqrs.UnitTests/NoMediatRPackageReferenceTests.cs`) is a real, if currently harmless, structural gap — worth a LIGHT fix if anyone touches that test again, but not urgent enough to have reopened a declared-complete project unilaterally.
 
 ## Phase 25 closure summary
 
