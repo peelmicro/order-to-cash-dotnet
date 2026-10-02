@@ -402,18 +402,18 @@ It cuts both ways, and both halves belong in the final comparison. It is evidenc
 | 11 | Notifications — MailKit into Mailpit, durable idempotency ledger | ✅ |
 | 12 | Projector — the MongoDB read model, the Billing causal edge it depends on, and the notifications mutation gaps | ✅ |
 | 13 | Gateway / BFF — REST, JWT, login rate limiting, SSE, the two Orders responders it calls, and six backlog entries of guard hardening | ✅ |
-| 14 | Reliability + observability — retry, DLQ, OTel propagation, health checks, client idempotency, and the backlog filed against the phase | 🟨 **checkpoint** (`d8d71c7`): 27, 71, 77 done; 62 in progress, unreviewed; 73, 76, 72, 67–70 with 74, and 78 pending; 75 waits on `SA-3` |
-| 15 | End-to-end saga verification | ⬜ |
-| 16 | Web app (Next.js App Router) | ⬜ |
-| 17 | Web component tests (Vitest + React Testing Library) | ⬜ |
-| 18 | API tests — the same black-box script #7's prove | ⬜ |
-| 19 | Playwright end-to-end tests | ⬜ |
-| 20 | n8n demo workflows, reused unchanged | ⬜ |
-| 21 | Quality gates — analyzers, format, coverage proven to bite | ⬜ |
-| 22 | Prometheus, Grafana, Jaeger verification | ⬜ |
-| 23 | Full Docker Compose | ⬜ |
-| 24 | Documentation, demo, and the **#7 vs #8 benchmark** | ⬜ |
-| 25 | Final checkpoint | ⬜ |
+| 14 | Reliability + observability — retry, DLQ, OTel propagation, health checks, client idempotency, and the backlog filed against the phase | ✅ finished at `d8d71c7`'s checkpoint plus a full re-open the maintainer ordered: all eleven re-opened entries worked and approved, `SA-4`'s operator-cancel redesign (id 62) closed, `SA-3`'s dead-letter alignment (id 75) closed |
+| 15 | End-to-end saga verification against real infrastructure | ✅ all five criteria, including the composed-stack trace — found and fixed a real trace-context gap (one order, three trace ids) in the same session |
+| 16 | Web app (Next.js App Router) | ✅ full BFF, httpOnly session, live SSE timeline — four review rounds, two spent making one guarded claim mechanically enforced rather than prose |
+| 17 | Web component tests (Vitest + React Testing Library) | ✅ delivered alongside phase 16, 22 files / 286 tests |
+| 18 | API tests — the same black-box script #7's prove | ✅ real Gateway + fleet, developer infrastructure down, approved first round |
+| 19 | Playwright end-to-end tests | ✅ happy path + `.99` compensation, causal link rendered in a real browser, approved first round |
+| 20 | n8n demo workflows, reused unchanged | ✅ auto-import idempotent, a real order placed through a live webhook; verified, not ported — content was already byte-identical from the harness phase |
+| 21 | Quality gates — analyzers, format, coverage proven to bite | ✅ coverage gate armed to fail below threshold, a real SonarQube scan to completion |
+| 22 | Prometheus, Grafana, Jaeger verification | ✅ found and fixed a real metric-naming mismatch; one trace spanning the whole saga, 42 spans / depth 26 |
+| 23 | Full Docker Compose | ✅ 18 containers, 91.8 s cold to healthy with images built; found a genuine Compose multi-file merge footgun while proving it |
+| 24 | Documentation, demo, and the **#7 vs #8 benchmark** | ✅ README's Architecture/Trade-offs/Production-extensions/AI-process/Benchmark sections, the demo GIF captured live |
+| 25 | Final checkpoint | ✅ `CHECKPOINTS.md` C1–C7 walked; the first walk correctly refused to close (7 findings), all worked in the same session — see §10 above for the full list. **110 of 110 features done. The trilogy's #8 assessment is finished.** |
 
 ---
 
