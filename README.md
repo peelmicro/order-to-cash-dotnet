@@ -396,4 +396,4 @@ This is an assessment, and it runs as one instance per service. That is a delibe
 
 ## Licence
 
-MIT.
+[MIT](LICENSE).
