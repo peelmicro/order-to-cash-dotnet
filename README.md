@@ -16,7 +16,7 @@ An **order-to-cash lifecycle backbone** for a B2B EDI / e-invoicing platform, bu
 
 ## The trilogy, and what makes this repository different
 
-This is **assessment #8 of three**, all implementing the *same* specification on different stacks:
+This is **assessment #8 of a three-part series**, all implementing the *same* specification on different stacks:
 
 | # | Backend | Frontend | Write DB | Repository |
 |---|---------|----------|----------|------------|
@@ -28,7 +28,7 @@ This is **assessment #8 of three**, all implementing the *same* specification on
 
 > When a specification and an agent harness are genuinely mature, how much does re-implementing the same system on a new stack actually accelerate — and which parts do not speed up at all?
 
-Per-feature effort (sessions, wall-clock) is recorded in `progress/history.md` against #7's baseline, and the README will close with the comparison table and an honest reading of it, including what was **not** faster.
+Per-feature effort (sessions, wall-clock) is recorded in `progress/history.md` against #7's baseline, and the "Benchmark" section below gives the comparison table and an honest reading of it, including what was **not** faster.
 
 Any place where the .NET implementation proves the shared specification wrong or incomplete is a **spec amendment**: an explicit commit here, and a back-port to #7. Never a silent fork.
 
@@ -189,7 +189,7 @@ The development **process is a deliverable here**, not just the software. This r
 | `AGENTS.md` | Entry map — what to read, when, and the hard rules |
 | `CLAUDE.md` | Leader role, project conventions, and — since phase 16 — the cost-discipline rules below |
 | `docs/lessons.md` | The incident record behind every `CLAUDE.md` rule, split out so `CLAUDE.md` itself stays short (81 KB → 14 KB) |
-| `feature_list.json` | Backlog state machine — 108 entries as of this phase, max one `in_progress` |
+| `feature_list.json` | Backlog state machine — 110 entries, all `done`, max one `in_progress` |
 | `init.sh` | State-coherence check, run at the start of every session |
 | `progress/` | External memory: session state, and per-feature **effort records** |
 | `.claude/agents/` | leader, spec_author, implementer, reviewer, test_maintainer, suite_runner |
