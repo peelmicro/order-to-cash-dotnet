@@ -22,7 +22,7 @@ This is **assessment #8 of a three-part series**, all implementing the *same* sp
 |---|---------|----------|----------|------------|
 | 7 | NestJS 11 | Nuxt 4 + shadcn-vue | MySQL 8 | [`peelmicro/order-to-cash-nestjs`](https://github.com/peelmicro/order-to-cash-nestjs) — complete |
 | **8** | **.NET 10** | **Next.js + shadcn/ui** | **MS-SQL Server** | **this repository** |
-| 9 | Python (FastAPI) | Angular + spartan/ui | PostgreSQL | not started |
+| 9 | Python 3.14 (FastAPI) | Angular 22 (Analog) + spartan/ui | PostgreSQL 18 | [`peelmicro/order-to-cash-python`](https://github.com/peelmicro/order-to-cash-python) — in progress |
 
 #7 wrote the stack-agnostic specification and the AI agent harness. **#8 does not start from scratch, and that is the point.** The specification (`specs/shared/`), the harness, the four n8n demo workflows and the stack-agnostic infrastructure configuration are **copied from #7, not rewritten** — so this repository is the trilogy's first empirical answer to a question the process literature mostly asserts rather than measures:
 
