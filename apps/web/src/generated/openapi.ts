@@ -285,7 +285,8 @@ export interface paths {
          *     `units` is a **delta**, not a target level, so repeating this call adds
          *     again. It is deliberately **not** idempotent: "top up by 100" is the
          *     operation the demo needs, and pretending otherwise would silently drop
-         *     legitimate repeats.
+         *     legitimate repeats. A `503` after a timeout does not mean the top-up was
+         *     not applied: re-read `GET /stock` before retrying.
          */
         post: operations["replenishStock"];
         delete?: never;
@@ -1042,11 +1043,31 @@ export interface components {
             };
         };
         /**
-         * @description The owning context did not answer within the deadline, or the RPC
-         *     transport is unreachable. The command was **not** applied; the client
-         *     may retry.
+         * @description The owning context could not be reached, did not answer within the
+         *     deadline, or answered with a reply the Gateway could not read. When no
+         *     responder was reachable the command was not applied; after a timeout
+         *     or an unreadable reply it may have been. A client may retry an
+         *     idempotent operation (one with an `Idempotency-Key` or a natural key
+         *     such as `paymentReference`); before retrying any other it should
+         *     re-read the resource.
          */
         UpstreamUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description Any status this operation does not list. The body is always a
+         *     `Problem`. A 4xx is a request the Gateway or the owning context refused
+         *     (an unknown reference, a malformed parameter, a domain rule); a 5xx is
+         *     a failure in the Gateway or upstream. The listed statuses are the ones
+         *     a client is expected to handle by name; this one exists so that no
+         *     status the system can answer is outside the contract.
+         */
+        UnlistedProblem: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1112,6 +1133,7 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     getCurrentUser: {
@@ -1133,6 +1155,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     listOrders: {
@@ -1163,6 +1186,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     placeOrder: {
@@ -1212,6 +1236,7 @@ export interface operations {
             };
             422: components["responses"]["DomainError"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     getOrder: {
@@ -1251,6 +1276,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     cancelOrder: {
@@ -1290,6 +1316,7 @@ export interface operations {
                 };
             };
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     streamOrderEvents: {
@@ -1322,6 +1349,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     listStock: {
@@ -1351,6 +1379,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     replenishStock: {
@@ -1379,6 +1408,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     listInvoices: {
@@ -1410,6 +1440,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     registerPayment: {
@@ -1475,6 +1506,7 @@ export interface operations {
                 };
             };
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     listCredits: {
@@ -1502,6 +1534,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     listProducts: {
@@ -1529,6 +1562,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     listRetailers: {
@@ -1556,6 +1590,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     listCompanies: {
@@ -1583,6 +1618,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             503: components["responses"]["UpstreamUnavailable"];
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     healthLive: {
@@ -1603,6 +1639,7 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     healthReady: {
@@ -1632,6 +1669,7 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+            default: components["responses"]["UnlistedProblem"];
         };
     };
     apiDocs: {
@@ -1652,6 +1690,7 @@ export interface operations {
                     "text/html": string;
                 };
             };
+            default: components["responses"]["UnlistedProblem"];
         };
     };
 }
